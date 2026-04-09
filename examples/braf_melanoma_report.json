@@ -1,0 +1,826 @@
+{
+  "gene_symbol": "BRAF",
+  "indication": "melanoma",
+  "resolution": {
+    "hgnc_symbol": "BRAF",
+    "hgnc_id": null,
+    "ncbi_gene_id": "673",
+    "uniprot_accession": "P15056",
+    "synonyms": [
+      "BRAF1",
+      "RAFB1"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "P15056",
+    "gene_symbol": "BRAF",
+    "protein_name": "Serine/threonine-protein kinase B-raf",
+    "organism": "Homo sapiens",
+    "function_summary": "Protein kinase involved in the transduction of mitogenic signals from the cell membrane to the nucleus (Probable). Phosphorylates MAP2K1, and thereby activates the MAP kinase signal transduction pathway (PubMed:21441910, PubMed:29433126). Phosphorylates PFKFB2 (PubMed:36402789). May play a role in the postsynaptic responses of hippocampal neurons (PubMed:1508179)",
+    "subcellular_locations": [
+      "Nucleus",
+      "Cytoplasm",
+      "Cell membrane"
+    ],
+    "pathways": [
+      "Spry regulation of FGF signaling",
+      "Frs2-mediated activation",
+      "ARMS-mediated activation",
+      "Signalling to p38 via RIT and RIN",
+      "RAF activation",
+      "MAP2K and MAPK activation",
+      "Negative feedback regulation of MAPK pathway",
+      "Negative regulation of MAPK pathway",
+      "Signaling by moderate kinase activity BRAF mutants",
+      "Signaling by high-kinase activity BRAF mutants",
+      "Signaling by BRAF and RAF1 fusions",
+      "Paradoxical activation of RAF signaling by kinase inactive BRAF",
+      "Signaling downstream of RAS mutants",
+      "Signaling by RAF1 mutants",
+      "SHOC2 M1731 mutant abolishes MRAS complex function",
+      "Gain-of-function MRAS complexes activate RAF signaling"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "1UWH",
+      "1UWJ",
+      "2FB8",
+      "2L05",
+      "3C4C",
+      "3D4Q",
+      "3IDP",
+      "3II5",
+      "3NY5",
+      "3OG7",
+      "3PPJ",
+      "3PPK",
+      "3PRF",
+      "3PRI",
+      "3PSB",
+      "3PSD",
+      "3Q4C",
+      "3Q96",
+      "3SKC",
+      "3TV4"
+    ],
+    "known_variants": [
+      {
+        "position": "241",
+        "original": "T",
+        "variant": "M",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "241",
+        "original": "T",
+        "variant": "P",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "241",
+        "original": "T",
+        "variant": "R",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "244",
+        "original": "T",
+        "variant": "P",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "245",
+        "original": "L",
+        "variant": "F",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "246",
+        "original": "A",
+        "variant": "P",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "257",
+        "original": "Q",
+        "variant": "R",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "262",
+        "original": "Q",
+        "variant": "K",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "275",
+        "original": "E",
+        "variant": "K",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "301",
+        "original": "P",
+        "variant": "S",
+        "disease": null,
+        "clinical_significance": null
+      }
+    ],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "BRAF",
+    "disease_name": "melanoma",
+    "disease_efo_id": "EFO_0000756",
+    "ensembl_id": "ENSG00000157764",
+    "overall_score": 0.8185527839444029,
+    "genetic_association_score": 0.6991204172533643,
+    "somatic_mutation_score": 0.7964371987079912,
+    "known_drug_score": null,
+    "literature_mining_score": 0.9970294171484549,
+    "evidence_count": 5,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "clinical",
+        "score": 0.9761972499883539
+      },
+      {
+        "evidence_type": "affected_pathway",
+        "score": 0.43437525605146465
+      },
+      {
+        "evidence_type": "literature",
+        "score": 0.9970294171484549
+      },
+      {
+        "evidence_type": "genetic_association",
+        "score": 0.6991204172533643
+      },
+      {
+        "evidence_type": "somatic_mutation",
+        "score": 0.7964371987079912
+      }
+    ]
+  },
+  "cancer_dependency": {
+    "gene_symbol": "BRAF",
+    "mean_ceres_score": -1.2776,
+    "fraction_dependent_lines": 1.0,
+    "pan_essential": false,
+    "top_dependent_lineages": [
+      "cancer or benign tumor"
+    ],
+    "cell_lines": [
+      {
+        "cell_line": "differentiated thyroid carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.731,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "glioblastoma multiforme",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.628,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "lung adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.606,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "non-small cell lung carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.595,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "melanoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.593,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "pilocytic astrocytoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.552,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "colorectal adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.533,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "non-Hodgkins lymphoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.489,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "colon carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.464,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "malignant glioma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.436,
+        "is_dependent": true
+      }
+    ],
+    "data_source": "Open Targets Platform v4 \u2014 somatic mutation evidence across cancer types (proxy for cancer dependency; CERES scores are scaled OT somatic mutation scores)"
+  },
+  "gwas_evidence": {
+    "gene_symbol": "BRAF",
+    "trait_query": "melanoma",
+    "total_associations": 64,
+    "associations": [
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs2364399-G",
+        "p_value": 2e-74,
+        "beta_or_or": 0.0161,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs2364399-G",
+        "p_value": 2e-74,
+        "beta_or_or": 0.0161,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs3829814-A",
+        "p_value": 5.999999999999999e-21,
+        "beta_or_or": 0.0100891,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs3829814-A",
+        "p_value": 5.999999999999999e-21,
+        "beta_or_or": 0.0100891,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs11762469-?",
+        "p_value": 6e-16,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs11762469-?",
+        "p_value": 6e-16,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs1292982927-AT",
+        "p_value": 2e-15,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs1292982927-AT",
+        "p_value": 2e-15,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs13227429-T",
+        "p_value": 1e-14,
+        "beta_or_or": 7.704,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs13227429-T",
+        "p_value": 1e-14,
+        "beta_or_or": 7.704,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs13227429-?",
+        "p_value": 2e-14,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs13227429-?",
+        "p_value": 2e-14,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs3829814-A",
+        "p_value": 1e-13,
+        "beta_or_or": 0.02998,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs3829814-A",
+        "p_value": 1e-13,
+        "beta_or_or": 0.02998,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs73165497-C",
+        "p_value": 9e-13,
+        "beta_or_or": 0.00925515,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs73165497-C",
+        "p_value": 9e-13,
+        "beta_or_or": 0.00925515,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "DENND2A",
+        "risk_allele": "rs269232-A",
+        "p_value": 1e-12,
+        "beta_or_or": 0.0147,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "DENND2A",
+        "risk_allele": "rs269232-A",
+        "p_value": 1e-12,
+        "beta_or_or": 0.0147,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "NR",
+        "risk_allele": "rs60251368-G",
+        "p_value": 2e-12,
+        "beta_or_or": 0.0549,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "NR",
+        "risk_allele": "rs60251368-G",
+        "p_value": 2e-12,
+        "beta_or_or": 0.0549,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs3829814-A",
+        "p_value": 1e-11,
+        "beta_or_or": 0.011763,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs3829814-A",
+        "p_value": 1e-11,
+        "beta_or_or": 0.011763,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs2930331-C",
+        "p_value": 1e-10,
+        "beta_or_or": 0.02,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs2930331-C",
+        "p_value": 1e-10,
+        "beta_or_or": 0.02,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs11983228-C",
+        "p_value": 3e-10,
+        "beta_or_or": 1.05,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs11983228-C",
+        "p_value": 3e-10,
+        "beta_or_or": 1.05,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs73165497-C",
+        "p_value": 5e-10,
+        "beta_or_or": 0.10852,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs73165497-C",
+        "p_value": 5e-10,
+        "beta_or_or": 0.10852,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "BRAF",
+        "risk_allele": "rs9648716-T",
+        "p_value": 1e-09,
+        "beta_or_or": 1.06,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "BRAF",
+        "risk_allele": "rs9648716-T",
+        "p_value": 1e-09,
+        "beta_or_or": 1.06,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "NR",
+        "risk_allele": "rs13236223-?",
+        "p_value": 2e-09,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "NR",
+        "risk_allele": "rs13236223-?",
+        "p_value": 2e-09,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs13227429-?",
+        "p_value": 4e-09,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs13227429-?",
+        "p_value": 4e-09,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs62484294-?",
+        "p_value": 5e-09,
+        "beta_or_or": 0.072,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs62484294-?",
+        "p_value": 5e-09,
+        "beta_or_or": 0.072,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "MRPS33",
+        "risk_allele": "rs10265001-?",
+        "p_value": 5e-09,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "MRPS33",
+        "risk_allele": "rs10265001-?",
+        "p_value": 5e-09,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs569319774-GA",
+        "p_value": 6.000000000000001e-09,
+        "beta_or_or": 1.1131161,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs569319774-GA",
+        "p_value": 6.000000000000001e-09,
+        "beta_or_or": 1.1131161,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs6970893-A",
+        "p_value": 8e-09,
+        "beta_or_or": 0.0102,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs6970893-A",
+        "p_value": 8e-09,
+        "beta_or_or": 0.0102,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "NR",
+        "risk_allele": "rs13236223-T",
+        "p_value": 1e-08,
+        "beta_or_or": 0.07514365,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "NR",
+        "risk_allele": "rs13236223-T",
+        "p_value": 1e-08,
+        "beta_or_or": 0.07514365,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "NR",
+        "risk_allele": "rs13236223-?",
+        "p_value": 2e-08,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "NR",
+        "risk_allele": "rs13236223-?",
+        "p_value": 2e-08,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs62485379-?",
+        "p_value": 3.0000000000000004e-08,
+        "beta_or_or": 0.0696,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "",
+        "risk_allele": "rs62485379-?",
+        "p_value": 3.0000000000000004e-08,
+        "beta_or_or": 0.0696,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "BRAF",
+        "risk_allele": "rs35407685-?",
+        "p_value": 3.0000000000000004e-08,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "study",
+        "trait": "",
+        "mapped_gene": "BRAF",
+        "risk_allele": "rs35407685-?",
+        "p_value": 3.0000000000000004e-08,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": null,
+        "pubmed_id": null
+      }
+    ],
+    "strongest_p_value": 2e-74
+  },
+  "compounds": {
+    "gene_symbol": "BRAF",
+    "total_active_compounds": 1,
+    "compounds": [
+      {
+        "cid": 53438230,
+        "name": "N-[2,4-difluoro-3-(5-pyridin-3-yl-1H-pyrrolo[2,3-b]pyridine-3-carbonyl)phenyl]pr",
+        "molecular_formula": "C22H18F2N4O3S",
+        "molecular_weight": 456.5,
+        "activity_outcome": "Active",
+        "activity_value": null,
+        "activity_type": null,
+        "assay_id": 0
+      }
+    ]
+  },
+  "priority_score": 7.97,
+  "priority_tier": "High",
+  "evidence_summary": "BRAF shows strong Open Targets association with melanoma (score: 0.82, n=5 evidence items). DepMap CRISPR data show dependency in 100% of cancer lines, highest in cancer or benign tumor. GWAS Catalog links 64 variants near BRAF to 'melanoma'-related traits (strongest p=2.00e-74). PubChem reports 1 active compounds against BRAF, indicating emerging druggability.",
+  "data_gaps": [],
+  "errors": {}
+}
