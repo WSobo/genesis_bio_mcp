@@ -1,28 +1,30 @@
 """Unit tests for API client modules using respx to mock httpx."""
 
-import pytest
 import httpx
+import pytest
 import respx
 
-from genesis_bio_mcp.clients.uniprot import UniProtClient
-from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
+from genesis_bio_mcp.clients.alphafold import AlphaFoldClient
+from genesis_bio_mcp.clients.clinical_trials import ClinicalTrialsClient
 from genesis_bio_mcp.clients.depmap import DepMapClient
+from genesis_bio_mcp.clients.dgidb import DGIdbClient
 from genesis_bio_mcp.clients.gwas import GwasClient
+from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
 from genesis_bio_mcp.clients.pubchem import PubChemClient
-
+from genesis_bio_mcp.clients.reactome import ReactomeClient
+from genesis_bio_mcp.clients.string_db import StringDbClient
+from genesis_bio_mcp.clients.uniprot import UniProtClient
 from tests.conftest import (
-    MOCK_UNIPROT_BRAF,
-    MOCK_OT_GENE_SEARCH,
-    MOCK_OT_DISEASE_SEARCH,
-    MOCK_OT_ASSOCIATION,
     MOCK_DEPMAP_OT_CANCER,
-    MOCK_GWAS_ASSOCIATION_RESPONSE,
-    MOCK_PUBCHEM_AIDS,
     MOCK_ENTREZ_AIDS,
+    MOCK_GWAS_ASSOCIATION_RESPONSE,
+    MOCK_OT_ASSOCIATION,
+    MOCK_OT_DISEASE_SEARCH,
+    MOCK_OT_GENE_SEARCH,
     MOCK_PUBCHEM_ACTIVE_CIDS,
     MOCK_PUBCHEM_PROPERTIES,
+    MOCK_UNIPROT_BRAF,
 )
-
 
 # ---------------------------------------------------------------------------
 # UniProt client tests
@@ -144,15 +146,15 @@ async def test_depmap_returns_essentiality(http_client):
     # DepMap now queries Open Targets cancer associations as proxy
     ot_route = respx.post("https://api.platform.opentargets.org/api/v4/graphql")
     ot_route.side_effect = [
-        httpx.Response(200, json=MOCK_OT_GENE_SEARCH),      # gene resolution
-        httpx.Response(200, json=MOCK_DEPMAP_OT_CANCER),    # cancer associations
+        httpx.Response(200, json=MOCK_OT_GENE_SEARCH),  # gene resolution
+        httpx.Response(200, json=MOCK_DEPMAP_OT_CANCER),  # cancer associations
     ]
     client = DepMapClient(http_client, gene_dep_cache={})
     result = await client.get_essentiality("BRAF")
 
     assert result is not None
     assert result.gene_symbol == "BRAF"
-    assert result.mean_ceres_score < 0          # somatic scores mapped to negative proxy
+    assert result.mean_ceres_score < 0  # somatic scores mapped to negative proxy
     assert result.fraction_dependent_lines > 0
     assert result.pan_essential is False
     assert len(result.cell_lines) > 0
@@ -196,7 +198,10 @@ async def test_gwas_returns_evidence(http_client):
 @respx.mock
 async def test_gwas_returns_none_when_no_hits(http_client):
     respx.get(url__regex=r"ebi\.ac\.uk/gwas").mock(
-        return_value=httpx.Response(200, json={"_embedded": {"singleNucleotidePolymorphisms": [], "associations": []}})
+        return_value=httpx.Response(
+            200,
+            json={"_embedded": {"singleNucleotidePolymorphisms": [], "associations": []}},
+        )
     )
     client = GwasClient(http_client)
     result = await client.get_evidence("FAKEGENE", "nonexistent disease")
@@ -268,4 +273,331 @@ async def test_pubchem_returns_none_when_no_assays(http_client):
     respx.get(url__regex=r"compound/name").mock(return_value=httpx.Response(404))
     client = PubChemClient(http_client)
     result = await client.get_compounds("FAKEGENE")
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# AlphaFold + RCSB PDB client tests
+# ---------------------------------------------------------------------------
+
+
+_MOCK_ALPHAFOLD_RESPONSE = [
+    {
+        "uniprotAccession": "P15056",
+        "meanPlddt": 91.5,
+        "pdbUrl": "https://alphafold.ebi.ac.uk/files/AF-P15056-F1-model_v4.pdb",
+        "latestVersion": 4,
+    }
+]
+
+_MOCK_RCSB_SEARCH = {
+    "total_count": 2,
+    "result_set": [
+        {"identifier": "4MNE"},
+        {"identifier": "3OG7"},
+    ],
+}
+
+_MOCK_RCSB_ENTRY = {
+    "exptl": [{"method": "X-RAY DIFFRACTION"}],
+    "refine": [{"ls_d_res_high": 2.1}],
+    "rcsb_entry_info": {"nonpolymer_entity_count": 1},
+    "rcsb_accession_info": {"deposit_date": "2012-03-15"},
+}
+
+
+@respx.mock
+async def test_alphafold_get_structure(http_client):
+    respx.get(url__regex=r"alphafold\.ebi\.ac\.uk/api/prediction").mock(
+        return_value=httpx.Response(200, json=_MOCK_ALPHAFOLD_RESPONSE)
+    )
+    respx.post(url__regex=r"rcsbsearch").mock(
+        return_value=httpx.Response(200, json=_MOCK_RCSB_SEARCH)
+    )
+    respx.get(url__regex=r"data\.rcsb\.org/rest/v1/core/entry").mock(
+        return_value=httpx.Response(200, json=_MOCK_RCSB_ENTRY)
+    )
+    client = AlphaFoldClient(http_client)
+    result = await client.get_structure("BRAF", uniprot_accession="P15056")
+
+    assert result is not None
+    assert result.gene_symbol == "BRAF"
+    assert result.alphafold_plddt == pytest.approx(91.5)
+    assert result.alphafold_version == "v4"
+    assert result.total_pdb_structures == 2
+    assert result.has_ligand_bound is True
+    assert result.best_resolution == pytest.approx(2.1)
+    assert len(result.experimental_structures) == 2
+    assert result.experimental_structures[0].pdb_id in ("4MNE", "3OG7")
+
+
+@respx.mock
+async def test_alphafold_returns_none_without_accession(http_client):
+    client = AlphaFoldClient(http_client)
+    result = await client.get_structure("BRAF", uniprot_accession=None)
+    assert result is None
+
+
+@respx.mock
+async def test_alphafold_handles_404(http_client):
+    respx.get(url__regex=r"alphafold\.ebi\.ac\.uk/api/prediction").mock(
+        return_value=httpx.Response(404)
+    )
+    respx.post(url__regex=r"rcsbsearch").mock(return_value=httpx.Response(204))
+    client = AlphaFoldClient(http_client)
+    result = await client.get_structure("UNKNOWNGENE", uniprot_accession="Q99999")
+    assert result is not None
+    assert result.alphafold_plddt is None
+    assert result.total_pdb_structures == 0
+
+
+# ---------------------------------------------------------------------------
+# STRING client tests
+# ---------------------------------------------------------------------------
+
+
+_MOCK_STRING_RESOLVE = [{"stringId": "9606.ENSP00000288602", "preferredName": "BRAF"}]
+
+_MOCK_STRING_NETWORK = [
+    {
+        "stringId_A": "9606.ENSP00000288602",
+        "preferredName_A": "BRAF",
+        "stringId_B": "9606.ENSP00000395687",
+        "preferredName_B": "MAP2K1",
+        "score": 997,
+        "escore": 400,
+        "dscore": 900,
+        "cscore": 0,
+        "tscore": 0,
+        "hscore": 0,
+        "ascore": 0,
+        "fscore": 0,
+    },
+    {
+        "stringId_A": "9606.ENSP00000288602",
+        "preferredName_A": "BRAF",
+        "stringId_B": "9606.ENSP00000410194",
+        "preferredName_B": "RAF1",
+        "score": 962,
+        "escore": 300,
+        "dscore": 800,
+        "cscore": 0,
+        "tscore": 0,
+        "hscore": 0,
+        "ascore": 0,
+        "fscore": 0,
+    },
+]
+
+
+@respx.mock
+async def test_string_get_interactome(http_client):
+    respx.get(url__regex=r"string-db\.org/api/json/get_string_ids").mock(
+        return_value=httpx.Response(200, json=_MOCK_STRING_RESOLVE)
+    )
+    respx.get(url__regex=r"string-db\.org/api/json/network").mock(
+        return_value=httpx.Response(200, json=_MOCK_STRING_NETWORK)
+    )
+    client = StringDbClient(http_client)
+    result = await client.get_interactome("BRAF")
+
+    assert result is not None
+    assert result.gene_symbol == "BRAF"
+    assert result.total_partners == 2
+    symbols = [i.gene_symbol for i in result.top_interactors]
+    assert "MAP2K1" in symbols
+    assert "RAF1" in symbols
+    # Sorted descending by score
+    assert result.top_interactors[0].score >= result.top_interactors[1].score
+
+
+@respx.mock
+async def test_string_returns_none_when_unresolvable(http_client):
+    respx.get(url__regex=r"string-db\.org/api/json/get_string_ids").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    client = StringDbClient(http_client)
+    result = await client.get_interactome("FAKEGENE")
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# DGIdb client tests
+# ---------------------------------------------------------------------------
+
+
+_MOCK_DGIDB_RESPONSE = {
+    "data": {
+        "genes": {
+            "nodes": [
+                {
+                    "name": "BRAF",
+                    "interactions": [
+                        {
+                            "drug": {"name": "Vemurafenib", "approved": True},
+                            "interactionTypes": [
+                                {"type": "inhibitor", "directionality": "inhibitory"}
+                            ],
+                            "interactionClaims": [{"source": {"sourceDbName": "ChEMBL"}}],
+                        },
+                        {
+                            "drug": {"name": "PLX-4720", "approved": False},
+                            "interactionTypes": [
+                                {"type": "inhibitor", "directionality": "inhibitory"}
+                            ],
+                            "interactionClaims": [{"source": {"sourceDbName": "DrugBank"}}],
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+}
+
+
+@respx.mock
+async def test_dgidb_get_drug_interactions(http_client):
+    respx.post("https://dgidb.org/api/graphql").mock(
+        return_value=httpx.Response(200, json=_MOCK_DGIDB_RESPONSE)
+    )
+    client = DGIdbClient(http_client)
+    result = await client.get_drug_interactions("BRAF")
+
+    assert len(result) == 2
+    names = {d.drug_name for d in result}
+    assert "Vemurafenib" in names
+    # Approved drug listed first
+    assert result[0].approved is True
+    assert result[0].drug_name == "Vemurafenib"
+    assert result[0].interaction_type == "inhibitor"
+    assert result[0].phase == 4
+
+
+@respx.mock
+async def test_dgidb_returns_empty_on_no_data(http_client):
+    respx.post("https://dgidb.org/api/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"genes": {"nodes": []}}})
+    )
+    client = DGIdbClient(http_client)
+    result = await client.get_drug_interactions("FAKEGENE")
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# ClinicalTrials.gov client tests
+# ---------------------------------------------------------------------------
+
+
+_MOCK_CT_RESPONSE = {
+    "studies": [
+        {
+            "protocolSection": {
+                "identificationModule": {
+                    "nctId": "NCT01234567",
+                    "briefTitle": "Phase 2 Study of Vemurafenib in BRAF V600E Melanoma",
+                },
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "designModule": {"phases": ["PHASE2"]},
+                "conditionsModule": {"conditions": ["Melanoma"]},
+            }
+        },
+        {
+            "protocolSection": {
+                "identificationModule": {
+                    "nctId": "NCT09876543",
+                    "briefTitle": "Dabrafenib + Trametinib in BRAF Mutant Tumors",
+                },
+                "statusModule": {"overallStatus": "RECRUITING"},
+                "designModule": {"phases": ["PHASE3"]},
+                "conditionsModule": {"conditions": ["Non-small Cell Lung Cancer"]},
+            }
+        },
+    ]
+}
+
+
+@respx.mock
+async def test_clinical_trials_get_trials(http_client):
+    respx.get(url__regex=r"clinicaltrials\.gov/api/v2/studies").mock(
+        return_value=httpx.Response(200, json=_MOCK_CT_RESPONSE)
+    )
+    client = ClinicalTrialsClient(http_client)
+    trials, counts = await client.get_trials("BRAF")
+
+    assert len(trials) == 2
+    assert trials[0].nct_id == "NCT01234567"
+    assert trials[0].phase == "Phase 2"
+    assert trials[0].status == "COMPLETED"
+    assert "Phase 2" in counts
+    assert "Phase 3" in counts
+    assert counts["Phase 2"] == 1
+    assert counts["Phase 3"] == 1
+
+
+@respx.mock
+async def test_clinical_trials_returns_empty_on_error(http_client):
+    respx.get(url__regex=r"clinicaltrials\.gov/api/v2/studies").mock(
+        return_value=httpx.Response(500)
+    )
+    client = ClinicalTrialsClient(http_client)
+    trials, counts = await client.get_trials("BRAF")
+    assert trials == []
+    assert counts == {}
+
+
+# ---------------------------------------------------------------------------
+# Reactome client tests
+# ---------------------------------------------------------------------------
+
+
+_MOCK_REACTOME_TOKEN_RESPONSE = {
+    "summary": {
+        "token": "MjAyNS0wMS0wMSAxMjo",
+        "sampleName": "BRAF",
+        "type": "OVERREPRESENTATION",
+    },
+    "pathways": [
+        {
+            "stId": "R-HSA-5673001",
+            "name": "RAF/MAP kinase cascade",
+            "entities": {"pValue": 1.2e-15, "total": 42},
+        },
+        {
+            "stId": "R-HSA-162582",
+            "name": "Signal Transduction",
+            "entities": {"pValue": 0.0023, "total": 512},
+        },
+    ],
+}
+
+
+@respx.mock
+async def test_reactome_get_pathway_context(http_client):
+    # POST to analysis service returns token + inline pathways
+    respx.post(url__regex=r"reactome\.org/AnalysisService/identifiers").mock(
+        return_value=httpx.Response(200, json=_MOCK_REACTOME_TOKEN_RESPONSE)
+    )
+    respx.get(url__regex=r"reactome\.org/AnalysisService/download").mock(
+        return_value=httpx.Response(
+            200, json={"pathways": _MOCK_REACTOME_TOKEN_RESPONSE["pathways"]}
+        )
+    )
+    client = ReactomeClient(http_client)
+    result = await client.get_pathway_context("BRAF")
+
+    assert result is not None
+    assert result.gene_symbol == "BRAF"
+    assert len(result.pathways) >= 1
+    assert result.top_pathway_name is not None
+    names = [p.display_name for p in result.pathways]
+    assert any("kinase" in n.lower() or "signal" in n.lower() for n in names)
+
+
+@respx.mock
+async def test_reactome_returns_none_on_failure(http_client):
+    respx.post(url__regex=r"reactome\.org/AnalysisService/identifiers").mock(
+        return_value=httpx.Response(500)
+    )
+    client = ReactomeClient(http_client)
+    result = await client.get_pathway_context("BRAF")
     assert result is None

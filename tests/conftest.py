@@ -1,7 +1,7 @@
 """Shared mock fixtures for genesis-bio-mcp tests."""
 
-import pytest
 import httpx
+import pytest
 
 from genesis_bio_mcp.models import (
     CancerDependency,
@@ -16,7 +16,6 @@ from genesis_bio_mcp.models import (
     ProteinInfo,
     TargetDiseaseAssociation,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared HTTP client fixture
@@ -43,9 +42,7 @@ MOCK_UNIPROT_BRAF = {
         }
     ],
     "proteinDescription": {
-        "recommendedName": {
-            "fullName": {"value": "Serine/threonine-protein kinase B-raf"}
-        }
+        "recommendedName": {"fullName": {"value": "Serine/threonine-protein kinase B-raf"}}
     },
     "organism": {"scientificName": "Homo sapiens"},
     "comments": [
@@ -95,21 +92,13 @@ MOCK_UNIPROT_BRAF = {
 }
 
 MOCK_OT_GENE_SEARCH = {
-    "data": {
-        "search": {
-            "hits": [
-                {"id": "ENSG00000157764", "name": "BRAF", "entity": "target"}
-            ]
-        }
-    }
+    "data": {"search": {"hits": [{"id": "ENSG00000157764", "name": "BRAF", "entity": "target"}]}}
 }
 
 MOCK_OT_DISEASE_SEARCH = {
     "data": {
         "search": {
-            "hits": [
-                {"id": "EFO_0000389", "name": "cutaneous melanoma", "entity": "disease"}
-            ]
+            "hits": [{"id": "EFO_0000389", "name": "cutaneous melanoma", "entity": "disease"}]
         }
     }
 }
@@ -131,7 +120,7 @@ MOCK_OT_ASSOCIATION = {
                         "datasourceScores": [],
                         "disease": {"id": "EFO_0000389", "name": "cutaneous melanoma"},
                     }
-                ]
+                ],
             }
         }
     }
@@ -208,7 +197,9 @@ MOCK_GWAS_ASSOCIATION_RESPONSE = {
                     "pubmedId": "12345678",
                     "initialSampleSize": "10000 European ancestry cases",
                 },
-                "_links": {"study": {"href": "https://www.ebi.ac.uk/gwas/rest/api/studies/GCST001234"}},
+                "_links": {
+                    "study": {"href": "https://www.ebi.ac.uk/gwas/rest/api/studies/GCST001234"}
+                },
             }
         ]
     }
@@ -235,9 +226,7 @@ MOCK_ENTREZ_AIDS = {
     }
 }
 
-MOCK_PUBCHEM_ACTIVE_CIDS = {
-    "IdentifierList": {"CID": [44462760, 11338033]}
-}
+MOCK_PUBCHEM_ACTIVE_CIDS = {"IdentifierList": {"CID": [44462760, 11338033]}}
 
 MOCK_PUBCHEM_PROPERTIES = {
     "PropertyTable": {
@@ -285,7 +274,9 @@ def build_mock_protein_info(symbol: str = "BRAF") -> ProteinInfo:
         pathways=["RAF/MAP kinase cascade", "MAPK signaling pathway"],
         disease_associations=["Melanoma", "Lung adenocarcinoma"],
         pdb_structures=["1UWH", "4MNE"],
-        known_variants=[KnownVariant(position="600", original="V", variant="E", disease="Melanoma")],
+        known_variants=[
+            KnownVariant(position="600", original="V", variant="E", disease="Melanoma")
+        ],
         reviewed=True,
     )
 
@@ -323,16 +314,21 @@ def build_mock_dependency(
         pan_essential=False,
         top_dependent_lineages=["Skin", "Thyroid", "Colon"],
         cell_lines=[
-            CellLineEssentiality(cell_line="A375", lineage="Skin", ceres_score=-1.82, is_dependent=True),
-            CellLineEssentiality(cell_line="SKMEL28", lineage="Skin", ceres_score=-1.65, is_dependent=True),
+            CellLineEssentiality(
+                cell_line="A375", lineage="Skin", ceres_score=-1.82, is_dependent=True
+            ),
+            CellLineEssentiality(
+                cell_line="SKMEL28",
+                lineage="Skin",
+                ceres_score=-1.65,
+                is_dependent=True,
+            ),
         ],
         data_source="DepMap Public 24Q4",
     )
 
 
-def build_mock_gwas(
-    gene: str = "BRAF", trait: str = "melanoma", n_hits: int = 3
-) -> GwasEvidence:
+def build_mock_gwas(gene: str = "BRAF", trait: str = "melanoma", n_hits: int = 3) -> GwasEvidence:
     hits = [
         GwasHit(
             study_accession=f"GCST{1000 + i}",

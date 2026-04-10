@@ -8,16 +8,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from genesis_bio_mcp.tools.target_prioritization import prioritize_target
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene
-
+from genesis_bio_mcp.tools.target_prioritization import prioritize_target
 from tests.conftest import (
     build_mock_association,
     build_mock_compounds,
     build_mock_dependency,
     build_mock_gwas,
     build_mock_protein_info,
-    build_mock_resolution,
 )
 
 

@@ -4,27 +4,36 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from genesis_bio_mcp.models import (
     CancerDependency,
     ChEMBLCompounds,
     Compounds,
-    GwasEvidence,
+    DrugHistory,
     GeneResolution,
+    GwasEvidence,
+    PathwayContext,
     ProteinInfo,
+    ProteinInteractome,
+    ProteinStructure,
     TargetDiseaseAssociation,
     TargetPrioritizationReport,
 )
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene
 
 if TYPE_CHECKING:
+    from genesis_bio_mcp.clients.alphafold import AlphaFoldClient
     from genesis_bio_mcp.clients.chembl import ChEMBLClient
-    from genesis_bio_mcp.clients.uniprot import UniProtClient
-    from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
+    from genesis_bio_mcp.clients.clinical_trials import ClinicalTrialsClient
     from genesis_bio_mcp.clients.depmap import DepMapClient
+    from genesis_bio_mcp.clients.dgidb import DGIdbClient
     from genesis_bio_mcp.clients.gwas import GwasClient
+    from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
     from genesis_bio_mcp.clients.pubchem import PubChemClient
+    from genesis_bio_mcp.clients.reactome import ReactomeClient
+    from genesis_bio_mcp.clients.string_db import StringDbClient
+    from genesis_bio_mcp.clients.uniprot import UniProtClient
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +42,17 @@ async def prioritize_target(
     gene_symbol: str,
     indication: str,
     *,
-    uniprot: "UniProtClient",
-    open_targets: "OpenTargetsClient",
-    depmap: "DepMapClient",
-    gwas: "GwasClient",
-    pubchem: "PubChemClient",
-    chembl: "ChEMBLClient",
+    uniprot: UniProtClient,
+    open_targets: OpenTargetsClient,
+    depmap: DepMapClient,
+    gwas: GwasClient,
+    pubchem: PubChemClient,
+    chembl: ChEMBLClient,
+    alphafold: AlphaFoldClient | None = None,
+    string_db: StringDbClient | None = None,
+    dgidb: DGIdbClient | None = None,
+    clinical_trials: ClinicalTrialsClient | None = None,
+    reactome: ReactomeClient | None = None,
 ) -> TargetPrioritizationReport:
     """Run all database queries in parallel and synthesize a target prioritization report.
 
@@ -56,25 +70,34 @@ async def prioritize_target(
 
     # Use canonical symbol for all downstream lookups (handles HER2→ERBB2, p53→TP53, COX2→PTGS2)
     if resolution and resolution.hgnc_symbol and resolution.hgnc_symbol != symbol:
-        logger.info("Resolved alias %s → %s; using canonical symbol for all lookups", symbol, resolution.hgnc_symbol)
+        logger.info(
+            "Resolved alias %s → %s; using canonical symbol for all lookups",
+            symbol,
+            resolution.hgnc_symbol,
+        )
         symbol = resolution.hgnc_symbol
 
     # Run all independent lookups concurrently
-    (protein, protein_err), (disease_assoc, da_err), (cancer_dep, cd_err), (gwas_ev, gw_err), (compounds, co_err), (chembl_compounds, chembl_err) = (
-        await asyncio.gather(
-            _safe(uniprot.get_protein(symbol)),
-            _safe(open_targets.get_association(symbol, indication)),
-            _safe(depmap.get_essentiality(symbol)),
-            _safe(gwas.get_evidence(symbol, indication, ncbi_gene_id=ncbi_id)),
-            _safe(pubchem.get_compounds(symbol)),
-            _safe(chembl.get_compounds(symbol)),
-        )
+    (
+        (protein, protein_err),
+        (disease_assoc, da_err),
+        (cancer_dep, cd_err),
+        (gwas_ev, gw_err),
+        (compounds, co_err),
+        (chembl_compounds, chembl_err),
+    ) = await asyncio.gather(
+        _safe(uniprot.get_protein(symbol)),
+        _safe(open_targets.get_association(symbol, indication)),
+        _safe(depmap.get_essentiality(symbol)),
+        _safe(gwas.get_evidence(symbol, indication, ncbi_gene_id=ncbi_id)),
+        _safe(pubchem.get_compounds(symbol)),
+        _safe(chembl.get_compounds(symbol)),
     )
 
     data_gaps: list[str] = []
     errors: dict[str, str] = {}
 
-    def _check(name: str, value: Any, err: Optional[str]) -> None:
+    def _check(name: str, value: Any, err: str | None) -> None:
         if err:
             errors[name] = err
             data_gaps.append(name)
@@ -91,9 +114,45 @@ async def prioritize_target(
     _check("pubchem", compounds, co_err)
     _check("chembl", chembl_compounds, chembl_err)
 
-    priority_score = _compute_score(disease_assoc, cancer_dep, gwas_ev, compounds, protein, chembl_compounds)
+    priority_score = _compute_score(
+        disease_assoc, cancer_dep, gwas_ev, compounds, protein, chembl_compounds
+    )
     priority_tier = _tier(priority_score)
-    evidence_summary = _build_summary(symbol, indication, disease_assoc, cancer_dep, gwas_ev, compounds, chembl_compounds)
+    evidence_summary = _build_summary(
+        symbol,
+        indication,
+        disease_assoc,
+        cancer_dep,
+        gwas_ev,
+        compounds,
+        chembl_compounds,
+    )
+
+    # Extended mode: structure, interactome, drug history, pathway context
+    ext_structure: ProteinStructure | None = None
+    ext_interactome: ProteinInteractome | None = None
+    ext_drug_history: DrugHistory | None = None
+    ext_pathway: PathwayContext | None = None
+
+    if any(c is not None for c in (alphafold, string_db, dgidb, clinical_trials, reactome)):
+        uniprot_accession = protein.uniprot_accession if protein else None
+
+        ext_results = await asyncio.gather(
+            _safe(alphafold.get_structure(symbol, uniprot_accession=uniprot_accession))
+            if alphafold
+            else _safe_none(),
+            _safe(string_db.get_interactome(symbol)) if string_db else _safe_none(),
+            _safe(_fetch_drug_history(symbol, dgidb, clinical_trials))
+            if (dgidb or clinical_trials)
+            else _safe_none(),
+            _safe(reactome.get_pathway_context(symbol)) if reactome else _safe_none(),
+        )
+        (
+            (ext_structure, _),
+            (ext_interactome, _),
+            (ext_drug_history, _),
+            (ext_pathway, _),
+        ) = ext_results
 
     return TargetPrioritizationReport(
         gene_symbol=symbol,
@@ -110,10 +169,14 @@ async def prioritize_target(
         evidence_summary=evidence_summary,
         data_gaps=data_gaps,
         errors=errors,
+        protein_structure=ext_structure,
+        protein_interactome=ext_interactome,
+        drug_history=ext_drug_history,
+        pathway_context=ext_pathway,
     )
 
 
-async def _safe(coro, fallback=None) -> tuple[Any, Optional[str]]:
+async def _safe(coro, fallback=None) -> tuple[Any, str | None]:
     """Await a coroutine, returning (result, error_str). Never raises."""
     try:
         result = await coro
@@ -123,13 +186,54 @@ async def _safe(coro, fallback=None) -> tuple[Any, Optional[str]]:
         return fallback, str(exc)
 
 
+async def _safe_none() -> tuple[None, None]:
+    """Placeholder coroutine for skipped extended-mode lookups."""
+    return None, None
+
+
+async def _fetch_drug_history(
+    gene_symbol: str,
+    dgidb: Any,
+    clinical_trials: Any,
+) -> DrugHistory | None:
+    """Combine DGIdb + ClinicalTrials results into a DrugHistory object."""
+    coros = []
+    if dgidb is not None:
+        coros.append(dgidb.get_drug_interactions(gene_symbol))
+    else:
+        coros.append(_return_empty_list())
+    if clinical_trials is not None:
+        coros.append(clinical_trials.get_trials(gene_symbol))
+    else:
+        coros.append(_return_empty_tuple())
+
+    drugs, ct_result = await asyncio.gather(*coros)
+    ct_trials, ct_counts = ct_result if isinstance(ct_result, tuple) else ([], {})
+    approved_count = sum(1 for d in drugs if d.approved)
+    return DrugHistory(
+        gene_symbol=gene_symbol,
+        known_drugs=drugs,
+        approved_drug_count=approved_count,
+        trial_counts_by_phase=ct_counts,
+        recent_trials=ct_trials[:10],
+    )
+
+
+async def _return_empty_list() -> list:
+    return []
+
+
+async def _return_empty_tuple() -> tuple:
+    return [], {}
+
+
 def _compute_score(
-    disease_assoc: Optional[TargetDiseaseAssociation],
-    cancer_dep: Optional[CancerDependency],
-    gwas_ev: Optional[GwasEvidence],
-    compounds: Optional[Compounds],
-    protein: Optional[ProteinInfo],
-    chembl_compounds: Optional[ChEMBLCompounds] = None,
+    disease_assoc: TargetDiseaseAssociation | None,
+    cancer_dep: CancerDependency | None,
+    gwas_ev: GwasEvidence | None,
+    compounds: Compounds | None,
+    protein: ProteinInfo | None,
+    chembl_compounds: ChEMBLCompounds | None = None,
 ) -> float:
     score = 0.0
 
@@ -161,11 +265,11 @@ def _compute_score(
     if chembl_compounds and chembl_compounds.best_pchembl is not None:
         bp = chembl_compounds.best_pchembl
         if bp >= 9:
-            score += 1.5   # IC50 ≤ 1 nM — clinical-grade potency
+            score += 1.5  # IC50 ≤ 1 nM — clinical-grade potency
         elif bp >= 7:
-            score += 1.0   # IC50 ≤ 100 nM — lead quality
+            score += 1.0  # IC50 ≤ 100 nM — lead quality
         elif bp >= 5:
-            score += 0.5   # IC50 ≤ 10 µM — hit quality
+            score += 0.5  # IC50 ≤ 10 µM — hit quality
         else:
             score += 0.25  # active but weak
     elif compounds:
@@ -191,11 +295,11 @@ def _tier(score: float) -> str:
 def _build_summary(
     symbol: str,
     indication: str,
-    disease_assoc: Optional[TargetDiseaseAssociation],
-    cancer_dep: Optional[CancerDependency],
-    gwas_ev: Optional[GwasEvidence],
-    compounds: Optional[Compounds],
-    chembl_compounds: Optional[ChEMBLCompounds] = None,
+    disease_assoc: TargetDiseaseAssociation | None,
+    cancer_dep: CancerDependency | None,
+    gwas_ev: GwasEvidence | None,
+    compounds: Compounds | None,
+    chembl_compounds: ChEMBLCompounds | None = None,
 ) -> str:
     parts: list[str] = []
 
@@ -225,7 +329,8 @@ def _build_summary(
             top = ", ".join(cancer_dep.top_dependent_lineages[:3])
             parts.append(
                 f"DepMap CRISPR data show dependency in {pct}% of cancer lines"
-                + (f", highest in {top}" if top else "") + "."
+                + (f", highest in {top}" if top else "")
+                + "."
             )
 
     if gwas_ev and gwas_ev.total_associations > 0:
@@ -238,8 +343,10 @@ def _build_summary(
     if chembl_compounds and chembl_compounds.best_pchembl is not None:
         bp = chembl_compounds.best_pchembl
         ic50_nm = 10 ** (9 - bp)
-        ic50_str = f"{ic50_nm:.1f} nM" if ic50_nm < 1000 else f"{ic50_nm/1000:.1f} µM"
-        potency_label = "clinical-grade" if bp >= 9 else "lead-quality" if bp >= 7 else "hit-quality"
+        ic50_str = f"{ic50_nm:.1f} nM" if ic50_nm < 1000 else f"{ic50_nm / 1000:.1f} µM"
+        potency_label = (
+            "clinical-grade" if bp >= 9 else "lead-quality" if bp >= 7 else "hit-quality"
+        )
         parts.append(
             f"ChEMBL reports {chembl_compounds.total_active_compounds} compounds with potency data "
             f"against {symbol}; best IC50 ≈ {ic50_str} ({potency_label}, pChEMBL={bp:.1f})."
@@ -250,4 +357,8 @@ def _build_summary(
             f"indicating {'strong' if compounds.total_active_compounds > 50 else 'emerging'} druggability."
         )
 
-    return " ".join(parts) if parts else f"Insufficient data to summarize evidence for {symbol} in {indication}."
+    return (
+        " ".join(parts)
+        if parts
+        else f"Insufficient data to summarize evidence for {symbol} in {indication}."
+    )

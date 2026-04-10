@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import httpx
 
@@ -94,7 +93,7 @@ class OpenTargetsClient:
 
     async def get_association(
         self, gene_symbol: str, disease_name: str
-    ) -> Optional[TargetDiseaseAssociation]:
+    ) -> TargetDiseaseAssociation | None:
         """Return the Open Targets association score between a gene and disease."""
         ensembl_id = await self._resolve_gene(gene_symbol)
         if ensembl_id is None:
@@ -110,7 +109,7 @@ class OpenTargetsClient:
             gene_symbol, ensembl_id, efo_id, resolved_disease or disease_name
         )
 
-    async def _resolve_gene(self, symbol: str) -> Optional[str]:
+    async def _resolve_gene(self, symbol: str) -> str | None:
         data = await self._graphql(_GENE_SEARCH_QUERY, {"symbol": symbol})
         if data is None:
             return None
@@ -120,7 +119,7 @@ class OpenTargetsClient:
                 return hit["id"]
         return hits[0]["id"] if hits else None
 
-    async def _resolve_disease(self, name: str) -> tuple[Optional[str], Optional[str]]:
+    async def _resolve_disease(self, name: str) -> tuple[str | None, str | None]:
         data = await self._graphql(_DISEASE_SEARCH_QUERY, {"name": name})
         if data is None:
             return None, None
@@ -136,7 +135,7 @@ class OpenTargetsClient:
         ensembl_id: str,
         efo_id: str,
         disease_name: str,
-    ) -> Optional[TargetDiseaseAssociation]:
+    ) -> TargetDiseaseAssociation | None:
         # Primary: use Bs filter for the specific disease
         data = await self._graphql(
             _ASSOCIATION_QUERY,
@@ -148,20 +147,24 @@ class OpenTargetsClient:
             # Fallback: fetch top 100 and match by EFO ID client-side
             logger.info(
                 "Open Targets: Bs filter returned no rows for %s/%s, falling back to top-100",
-                gene_symbol, efo_id,
+                gene_symbol,
+                efo_id,
             )
             data2 = await self._graphql(_ASSOCIATION_QUERY_NO_FILTER, {"ensemblId": ensembl_id})
             row = _extract_row(data2, efo_id)
 
         if row is None:
             logger.info(
-                "Open Targets: no association found for %s / %s (%s)", gene_symbol, disease_name, efo_id
+                "Open Targets: no association found for %s / %s (%s)",
+                gene_symbol,
+                disease_name,
+                efo_id,
             )
             return None
 
         return _parse_row(row, gene_symbol, disease_name, efo_id, ensembl_id)
 
-    async def _graphql(self, query: str, variables: dict) -> Optional[dict]:
+    async def _graphql(self, query: str, variables: dict) -> dict | None:
         try:
             resp = await self._client.post(
                 _GRAPHQL_URL,
@@ -172,7 +175,10 @@ class OpenTargetsClient:
             resp.raise_for_status()
             body = resp.json()
             if "errors" in body:
-                logger.warning("Open Targets GraphQL errors: %s", body["errors"][0].get("message", ""))
+                logger.warning(
+                    "Open Targets GraphQL errors: %s",
+                    body["errors"][0].get("message", ""),
+                )
                 return None
             return body
         except Exception as exc:
@@ -180,16 +186,11 @@ class OpenTargetsClient:
             return None
 
 
-def _extract_row(data: Optional[dict], efo_id: str) -> Optional[dict]:
+def _extract_row(data: dict | None, efo_id: str) -> dict | None:
     """Extract the first row matching the EFO ID from a GraphQL response."""
     if data is None:
         return None
-    rows = (
-        data.get("data", {})
-        .get("target", {})
-        .get("associatedDiseases", {})
-        .get("rows", [])
-    )
+    rows = data.get("data", {}).get("target", {}).get("associatedDiseases", {}).get("rows", [])
     if not rows:
         return None
     # If Bs filter was used, only one disease is returned — take it directly

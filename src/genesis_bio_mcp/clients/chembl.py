@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 import httpx
 
@@ -31,7 +30,7 @@ class ChEMBLClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
 
-    async def get_compounds(self, gene_symbol: str) -> Optional[ChEMBLCompounds]:
+    async def get_compounds(self, gene_symbol: str) -> ChEMBLCompounds | None:
         """Return quantitative bioactivity data for compounds active on gene_symbol's target."""
         target_id = await self._resolve_target(gene_symbol)
         if not target_id:
@@ -57,7 +56,7 @@ class ChEMBLClient:
             compounds=activities[:20],
         )
 
-    async def _resolve_target(self, gene_symbol: str) -> Optional[str]:
+    async def _resolve_target(self, gene_symbol: str) -> str | None:
         """Find the ChEMBL target ID for a human gene symbol."""
         try:
             async with _SEMAPHORE:
@@ -69,7 +68,7 @@ class ChEMBLClient:
                 resp.raise_for_status()
 
             data = resp.json()
-            for target in (data.get("targets") or []):
+            for target in data.get("targets") or []:
                 # Filter: single protein, Homo sapiens
                 if (
                     target.get("target_type") == "SINGLE PROTEIN"
@@ -126,7 +125,9 @@ class ChEMBLClient:
                         molecule_name=a.get("molecule_pref_name"),
                         standard_type=a.get("standard_type", ""),
                         pchembl_value=round(pchembl_f, 2),
-                        assay_description=a.get("assay_description", "")[:120] if a.get("assay_description") else None,
+                        assay_description=a.get("assay_description", "")[:120]
+                        if a.get("assay_description")
+                        else None,
                     )
                 )
 

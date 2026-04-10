@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import httpx
 
@@ -23,7 +22,7 @@ class UniProtClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
 
-    async def get_protein(self, gene_symbol: str) -> Optional[ProteinInfo]:
+    async def get_protein(self, gene_symbol: str) -> ProteinInfo | None:
         """Return Swiss-Prot annotation for a human gene symbol, or None if not found."""
         symbol = gene_symbol.strip().upper()
         data = await self._search(symbol, reviewed_only=True)
@@ -33,7 +32,7 @@ class UniProtClient:
             return None
         return _parse_entry(data, symbol)
 
-    async def search_by_synonym(self, synonym: str) -> Optional[dict]:
+    async def search_by_synonym(self, synonym: str) -> dict | None:
         """Search UniProt by gene synonym/alias and return the raw first result."""
         symbol = synonym.strip().upper()
         params = {
@@ -51,7 +50,7 @@ class UniProtClient:
             logger.warning("UniProt synonym search failed for '%s': %s", synonym, exc)
             return None
 
-    async def _search(self, symbol: str, *, reviewed_only: bool) -> Optional[dict]:
+    async def _search(self, symbol: str, *, reviewed_only: bool) -> dict | None:
         query = f"gene_exact:{symbol} AND organism_id:9606"
         if reviewed_only:
             query += " AND reviewed:true"
@@ -62,7 +61,12 @@ class UniProtClient:
             results = resp.json().get("results", [])
             return results[0] if results else None
         except Exception as exc:
-            logger.warning("UniProt search failed for '%s' (reviewed=%s): %s", symbol, reviewed_only, exc)
+            logger.warning(
+                "UniProt search failed for '%s' (reviewed=%s): %s",
+                symbol,
+                reviewed_only,
+                exc,
+            )
             return None
 
 

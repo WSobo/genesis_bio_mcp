@@ -1,14 +1,18 @@
 """genesis-bio-mcp MCP server.
 
-Exposes 8 tools for biomedical database queries:
-  - resolve_gene          UniProt + NCBI: gene symbol → canonical IDs
-  - get_protein_info      UniProt Swiss-Prot protein annotation
-  - get_target_disease    Open Targets: target–disease association score
-  - get_cancer_dependency DepMap: CRISPR essentiality across cancer lines
-  - get_gwas_evidence     GWAS Catalog: genetic associations for a trait
-  - get_compounds         PubChem: active small molecules against a target
-  - prioritize_target     Orchestration: full target assessment report
-  - compare_targets       Compare 2–5 targets side by side for an indication
+Exposes 12 tools for biomedical database queries:
+  - resolve_gene             UniProt + NCBI: gene symbol → canonical IDs
+  - get_protein_info         UniProt Swiss-Prot protein annotation
+  - get_target_disease       Open Targets: target–disease association score
+  - get_cancer_dependency    DepMap: CRISPR essentiality across cancer lines
+  - get_gwas_evidence        GWAS Catalog: genetic associations for a trait
+  - get_compounds            PubChem: active small molecules against a target
+  - get_protein_structure    AlphaFold + RCSB PDB: structural data
+  - get_protein_interactome  STRING: binding partners and selectivity risks
+  - get_drug_history         DGIdb + ClinicalTrials.gov: known drugs and trials
+  - get_pathway_context      Reactome: pathway membership and enrichment
+  - prioritize_target        Orchestration: full target assessment report
+  - compare_targets          Compare 2–5 targets side by side for an indication
 
 All tools return Markdown strings for direct LLM consumption.
 """
@@ -22,15 +26,22 @@ from contextlib import asynccontextmanager
 import httpx
 from mcp.server.fastmcp import FastMCP
 
+from genesis_bio_mcp.clients.alphafold import AlphaFoldClient
 from genesis_bio_mcp.clients.chembl import ChEMBLClient
+from genesis_bio_mcp.clients.clinical_trials import ClinicalTrialsClient
 from genesis_bio_mcp.clients.depmap import DepMapClient, load_depmap_cache
+from genesis_bio_mcp.clients.dgidb import DGIdbClient
 from genesis_bio_mcp.clients.gwas import GwasClient
 from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
 from genesis_bio_mcp.clients.pubchem import PubChemClient
+from genesis_bio_mcp.clients.reactome import ReactomeClient
+from genesis_bio_mcp.clients.string_db import StringDbClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
-from genesis_bio_mcp.models import ComparisonReport, TargetComparisonRow
+from genesis_bio_mcp.models import ComparisonReport, DrugHistory, TargetComparisonRow
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
-from genesis_bio_mcp.tools.target_prioritization import prioritize_target as _prioritize_target
+from genesis_bio_mcp.tools.target_prioritization import (
+    prioritize_target as _prioritize_target,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,9 +55,7 @@ _HEADERS = {
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """Manage a shared httpx.AsyncClient and pre-load the DepMap gene cache."""
-    async with httpx.AsyncClient(
-        headers=_HEADERS, timeout=30.0, follow_redirects=True
-    ) as client:
+    async with httpx.AsyncClient(headers=_HEADERS, timeout=30.0, follow_redirects=True) as client:
         # Fetch DepMap gene_dep_summary once at startup for instant lookups
         gene_dep_cache = await load_depmap_cache(client)
 
@@ -56,6 +65,11 @@ async def lifespan(server: FastMCP):
         server.state.gwas = GwasClient(client)
         server.state.pubchem = PubChemClient(client)
         server.state.chembl = ChEMBLClient(client)
+        server.state.alphafold = AlphaFoldClient(client)
+        server.state.string_db = StringDbClient(client)
+        server.state.dgidb = DGIdbClient(client)
+        server.state.clinical_trials = ClinicalTrialsClient(client)
+        server.state.reactome = ReactomeClient(client)
         yield
 
 
@@ -199,22 +213,130 @@ async def get_compounds(gene_symbol: str) -> str:
 
 
 @mcp.tool()
-async def prioritize_target(gene_symbol: str, indication: str) -> str:
+async def get_protein_structure(gene_symbol: str) -> str:
+    """Retrieve structural data for a protein from AlphaFold and RCSB PDB.
+
+    Use this tool to assess structural feasibility for drug design. Reports AlphaFold
+    prediction confidence (pLDDT), experimental PDB structures, best resolution,
+    and whether inhibitor-bound structures exist (critical for structure-based design).
+
+    Args:
+        gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'CDK2', 'KRAS'
+
+    Returns:
+        Markdown with AlphaFold pLDDT score, PDB structure count and resolution,
+        and whether ligand-bound structures are available.
+    """
+    # Resolve UniProt accession first
+    protein = await mcp.state.uniprot.get_protein(gene_symbol)
+    accession = protein.uniprot_accession if protein else None
+    result = await mcp.state.alphafold.get_structure(gene_symbol, uniprot_accession=accession)
+    if result is None:
+        return f"**Error:** No structural data found for '{gene_symbol}'. Ensure the gene symbol is correct."
+    return result.to_markdown()
+
+
+@mcp.tool()
+async def get_protein_interactome(gene_symbol: str) -> str:
+    """Retrieve protein interaction partners from STRING to assess selectivity risks.
+
+    Use this tool to understand which proteins interact with your target — binding
+    partners, paralogs, and pathway neighbors that your compound might also engage.
+    High-confidence interactors (score ≥ 0.9) are particularly important for selectivity.
+
+    Args:
+        gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'CDK2', 'JAK2'
+
+    Returns:
+        Markdown with top 20 interaction partners sorted by STRING confidence score,
+        evidence types (experiments, database, coexpression), and total partner count.
+    """
+    result = await mcp.state.string_db.get_interactome(gene_symbol)
+    if result is None or result.total_partners == 0:
+        return f"**Error:** No STRING interaction data found for '{gene_symbol}'."
+    return result.to_markdown()
+
+
+@mcp.tool()
+async def get_drug_history(gene_symbol: str) -> str:
+    """Retrieve the drug development history for a gene target.
+
+    Use this tool to understand the clinical precedent for targeting a gene:
+    what drugs already exist (approved or investigational), what indications have
+    been pursued, and how many clinical trials have targeted this gene. Essential
+    for first-in-class vs. best-in-class strategy decisions.
+
+    Args:
+        gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'PCSK9', 'KRAS'
+
+    Returns:
+        Markdown with known drugs (type, phase, approval status), trial counts by
+        phase, and a table of recent clinical trials from ClinicalTrials.gov.
+    """
+    drugs, ct_result = await asyncio.gather(
+        mcp.state.dgidb.get_drug_interactions(gene_symbol),
+        mcp.state.clinical_trials.get_trials(gene_symbol),
+    )
+    ct_trials, ct_counts = ct_result
+    approved_count = sum(1 for d in drugs if d.approved)
+    result = DrugHistory(
+        gene_symbol=gene_symbol,
+        known_drugs=drugs,
+        approved_drug_count=approved_count,
+        trial_counts_by_phase=ct_counts,
+        recent_trials=ct_trials[:10],
+    )
+    if not drugs and not ct_trials:
+        return f"**No drug history found for '{gene_symbol}'.** This may be a first-in-class opportunity."
+    return result.to_markdown()
+
+
+@mcp.tool()
+async def get_pathway_context(gene_symbol: str) -> str:
+    """Retrieve biological pathway membership for a gene from Reactome.
+
+    Use this tool to understand where a target sits in cellular biology:
+    which pathways it participates in, and which other genes share those pathways.
+    Useful for identifying combination therapy opportunities, resistance mechanisms,
+    and on/off-target pathway effects.
+
+    Args:
+        gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'MTOR', 'STAT3'
+
+    Returns:
+        Markdown with top enriched Reactome pathways, enrichment p-values,
+        pathway categories, and gene counts per pathway.
+    """
+    result = await mcp.state.reactome.get_pathway_context(gene_symbol)
+    if result is None or not result.pathways:
+        return f"**Error:** No Reactome pathway data found for '{gene_symbol}'."
+    return result.to_markdown()
+
+
+@mcp.tool()
+async def prioritize_target(gene_symbol: str, indication: str, extended: bool = False) -> str:
     """Generate a comprehensive drug discovery target assessment report.
 
     Use this tool when you need a full evidence synthesis for target prioritization.
     Queries all databases in parallel (UniProt, Open Targets, DepMap, GWAS Catalog,
-    PubChem) and returns a structured Markdown report with a composite priority score (0–10).
-    Use for go/no-go decisions on a target–indication pair.
+    PubChem, ChEMBL) and returns a structured Markdown report with a composite
+    priority score (0–10). Use for go/no-go decisions on a target–indication pair.
+
+    Set extended=True for a deeper report that also includes AlphaFold structure data,
+    STRING interactome (selectivity risks), drug history (DGIdb + ClinicalTrials.gov),
+    and Reactome pathway context. Extended mode adds ~10–20s to query time.
 
     Args:
         gene_symbol: HGNC gene symbol of the candidate drug target. Example: 'BRAF'
         indication: Therapeutic indication or disease area.
                     Examples: 'melanoma', 'non-small cell lung cancer', 'colorectal cancer'
+        extended: If True, also retrieves structural, interactome, drug history, and
+                  pathway data. Default False for faster standard reports.
 
     Returns:
         Markdown report with priority_score (0–10), priority_tier (High/Medium/Low),
         evidence summary, scoring breakdown table, and data gaps.
+        With extended=True, also includes structure, interactors, drugs, and pathways.
     """
     result = await _prioritize_target(
         gene_symbol=gene_symbol,
@@ -225,6 +347,11 @@ async def prioritize_target(gene_symbol: str, indication: str) -> str:
         gwas=mcp.state.gwas,
         pubchem=mcp.state.pubchem,
         chembl=mcp.state.chembl,
+        alphafold=mcp.state.alphafold if extended else None,
+        string_db=mcp.state.string_db if extended else None,
+        dgidb=mcp.state.dgidb if extended else None,
+        clinical_trials=mcp.state.clinical_trials if extended else None,
+        reactome=mcp.state.reactome if extended else None,
     )
     return result.to_markdown()
 
@@ -292,11 +419,17 @@ async def compare_targets(gene_symbols: list[str], indication: str) -> str:
                 gene_symbol=report.gene_symbol,
                 priority_score=report.priority_score,
                 priority_tier=report.priority_tier,
-                ot_score=report.disease_association.overall_score if report.disease_association else None,
+                ot_score=report.disease_association.overall_score
+                if report.disease_association
+                else None,
                 depmap_pct=depmap_pct,
                 depmap_real_data=depmap_real,
-                compound_count=report.compounds.total_active_compounds if report.compounds else None,
-                gwas_count=report.gwas_evidence.total_associations if report.gwas_evidence else None,
+                compound_count=report.compounds.total_active_compounds
+                if report.compounds
+                else None,
+                gwas_count=report.gwas_evidence.total_associations
+                if report.gwas_evidence
+                else None,
                 data_gaps=report.data_gaps,
                 evidence_summary=report.evidence_summary,
             )

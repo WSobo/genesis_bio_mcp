@@ -21,13 +21,13 @@ from pathlib import Path
 
 import httpx
 
+from genesis_bio_mcp.clients.chembl import ChEMBLClient
 from genesis_bio_mcp.clients.depmap import DepMapClient, load_depmap_cache
 from genesis_bio_mcp.clients.gwas import GwasClient
 from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
 from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
 from genesis_bio_mcp.tools.target_prioritization import prioritize_target
-from genesis_bio_mcp.clients.chembl import ChEMBLClient
 
 HEADERS = {
     "User-Agent": "genesis-bio-mcp/0.1 (research; github.com/WSobo/genesis-bio-mcp)",
@@ -40,18 +40,21 @@ HEADERS = {
 
 TEST_CASES: list[tuple[str, str]] = [
     # (gene_input, indication)              # what this tests
-    ("BRAF",  "melanoma"),                  # baseline — classic oncogene, activating V600E
-    ("EGFR",  "non-small cell lung carcinoma"),  # targeted therapy archetype, massive compound data
-    ("KRAS",  "pancreatic cancer"),         # historically "undruggable", high DepMap dependency
-    ("HER2",  "breast cancer"),             # resolve_gene: "HER2" → ERBB2
-    ("PCSK9", "hypercholesterolemia"),      # GWAS success story, biologic drugs
-    ("FTO",   "obesity"),                   # massive GWAS hits, complex trait genetics
-    ("TNF",   "rheumatoid arthritis"),      # autoimmune, heavy biologic/compound data
-    ("PTGS2", "inflammation"),              # COX-2: flood of NSAIDs/Coxibs in PubChem
-    ("TP53",  "squamous cell carcinoma"),   # most-mutated cancer gene, low druggability
-    ("CD274", "melanoma"),                  # PD-L1 checkpoint (alias resolution)
-    ("p53",   "lung cancer"),               # synonym → TP53
-    ("COX2",  "pain"),                      # alias → PTGS2
+    ("BRAF", "melanoma"),  # baseline — classic oncogene, activating V600E
+    (
+        "EGFR",
+        "non-small cell lung carcinoma",
+    ),  # targeted therapy archetype, massive compound data
+    ("KRAS", "pancreatic cancer"),  # historically "undruggable", high DepMap dependency
+    ("HER2", "breast cancer"),  # resolve_gene: "HER2" → ERBB2
+    ("PCSK9", "hypercholesterolemia"),  # GWAS success story, biologic drugs
+    ("FTO", "obesity"),  # massive GWAS hits, complex trait genetics
+    ("TNF", "rheumatoid arthritis"),  # autoimmune, heavy biologic/compound data
+    ("PTGS2", "inflammation"),  # COX-2: flood of NSAIDs/Coxibs in PubChem
+    ("TP53", "squamous cell carcinoma"),  # most-mutated cancer gene, low druggability
+    ("CD274", "melanoma"),  # PD-L1 checkpoint (alias resolution)
+    ("p53", "lung cancer"),  # synonym → TP53
+    ("COX2", "pain"),  # alias → PTGS2
 ]
 
 
@@ -72,9 +75,9 @@ async def run_one(
     examples_dir: Path,
 ) -> dict:
     t0 = time.perf_counter()
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {gene!r} × {indication!r}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     result = await prioritize_target(
         gene_symbol=gene,
@@ -97,8 +100,14 @@ async def run_one(
     print(f"  Errors:   {list(result.errors.keys()) or 'none'}")
 
     if result.cancer_dependency:
-        src = "DepMap (real)" if "DepMap Chronos" in result.cancer_dependency.data_source else "OT proxy"
-        print(f"  DepMap:   {src} — {int(result.cancer_dependency.fraction_dependent_lines * 100)}% dependent")
+        src = (
+            "DepMap (real)"
+            if "DepMap Chronos" in result.cancer_dependency.data_source
+            else "OT proxy"
+        )
+        print(
+            f"  DepMap:   {src} — {int(result.cancer_dependency.fraction_dependent_lines * 100)}% dependent"
+        )
 
     print(f"  Time:     {elapsed:.1f}s")
     print()
@@ -123,7 +132,8 @@ async def run_one(
         "tier": result.priority_tier,
         "data_gaps": result.data_gaps,
         "errors": list(result.errors.keys()),
-        "depmap_real": result.cancer_dependency is not None and "DepMap Chronos" in result.cancer_dependency.data_source,
+        "depmap_real": result.cancer_dependency is not None
+        and "DepMap Chronos" in result.cancer_dependency.data_source,
         "elapsed_s": round(elapsed, 1),
     }
 
@@ -135,7 +145,11 @@ async def run(cases: list[tuple[str, str]]) -> None:
     async with httpx.AsyncClient(headers=HEADERS, timeout=60.0, follow_redirects=True) as http:
         print("Loading DepMap gene_dep_summary cache...")
         cache = await load_depmap_cache(http)
-        print(f"  {len(cache)} genes loaded from DepMap" if cache else "  Cache empty — will use OT proxy")
+        print(
+            f"  {len(cache)} genes loaded from DepMap"
+            if cache
+            else "  Cache empty — will use OT proxy"
+        )
 
         clients = dict(
             uniprot=UniProtClient(http),
@@ -152,10 +166,12 @@ async def run(cases: list[tuple[str, str]]) -> None:
             summary.append(row)
 
     # Print summary table
-    print(f"\n\n{'='*70}")
+    print(f"\n\n{'=' * 70}")
     print("SUMMARY")
-    print(f"{'='*70}")
-    print(f"{'Input':<10} {'Resolved':<10} {'Indication':<30} {'Score':>6} {'Tier':<8} {'DepMap':>8} {'t(s)':>5}")
+    print(f"{'=' * 70}")
+    print(
+        f"{'Input':<10} {'Resolved':<10} {'Indication':<30} {'Score':>6} {'Tier':<8} {'DepMap':>8} {'t(s)':>5}"
+    )
     print("-" * 70)
     for r in summary:
         dep = "real" if r["depmap_real"] else "proxy"

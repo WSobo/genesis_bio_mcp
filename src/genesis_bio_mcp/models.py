@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
 from pydantic import BaseModel, Field, model_validator
-
 
 # ---------------------------------------------------------------------------
 # Gene resolution
@@ -15,9 +13,9 @@ class GeneResolution(BaseModel):
     """Canonical gene identifiers resolved from a synonym or alias."""
 
     hgnc_symbol: str = Field(description="Approved HGNC gene symbol, e.g. 'BRAF'")
-    hgnc_id: Optional[str] = Field(None, description="HGNC ID, e.g. 'HGNC:1097'")
-    ncbi_gene_id: Optional[str] = Field(None, description="NCBI Entrez Gene ID")
-    uniprot_accession: Optional[str] = Field(None, description="Primary UniProt accession")
+    hgnc_id: str | None = Field(None, description="HGNC ID, e.g. 'HGNC:1097'")
+    ncbi_gene_id: str | None = Field(None, description="NCBI Entrez Gene ID")
+    uniprot_accession: str | None = Field(None, description="Primary UniProt accession")
     synonyms: list[str] = Field(default_factory=list, description="Known gene aliases")
     source: str = Field(description="Resolution source: 'uniprot' | 'ncbi' | 'input'")
 
@@ -42,11 +40,13 @@ class GeneResolution(BaseModel):
 class KnownVariant(BaseModel):
     """A disease-linked natural variant annotated in UniProt."""
 
-    position: Optional[str] = Field(None, description="Sequence position (e.g. '600')")
-    original: Optional[str] = Field(None, description="Original amino acid (single letter)")
-    variant: Optional[str] = Field(None, description="Variant amino acid (single letter)")
-    disease: Optional[str] = Field(None, description="Associated disease name")
-    clinical_significance: Optional[str] = Field(None, description="Pathogenicity annotation if available")
+    position: str | None = Field(None, description="Sequence position (e.g. '600')")
+    original: str | None = Field(None, description="Original amino acid (single letter)")
+    variant: str | None = Field(None, description="Variant amino acid (single letter)")
+    disease: str | None = Field(None, description="Associated disease name")
+    clinical_significance: str | None = Field(
+        None, description="Pathogenicity annotation if available"
+    )
 
 
 class ProteinInfo(BaseModel):
@@ -67,7 +67,9 @@ class ProteinInfo(BaseModel):
     reviewed: bool = Field(description="True if Swiss-Prot (manually reviewed), False if TrEMBL")
 
     def to_markdown(self) -> str:
-        reviewed_label = "Swiss-Prot (manually reviewed)" if self.reviewed else "TrEMBL (unreviewed)"
+        reviewed_label = (
+            "Swiss-Prot (manually reviewed)" if self.reviewed else "TrEMBL (unreviewed)"
+        )
         lines = [
             f"## Protein: {self.protein_name} ({self.gene_symbol})",
             f"**UniProt:** {self.uniprot_accession} — {reviewed_label}",
@@ -76,19 +78,35 @@ class ProteinInfo(BaseModel):
             self.function_summary,
         ]
         if self.subcellular_locations:
-            lines += ["", f"**Subcellular location:** {', '.join(self.subcellular_locations)}"]
+            lines += [
+                "",
+                f"**Subcellular location:** {', '.join(self.subcellular_locations)}",
+            ]
         if self.pathways:
-            lines += ["", f"**Pathways ({len(self.pathways)}):** {', '.join(self.pathways[:5])}"]
+            lines += [
+                "",
+                f"**Pathways ({len(self.pathways)}):** {', '.join(self.pathways[:5])}",
+            ]
             if len(self.pathways) > 5:
                 lines[-1] += f" (+{len(self.pathways) - 5} more)"
         if self.disease_associations:
-            lines += ["", f"**Disease associations:** {', '.join(self.disease_associations[:5])}"]
+            lines += [
+                "",
+                f"**Disease associations:** {', '.join(self.disease_associations[:5])}",
+            ]
         if self.pdb_structures:
-            lines += ["", f"**PDB structures ({len(self.pdb_structures)}):** {', '.join(self.pdb_structures[:8])}"]
+            lines += [
+                "",
+                f"**PDB structures ({len(self.pdb_structures)}):** {', '.join(self.pdb_structures[:8])}",
+            ]
         if self.known_variants:
             lines += ["", "### Disease-linked Variants"]
             for v in self.known_variants[:5]:
-                pos = f"p.{v.original}{v.position}{v.variant}" if (v.original and v.position and v.variant) else v.position or "?"
+                pos = (
+                    f"p.{v.original}{v.position}{v.variant}"
+                    if (v.original and v.position and v.variant)
+                    else v.position or "?"
+                )
                 disease = v.disease or "unknown disease"
                 sig = f" ({v.clinical_significance})" if v.clinical_significance else ""
                 lines.append(f"- **{pos}** — {disease}{sig}")
@@ -119,18 +137,36 @@ class TargetDiseaseAssociation(BaseModel):
     disease_name: str
     disease_efo_id: str = Field(description="EFO ontology ID resolved from disease name")
     ensembl_id: str = Field(description="Ensembl gene ID used for the query")
-    overall_score: float = Field(ge=0.0, le=1.0, description="Aggregate association score 0–1; >0.5 is strong")
-    genetic_association_score: Optional[float] = Field(None, description="Score from genetic evidence (GWAS, rare variants)")
-    somatic_mutation_score: Optional[float] = Field(None, description="Score from somatic mutations in cancer")
-    known_drug_score: Optional[float] = Field(None, description="Score from approved/clinical-stage drugs on target")
-    literature_mining_score: Optional[float] = Field(None, description="Score from text-mined literature co-mentions")
-    evidence_count: int = Field(default=0, description="Number of evidence datatypes with non-zero scores")
+    overall_score: float = Field(
+        ge=0.0, le=1.0, description="Aggregate association score 0–1; >0.5 is strong"
+    )
+    genetic_association_score: float | None = Field(
+        None, description="Score from genetic evidence (GWAS, rare variants)"
+    )
+    somatic_mutation_score: float | None = Field(
+        None, description="Score from somatic mutations in cancer"
+    )
+    known_drug_score: float | None = Field(
+        None, description="Score from approved/clinical-stage drugs on target"
+    )
+    literature_mining_score: float | None = Field(
+        None, description="Score from text-mined literature co-mentions"
+    )
+    evidence_count: int = Field(
+        default=0, description="Number of evidence datatypes with non-zero scores"
+    )
     evidence_breakdown: list[DiseaseLinkEvidence] = Field(
         default_factory=list, description="Per-datatype scores"
     )
 
     def to_markdown(self) -> str:
-        strength = "Strong" if self.overall_score >= 0.5 else "Moderate" if self.overall_score >= 0.2 else "Weak"
+        strength = (
+            "Strong"
+            if self.overall_score >= 0.5
+            else "Moderate"
+            if self.overall_score >= 0.2
+            else "Weak"
+        )
         lines = [
             f"## Open Targets: {self.gene_symbol} × {self.disease_name}",
             f"**Overall score:** {self.overall_score:.3f}/1.0 — {strength} evidence ({self.evidence_count} datatypes)",
@@ -176,8 +212,9 @@ class CancerDependency(BaseModel):
     gene_symbol: str
     mean_ceres_score: float = Field(description="Mean score across all profiled cell lines")
     fraction_dependent_lines: float = Field(
-        ge=0.0, le=1.0,
-        description="Fraction of cell lines with score < -0.5 (dependency threshold)"
+        ge=0.0,
+        le=1.0,
+        description="Fraction of cell lines with score < -0.5 (dependency threshold)",
     )
     pan_essential: bool = Field(
         description="True if dependent in >90% of lines (core essential — narrow therapeutic window)"
@@ -193,7 +230,9 @@ class CancerDependency(BaseModel):
     def to_markdown(self) -> str:
         pct = int(self.fraction_dependent_lines * 100)
         if self.pan_essential:
-            essentiality_note = f"**PAN-ESSENTIAL** — dependent in {pct}% of lines (narrow therapeutic window)"
+            essentiality_note = (
+                f"**PAN-ESSENTIAL** — dependent in {pct}% of lines (narrow therapeutic window)"
+            )
         elif pct >= 50:
             essentiality_note = f"**Selective dependency** — {pct}% of cancer lines dependent"
         elif pct >= 20:
@@ -208,9 +247,16 @@ class CancerDependency(BaseModel):
             f"_Source: {self.data_source}_",
         ]
         if self.top_dependent_lineages:
-            lines += ["", f"**Top dependent lineages:** {', '.join(self.top_dependent_lineages[:5])}"]
+            lines += [
+                "",
+                f"**Top dependent lineages:** {', '.join(self.top_dependent_lineages[:5])}",
+            ]
         if self.cell_lines:
-            lines += ["", "| Cell Line | Lineage | Score | Dependent? |", "|---|---|---|---|"]
+            lines += [
+                "",
+                "| Cell Line | Lineage | Score | Dependent? |",
+                "|---|---|---|---|",
+            ]
             for cl in self.cell_lines[:8]:
                 dep = "Yes" if cl.is_dependent else "No"
                 lines.append(f"| {cl.cell_line} | {cl.lineage} | {cl.ceres_score:.3f} | {dep} |")
@@ -230,10 +276,10 @@ class GwasHit(BaseModel):
     mapped_gene: str = Field(description="Nearest mapped gene symbol")
     risk_allele: str = Field(description="Risk allele string, e.g. 'rs1234567-A'")
     p_value: float = Field(description="Association p-value (genome-wide significant < 5e-8)")
-    beta_or_or: Optional[float] = Field(None, description="Beta coefficient or odds ratio")
-    sample_size: Optional[int] = Field(None, description="Total discovery sample size")
-    population: Optional[str] = Field(None, description="Ancestry/population of study cohort")
-    pubmed_id: Optional[str] = Field(None, description="PubMed ID of the primary publication")
+    beta_or_or: float | None = Field(None, description="Beta coefficient or odds ratio")
+    sample_size: int | None = Field(None, description="Total discovery sample size")
+    population: str | None = Field(None, description="Ancestry/population of study cohort")
+    pubmed_id: str | None = Field(None, description="PubMed ID of the primary publication")
 
 
 class GwasEvidence(BaseModel):
@@ -243,7 +289,7 @@ class GwasEvidence(BaseModel):
     trait_query: str = Field(description="The trait string used for filtering")
     total_associations: int = Field(description="Number of GWAS hits passing the trait filter")
     associations: list[GwasHit] = Field(description="Top associations sorted by p-value")
-    strongest_p_value: Optional[float] = Field(None, description="Most significant p-value found")
+    strongest_p_value: float | None = Field(None, description="Most significant p-value found")
 
     def to_markdown(self) -> str:
         if self.total_associations == 0:
@@ -280,12 +326,12 @@ class CompoundActivity(BaseModel):
 
     cid: int = Field(description="PubChem Compound ID")
     name: str = Field(description="Preferred IUPAC name or common name")
-    molecular_formula: Optional[str] = None
-    molecular_weight: Optional[float] = Field(None, description="Molecular weight in g/mol")
+    molecular_formula: str | None = None
+    molecular_weight: float | None = Field(None, description="Molecular weight in g/mol")
     activity_outcome: str = Field(description="'Active' | 'Inactive' | 'Inconclusive'")
-    activity_value: Optional[float] = Field(None, description="Potency value in nM (IC50/EC50/Ki)")
-    activity_type: Optional[str] = Field(None, description="Type of activity measurement, e.g. 'IC50'")
-    assay_id: Optional[int] = Field(None, description="PubChem AID of the source assay")
+    activity_value: float | None = Field(None, description="Potency value in nM (IC50/EC50/Ki)")
+    activity_type: str | None = Field(None, description="Type of activity measurement, e.g. 'IC50'")
+    assay_id: int | None = Field(None, description="PubChem AID of the source assay")
 
 
 class Compounds(BaseModel):
@@ -307,7 +353,11 @@ class Compounds(BaseModel):
         ]
         potent = [c for c in self.compounds if c.activity_value is not None]
         if potent:
-            lines += ["", "| Compound | MW | Activity | Value (nM) | CID |", "|---|---|---|---|---|"]
+            lines += [
+                "",
+                "| Compound | MW | Activity | Value (nM) | CID |",
+                "|---|---|---|---|---|",
+            ]
             for c in potent[:8]:
                 mw = f"{c.molecular_weight:.1f}" if c.molecular_weight else "—"
                 val = f"{c.activity_value:.1f}" if c.activity_value else "—"
@@ -330,25 +380,25 @@ class ChEMBLActivity(BaseModel):
     """A quantitative bioactivity measurement from ChEMBL."""
 
     molecule_chembl_id: str = Field(description="ChEMBL molecule ID, e.g. 'CHEMBL1'")
-    molecule_name: Optional[str] = Field(None, description="Common/trade name if available")
+    molecule_name: str | None = Field(None, description="Common/trade name if available")
     standard_type: str = Field(description="Measurement type: IC50 | Ki | Kd | EC50")
     pchembl_value: float = Field(
         description="-log10(IC50 in M); 7 = 100 nM lead quality, 9 = 1 nM clinical-grade"
     )
-    assay_description: Optional[str] = Field(None, description="Brief assay description from ChEMBL")
+    assay_description: str | None = Field(None, description="Brief assay description from ChEMBL")
 
 
 class ChEMBLCompounds(BaseModel):
     """ChEMBL bioactivity data for quantitative compound potency against a target."""
 
     gene_symbol: str
-    target_chembl_id: Optional[str] = Field(None, description="ChEMBL target ID, e.g. 'CHEMBL4523582'")
+    target_chembl_id: str | None = Field(None, description="ChEMBL target ID, e.g. 'CHEMBL4523582'")
     total_active_compounds: int = Field(
         description="Total compounds with a pChEMBL value for this target"
     )
-    best_pchembl: Optional[float] = Field(
+    best_pchembl: float | None = Field(
         None,
-        description="Highest pChEMBL value found (most potent compound); 9 = 1 nM, 7 = 100 nM"
+        description="Highest pChEMBL value found (most potent compound); 9 = 1 nM, 7 = 100 nM",
     )
     compounds: list[ChEMBLActivity] = Field(
         description="Top 20 most potent compounds sorted by pChEMBL (descending)"
@@ -373,12 +423,309 @@ class ChEMBLCompounds(BaseModel):
         if self.target_chembl_id:
             lines.append(f"Target: `{self.target_chembl_id}`")
         if self.compounds:
-            lines += ["", "| Compound | Type | pChEMBL | IC50 equiv |", "|---|---|---|---|"]
+            lines += [
+                "",
+                "| Compound | Type | pChEMBL | IC50 equiv |",
+                "|---|---|---|---|",
+            ]
             for c in self.compounds[:10]:
                 name = (c.molecule_name or c.molecule_chembl_id)[:35]
                 ic50_nm = 10 ** (9 - c.pchembl_value)
-                ic50_str = f"{ic50_nm:.1f} nM" if ic50_nm < 1000 else f"{ic50_nm/1000:.2f} µM"
+                ic50_str = f"{ic50_nm:.1f} nM" if ic50_nm < 1000 else f"{ic50_nm / 1000:.2f} µM"
                 lines.append(f"| {name} | {c.standard_type} | {c.pchembl_value:.1f} | {ic50_str} |")
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Protein structure (AlphaFold + RCSB PDB)
+# ---------------------------------------------------------------------------
+
+
+class PDBStructure(BaseModel):
+    """A single experimental structure entry from the PDB."""
+
+    pdb_id: str = Field(description="4-character PDB accession, e.g. '4MNE'")
+    resolution_angstrom: float | None = Field(None, description="Resolution in Å; lower is better")
+    method: str = Field(
+        description="Experimental method: X-RAY DIFFRACTION | ELECTRON MICROSCOPY | NMR | etc."
+    )
+    has_ligand: bool = Field(description="True if a small-molecule ligand is co-crystallized")
+    release_year: int | None = Field(None, description="Year the structure was deposited")
+
+
+class ProteinStructure(BaseModel):
+    """Structural data from AlphaFold (predicted) and RCSB PDB (experimental)."""
+
+    gene_symbol: str
+    uniprot_accession: str | None = Field(
+        None, description="UniProt accession used for AlphaFold lookup"
+    )
+    alphafold_plddt: float | None = Field(
+        None,
+        description="Mean pLDDT confidence score 0–100; ≥90 = high confidence, <70 = disordered",
+    )
+    alphafold_model_url: str | None = Field(None, description="URL to AlphaFold PDB model file")
+    alphafold_version: str | None = Field(None, description="AlphaFold model version, e.g. 'v4'")
+    experimental_structures: list[PDBStructure] = Field(
+        default_factory=list,
+        description="Experimental PDB structures sorted by resolution (best first)",
+    )
+    total_pdb_structures: int = Field(
+        default=0, description="Total experimental structures in PDB for this target"
+    )
+    has_ligand_bound: bool = Field(
+        default=False,
+        description="True if any PDB structure has a co-crystallized ligand",
+    )
+    best_resolution: float | None = Field(
+        None, description="Best experimental resolution in Å across all structures"
+    )
+
+    def to_markdown(self) -> str:
+        lines = [f"## Protein Structure: {self.gene_symbol}"]
+
+        # AlphaFold section
+        if self.alphafold_plddt is not None:
+            conf = (
+                "High"
+                if self.alphafold_plddt >= 90
+                else "Moderate"
+                if self.alphafold_plddt >= 70
+                else "Low (disordered regions)"
+            )
+            lines += [
+                "",
+                f"### AlphaFold Prediction ({self.alphafold_version or 'latest'})",
+                f"**Mean pLDDT:** {self.alphafold_plddt:.1f}/100 — {conf} confidence",
+            ]
+            if self.alphafold_model_url:
+                lines.append(f"Model: {self.alphafold_model_url}")
+        else:
+            lines += ["", "### AlphaFold Prediction", "No AlphaFold model available."]
+
+        # PDB section
+        lines += [
+            "",
+            f"### Experimental Structures (PDB): {self.total_pdb_structures} total",
+        ]
+        if self.best_resolution:
+            lines.append(f"**Best resolution:** {self.best_resolution:.2f} Å")
+        if self.has_ligand_bound:
+            lines.append(
+                "Inhibitor/ligand-bound structures available — structure-based design feasible"
+            )
+        else:
+            lines.append("No ligand-bound structures found — apo structures only")
+
+        if self.experimental_structures:
+            lines += [
+                "",
+                "| PDB ID | Method | Resolution | Ligand Bound | Year |",
+                "|---|---|---|---|---|",
+            ]
+            for s in self.experimental_structures[:8]:
+                res = f"{s.resolution_angstrom:.2f} Å" if s.resolution_angstrom else "—"
+                lig = "Yes" if s.has_ligand else "No"
+                yr = str(s.release_year) if s.release_year else "—"
+                lines.append(f"| {s.pdb_id} | {s.method[:25]} | {res} | {lig} | {yr} |")
+            if self.total_pdb_structures > 8:
+                lines.append(f"\n_...and {self.total_pdb_structures - 8} more structures_")
+
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Protein interaction network (STRING)
+# ---------------------------------------------------------------------------
+
+
+class Interactor(BaseModel):
+    """A protein interaction partner from STRING."""
+
+    gene_symbol: str = Field(description="HGNC gene symbol of interaction partner")
+    protein_name: str | None = Field(None, description="Full protein name")
+    score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="STRING confidence score 0–1; ≥0.9 = high confidence",
+    )
+    evidence_types: list[str] = Field(
+        default_factory=list,
+        description="Evidence channels: experiments | database | coexpression | textmining | homology",
+    )
+
+
+class ProteinInteractome(BaseModel):
+    """STRING protein interaction network for a gene target."""
+
+    gene_symbol: str
+    total_partners: int = Field(description="Total interactors at required_score threshold")
+    top_interactors: list[Interactor] = Field(
+        description="Top 20 interactors sorted by confidence score (descending)"
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Protein Interactome: {self.gene_symbol}",
+            f"**{self.total_partners} interaction partners** (STRING confidence ≥ 0.7)",
+        ]
+        if self.top_interactors:
+            lines += ["", "| Partner | Score | Evidence |", "|---|---|---|"]
+            for it in self.top_interactors[:15]:
+                ev = ", ".join(it.evidence_types[:4]) if it.evidence_types else "—"
+                name = it.protein_name or it.gene_symbol
+                lines.append(f"| **{it.gene_symbol}** ({name[:30]}) | {it.score:.3f} | {ev} |")
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Drug history (DGIdb + ClinicalTrials.gov)
+# ---------------------------------------------------------------------------
+
+
+class DrugInteraction(BaseModel):
+    """A known drug-gene interaction from DGIdb."""
+
+    drug_name: str = Field(description="Drug name (common or trade name)")
+    interaction_type: str | None = Field(
+        None, description="Interaction type: inhibitor | activator | binder | etc."
+    )
+    phase: int | None = Field(
+        None, description="Highest clinical phase: 1 | 2 | 3 | 4 (4 = approved)"
+    )
+    approved: bool = Field(default=False, description="True if FDA/EMA approved (Phase 4)")
+    sources: list[str] = Field(default_factory=list, description="DGIdb data source databases")
+
+
+class ClinicalTrial(BaseModel):
+    """A clinical trial from ClinicalTrials.gov targeting this gene."""
+
+    nct_id: str = Field(description="ClinicalTrials.gov identifier, e.g. 'NCT01234567'")
+    title: str = Field(description="Brief trial title")
+    phase: str | None = Field(
+        None, description="Trial phase: Phase 1 | Phase 2 | Phase 3 | Phase 4 | N/A"
+    )
+    status: str = Field(
+        description="Trial status: RECRUITING | ACTIVE_NOT_RECRUITING | COMPLETED | etc."
+    )
+    indication: str | None = Field(None, description="Primary condition/indication being studied")
+
+
+class DrugHistory(BaseModel):
+    """Drug development history for a gene target from DGIdb and ClinicalTrials.gov."""
+
+    gene_symbol: str
+    known_drugs: list[DrugInteraction] = Field(
+        default_factory=list, description="Drugs known to interact with this target"
+    )
+    approved_drug_count: int = Field(
+        default=0, description="Number of FDA/EMA approved drugs on this target"
+    )
+    trial_counts_by_phase: dict[str, int] = Field(
+        default_factory=dict, description="Trial counts keyed by phase string"
+    )
+    recent_trials: list[ClinicalTrial] = Field(
+        default_factory=list, description="Up to 10 most recent trials"
+    )
+
+    @model_validator(mode="after")
+    def compute_approved_count(self) -> DrugHistory:
+        if self.approved_drug_count == 0:
+            self.approved_drug_count = sum(1 for d in self.known_drugs if d.approved)
+        return self
+
+    def to_markdown(self) -> str:
+        total_trials = sum(self.trial_counts_by_phase.values())
+        class_label = (
+            "First-in-class opportunity"
+            if self.approved_drug_count == 0
+            else f"Best-in-class ({self.approved_drug_count} approved drugs)"
+        )
+
+        lines = [
+            f"## Drug History: {self.gene_symbol}",
+            f"**{self.approved_drug_count} approved drugs** | {total_trials} clinical trials | {class_label}",
+        ]
+
+        if self.known_drugs:
+            lines += [
+                "",
+                "### Known Drugs (DGIdb)",
+                "| Drug | Type | Phase | Approved |",
+                "|---|---|---|---|",
+            ]
+            for d in sorted(self.known_drugs, key=lambda x: x.phase or 0, reverse=True)[:12]:
+                itype = d.interaction_type or "—"
+                phase = f"Phase {d.phase}" if d.phase else "—"
+                approved = "Yes" if d.approved else "No"
+                lines.append(f"| {d.drug_name} | {itype} | {phase} | {approved} |")
+
+        if self.trial_counts_by_phase:
+            lines += ["", "### Clinical Trial Counts by Phase"]
+            for phase, count in sorted(self.trial_counts_by_phase.items()):
+                lines.append(f"- {phase}: {count} trial{'s' if count != 1 else ''}")
+
+        if self.recent_trials:
+            lines += [
+                "",
+                "### Recent Trials",
+                "| NCT ID | Phase | Status | Indication |",
+                "|---|---|---|---|",
+            ]
+            for t in self.recent_trials[:8]:
+                phase = t.phase or "—"
+                ind = (t.indication or "—")[:40]
+                lines.append(
+                    f"| [{t.nct_id}](https://clinicaltrials.gov/study/{t.nct_id}) | {phase} | {t.status} | {ind} |"
+                )
+
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Pathway context (Reactome)
+# ---------------------------------------------------------------------------
+
+
+class Pathway(BaseModel):
+    """A biological pathway from Reactome containing the query gene."""
+
+    reactome_id: str = Field(description="Reactome stable ID, e.g. 'R-HSA-5673001'")
+    display_name: str = Field(description="Human-readable pathway name")
+    p_value: float | None = Field(None, description="Enrichment p-value (lower = more significant)")
+    gene_count: int | None = Field(None, description="Number of genes in this pathway")
+    category: str | None = Field(
+        None, description="Top-level category: Signaling | Metabolism | Immune | etc."
+    )
+
+
+class PathwayContext(BaseModel):
+    """Reactome pathway membership and enrichment for a gene target."""
+
+    gene_symbol: str
+    pathways: list[Pathway] = Field(
+        description="Pathways sorted by significance (most significant first)"
+    )
+    top_pathway_name: str | None = Field(None, description="Name of the most significant pathway")
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Pathway Context: {self.gene_symbol}",
+            f"**{len(self.pathways)} pathways** found in Reactome",
+        ]
+        if self.top_pathway_name:
+            lines.append(f"Top pathway: **{self.top_pathway_name}**")
+        if self.pathways:
+            lines += [
+                "",
+                "| Pathway | Category | Genes | p-value |",
+                "|---|---|---|---|",
+            ]
+            for p in self.pathways[:12]:
+                p_str = f"{p.p_value:.2e}" if p.p_value is not None else "—"
+                genes = str(p.gene_count) if p.gene_count is not None else "—"
+                cat = p.category or "—"
+                lines.append(f"| {p.display_name[:50]} | {cat} | {genes} | {p_str} |")
         return "\n".join(lines)
 
 
@@ -393,15 +740,21 @@ class TargetPrioritizationReport(BaseModel):
     gene_symbol: str
     indication: str
     resolution: GeneResolution
-    protein_info: Optional[ProteinInfo] = None
-    disease_association: Optional[TargetDiseaseAssociation] = None
-    cancer_dependency: Optional[CancerDependency] = None
-    gwas_evidence: Optional[GwasEvidence] = None
-    compounds: Optional[Compounds] = None
-    chembl_compounds: Optional["ChEMBLCompounds"] = None
+    protein_info: ProteinInfo | None = None
+    disease_association: TargetDiseaseAssociation | None = None
+    cancer_dependency: CancerDependency | None = None
+    gwas_evidence: GwasEvidence | None = None
+    compounds: Compounds | None = None
+    chembl_compounds: ChEMBLCompounds | None = None
+    # Extended mode (populated when extended=True in prioritize_target)
+    protein_structure: ProteinStructure | None = None
+    protein_interactome: ProteinInteractome | None = None
+    drug_history: DrugHistory | None = None
+    pathway_context: PathwayContext | None = None
     priority_score: float = Field(
-        ge=0.0, le=10.0,
-        description="Composite evidence score 0–10 computed from weighted database evidence"
+        ge=0.0,
+        le=10.0,
+        description="Composite evidence score 0–10 computed from weighted database evidence",
     )
     priority_tier: str = Field(description="'High' (>7) | 'Medium' (4–7) | 'Low' (<4)")
     evidence_summary: str = Field(
@@ -409,15 +762,19 @@ class TargetPrioritizationReport(BaseModel):
     )
     data_gaps: list[str] = Field(
         default_factory=list,
-        description="Data sources that returned no data or errors (reduces confidence)"
+        description="Data sources that returned no data or errors (reduces confidence)",
     )
     errors: dict[str, str] = Field(
         default_factory=dict,
-        description="Map of module name -> error message for any failed lookups"
+        description="Map of module name -> error message for any failed lookups",
     )
 
     def to_markdown(self) -> str:
-        tier_emoji = {"High": "HIGH PRIORITY", "Medium": "MEDIUM PRIORITY", "Low": "LOW PRIORITY"}
+        tier_emoji = {
+            "High": "HIGH PRIORITY",
+            "Medium": "MEDIUM PRIORITY",
+            "Low": "LOW PRIORITY",
+        }
         tier_label = tier_emoji.get(self.priority_tier, self.priority_tier)
 
         lines = [
@@ -451,7 +808,9 @@ class TargetPrioritizationReport(BaseModel):
                 is_real = "DepMap" in cd.data_source
                 confidence = 1.0 if is_real else 0.7
                 dep_score = round(cd.fraction_dependent_lines * 2.0 * confidence, 2)
-                dep_note = f"{int(cd.fraction_dependent_lines * 100)}% dependent" + ("" if is_real else " (proxy, 0.7×)")
+                dep_note = f"{int(cd.fraction_dependent_lines * 100)}% dependent" + (
+                    "" if is_real else " (proxy, 0.7×)"
+                )
             lines.append(f"| Cancer dependency | {dep_score} ({dep_note}) | 2.0 |")
         else:
             lines.append("| Cancer dependency | 0.0 (no data) | 2.0 |")
@@ -505,6 +864,16 @@ class TargetPrioritizationReport(BaseModel):
             for module, msg in self.errors.items():
                 lines.append(f"- `{module}`: {msg[:120]}")
 
+        # Extended mode sections
+        if self.protein_structure:
+            lines += ["", self.protein_structure.to_markdown()]
+        if self.protein_interactome:
+            lines += ["", self.protein_interactome.to_markdown()]
+        if self.drug_history:
+            lines += ["", self.drug_history.to_markdown()]
+        if self.pathway_context:
+            lines += ["", self.pathway_context.to_markdown()]
+
         # Resolution info
         r = self.resolution
         lines += [
@@ -530,11 +899,11 @@ class TargetComparisonRow(BaseModel):
     gene_symbol: str
     priority_score: float
     priority_tier: str
-    ot_score: Optional[float] = None
-    depmap_pct: Optional[int] = None
+    ot_score: float | None = None
+    depmap_pct: int | None = None
     depmap_real_data: bool = False
-    compound_count: Optional[int] = None
-    gwas_count: Optional[int] = None
+    compound_count: int | None = None
+    gwas_count: int | None = None
     data_gaps: list[str] = Field(default_factory=list)
     evidence_summary: str = ""
 
@@ -566,7 +935,10 @@ class ComparisonReport(BaseModel):
                 f"| {ot} | {dep} | {cpds} | {gwas} | {gaps} |"
             )
 
-        lines += ["", "_* DepMap % estimated from Open Targets somatic mutation data (no direct CRISPR data)_"]
+        lines += [
+            "",
+            "_* DepMap % estimated from Open Targets somatic mutation data (no direct CRISPR data)_",
+        ]
         lines += ["", "## Evidence Summaries"]
         for row in ranked:
             lines += [f"### {row.gene_symbol}", row.evidence_summary, ""]

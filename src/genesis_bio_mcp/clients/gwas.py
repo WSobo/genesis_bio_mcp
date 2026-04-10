@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import unicodedata
-from typing import Optional
 
 import httpx
 
@@ -25,8 +24,8 @@ class GwasClient:
         self._client = client
 
     async def get_evidence(
-        self, gene_symbol: str, trait: str, ncbi_gene_id: Optional[str] = None
-    ) -> Optional[GwasEvidence]:
+        self, gene_symbol: str, trait: str, ncbi_gene_id: str | None = None
+    ) -> GwasEvidence | None:
         """Return GWAS Catalog hits for a gene–trait pair."""
         symbol = gene_symbol.strip().upper()
 
@@ -54,7 +53,11 @@ class GwasClient:
 
         filtered = _filter_by_trait(associations, trait)
         if not filtered:
-            logger.info("GWAS: no '%s' trait hits for %s — returning None (data gap)", trait, symbol)
+            logger.info(
+                "GWAS: no '%s' trait hits for %s — returning None (data gap)",
+                trait,
+                symbol,
+            )
             return None
 
         # Remove zero p-value artifacts and sort
@@ -159,7 +162,7 @@ class GwasClient:
             return []
 
 
-def _parse_association(assoc: dict) -> Optional[GwasHit]:
+def _parse_association(assoc: dict) -> GwasHit | None:
     try:
         p_value = assoc.get("pvalue") or assoc.get("pValue")
         if p_value is None:
@@ -188,9 +191,8 @@ def _parse_association(assoc: dict) -> Optional[GwasHit]:
             trait = efo_traits[0].get("trait", "")
         else:
             # Fall back to study.diseaseTrait.trait (populated after _resolve_study_data)
-            trait = (
-                assoc.get("study", {}).get("diseaseTrait", {}).get("trait", "")
-                or assoc.get("traitName", "")
+            trait = assoc.get("study", {}).get("diseaseTrait", {}).get("trait", "") or assoc.get(
+                "traitName", ""
             )
 
         # Study info — may be embedded directly or injected by _resolve_study_data
@@ -230,13 +232,35 @@ def _parse_association(assoc: dict) -> Optional[GwasHit]:
 _TRAIT_SYNONYMS: dict[str, list[str]] = {
     "hypercholesterolemia": ["cholesterol", "ldl", "low-density lipoprotein", "lipid"],
     "hypercholesterolaemia": ["cholesterol", "ldl", "low-density lipoprotein", "lipid"],
-    "obesity": ["obesity", "body mass index", "bmi", "adiposity", "overweight", "waist"],
+    "obesity": [
+        "obesity",
+        "body mass index",
+        "bmi",
+        "adiposity",
+        "overweight",
+        "waist",
+    ],
     "rheumatoid arthritis": ["rheumatoid arthritis", "arthritis"],
     "inflammation": ["inflammation", "inflammatory", "c-reactive protein", "crp"],
-    "cardiovascular disease": ["cardiovascular", "coronary artery", "myocardial infarction", "heart disease"],
-    "type 2 diabetes": ["type 2 diabetes", "t2d", "diabetes mellitus", "glycated haemoglobin", "hba1c"],
+    "cardiovascular disease": [
+        "cardiovascular",
+        "coronary artery",
+        "myocardial infarction",
+        "heart disease",
+    ],
+    "type 2 diabetes": [
+        "type 2 diabetes",
+        "t2d",
+        "diabetes mellitus",
+        "glycated haemoglobin",
+        "hba1c",
+    ],
     "alzheimer disease": ["alzheimer", "dementia", "cognitive decline"],
-    "non-small cell lung carcinoma": ["lung cancer", "lung carcinoma", "non-small cell lung"],
+    "non-small cell lung carcinoma": [
+        "lung cancer",
+        "lung carcinoma",
+        "non-small cell lung",
+    ],
     "squamous cell carcinoma": ["squamous cell", "carcinoma"],
     "pain": ["pain"],
 }

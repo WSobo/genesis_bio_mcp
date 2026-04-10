@@ -19,7 +19,7 @@ import io
 import logging
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -65,16 +65,25 @@ async def poll_task(client: httpx.AsyncClient, task_id: str) -> Any:
             return data.get("result")
 
         if state == "FAILURE":
-            raise RuntimeError(f"DepMap task {task_id} failed: {data.get('message', 'unknown error')}")
+            raise RuntimeError(
+                f"DepMap task {task_id} failed: {data.get('message', 'unknown error')}"
+            )
 
         pct = data.get("percentComplete")
         pct_str = f" ({pct}%)" if pct is not None else ""
-        logger.debug("DepMap task %s — %s%s, polling in %.1fs", task_id, state, pct_str, next_delay)
+        logger.debug(
+            "DepMap task %s — %s%s, polling in %.1fs",
+            task_id,
+            state,
+            pct_str,
+            next_delay,
+        )
 
         await asyncio.sleep(next_delay)
         elapsed += next_delay
 
     raise TimeoutError(f"DepMap task {task_id} did not complete within {_TASK_TIMEOUT_SECS}s")
+
 
 # Query: get all cancer-type associations sorted by somatic_mutation score
 _CANCER_ASSOCIATIONS_QUERY = """
@@ -134,8 +143,10 @@ def _parse_depmap_csv(text: str) -> dict[str, dict]:
         cache[gene] = {
             "dependent_cell_lines": dep_lines,
             "cell_lines_with_data": total_lines,
-            "strongly_selective": (r.get("strongly_selective", "False") or "False").lower() in ("true", "1", "yes"),
-            "common_essential": (r.get("common_essential", "False") or "False").lower() in ("true", "1", "yes"),
+            "strongly_selective": (r.get("strongly_selective", "False") or "False").lower()
+            in ("true", "1", "yes"),
+            "common_essential": (r.get("common_essential", "False") or "False").lower()
+            in ("true", "1", "yes"),
         }
 
     return cache
@@ -162,7 +173,8 @@ async def load_depmap_cache(client: httpx.AsyncClient) -> dict[str, dict]:
                 if cache:
                     logger.info(
                         "Loaded DepMap cache from disk (%d genes, age %.1fh)",
-                        len(cache), age_days * 24,
+                        len(cache),
+                        age_days * 24,
                     )
                     return cache
                 logger.warning("Disk cache parsed to 0 genes — re-downloading")
@@ -202,7 +214,9 @@ async def load_depmap_cache(client: httpx.AsyncClient) -> dict[str, dict]:
 
             download_url = (result or {}).get("downloadUrl")
             if not download_url:
-                logger.warning("DepMap task succeeded but no downloadUrl in result; falling back to OT")
+                logger.warning(
+                    "DepMap task succeeded but no downloadUrl in result; falling back to OT"
+                )
                 return {}
 
             csv_resp = await client.get(download_url, timeout=120.0)
@@ -216,8 +230,9 @@ async def load_depmap_cache(client: httpx.AsyncClient) -> dict[str, dict]:
         cache = _parse_depmap_csv(text)
         if not cache:
             # Log column names so mismatches are immediately diagnosable
-            import io as _io
             import csv as _csv
+            import io as _io
+
             _reader = _csv.DictReader(_io.StringIO(text))
             _first = next(_reader, {})
             logger.warning(
@@ -252,8 +267,8 @@ class DepMapClient:
     async def fetch_custom_dataset(
         self,
         dataset_id: str,
-        feature_labels: Optional[list[str]] = None,
-        cell_line_ids: Optional[list[str]] = None,
+        feature_labels: list[str] | None = None,
+        cell_line_ids: list[str] | None = None,
         drop_empty: bool = True,
     ) -> str:
         """Submit a custom DepMap dataset export task and return the download URL.
@@ -271,7 +286,9 @@ class DepMapClient:
         resp.raise_for_status()
         task_id = resp.json().get("id")
         if not task_id:
-            raise ValueError(f"DepMap /download/custom returned no task id for dataset {dataset_id!r}")
+            raise ValueError(
+                f"DepMap /download/custom returned no task id for dataset {dataset_id!r}"
+            )
 
         logger.info("DepMap custom export task %s submitted for dataset %s", task_id, dataset_id)
         result = await poll_task(self._client, task_id)
@@ -280,7 +297,7 @@ class DepMapClient:
             raise RuntimeError(f"DepMap task {task_id} succeeded but result has no downloadUrl")
         return download_url
 
-    async def get_essentiality(self, gene_symbol: str) -> Optional[CancerDependency]:
+    async def get_essentiality(self, gene_symbol: str) -> CancerDependency | None:
         """Return cancer dependency data, using real DepMap metrics when available."""
         symbol = gene_symbol.strip().upper()
 
@@ -305,7 +322,7 @@ class DepMapClient:
         self,
         gene_symbol: str,
         entry: dict,
-        ot_data: Optional[CancerDependency],
+        ot_data: CancerDependency | None,
     ) -> CancerDependency:
         """Build CancerDependency using real DepMap metrics, supplemented by OT lineages."""
         dep = entry["dependent_cell_lines"]
@@ -335,7 +352,7 @@ class DepMapClient:
             data_source=source,
         )
 
-    async def _resolve_gene(self, symbol: str) -> Optional[str]:
+    async def _resolve_gene(self, symbol: str) -> str | None:
         data = await self._graphql(_GENE_SEARCH_QUERY, {"symbol": symbol})
         if data is None:
             return None
@@ -347,18 +364,13 @@ class DepMapClient:
 
     async def _fetch_ot_cancer_evidence(
         self, gene_symbol: str, ensembl_id: str
-    ) -> Optional[CancerDependency]:
+    ) -> CancerDependency | None:
         """Fetch Open Targets somatic mutation evidence for lineage context."""
         data = await self._graphql(_CANCER_ASSOCIATIONS_QUERY, {"ensemblId": ensembl_id})
         if data is None:
             return None
 
-        rows = (
-            data.get("data", {})
-            .get("target", {})
-            .get("associatedDiseases", {})
-            .get("rows", [])
-        )
+        rows = data.get("data", {}).get("target", {}).get("associatedDiseases", {}).get("rows", [])
         if not rows:
             return None
 
@@ -369,7 +381,11 @@ class DepMapClient:
         cell_lines: list[CellLineEssentiality] = []
         for row in cancer_rows:
             sm_score = next(
-                (d["score"] for d in row.get("datatypeScores", []) if d["id"] == "somatic_mutation"),
+                (
+                    d["score"]
+                    for d in row.get("datatypeScores", [])
+                    if d["id"] == "somatic_mutation"
+                ),
                 0.0,
             )
             if sm_score == 0.0:
@@ -418,7 +434,7 @@ class DepMapClient:
             ),
         )
 
-    async def _graphql(self, query: str, variables: dict) -> Optional[dict]:
+    async def _graphql(self, query: str, variables: dict) -> dict | None:
         try:
             resp = await self._client.post(
                 _GRAPHQL_URL,

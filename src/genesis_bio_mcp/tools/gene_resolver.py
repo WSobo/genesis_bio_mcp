@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -28,8 +28,8 @@ _NCBI_EMAIL = os.environ.get("NCBI_EMAIL", "genesis-bio-mcp@example.com")
 async def resolve_gene(
     gene_name: str,
     *,
-    uniprot_client: "UniProtClient",
-    http_client: Optional[httpx.AsyncClient] = None,
+    uniprot_client: UniProtClient,
+    http_client: httpx.AsyncClient | None = None,
 ) -> GeneResolution:
     """Resolve a gene name or alias to canonical identifiers.
 
@@ -44,7 +44,7 @@ async def resolve_gene(
         uniprot_entry = await uniprot_client._search(symbol, reviewed_only=False)
 
     hgnc_symbol = symbol
-    uniprot_accession: Optional[str] = None
+    uniprot_accession: str | None = None
     synonyms: list[str] = []
     source = "input"
 
@@ -59,7 +59,7 @@ async def resolve_gene(
             source = "uniprot_synonym"
 
     # Step 2: NCBI E-utils for gene ID
-    ncbi_gene_id: Optional[str] = None
+    ncbi_gene_id: str | None = None
     client = http_client or uniprot_client._client
     ncbi_gene_id = await _fetch_ncbi_gene_id(hgnc_symbol, client)
 
@@ -73,7 +73,7 @@ async def resolve_gene(
     )
 
 
-def _extract_gene_info(entry: dict) -> tuple[str, Optional[str], list[str]]:
+def _extract_gene_info(entry: dict) -> tuple[str, str | None, list[str]]:
     accession = entry.get("primaryAccession")
     genes = entry.get("genes", [])
     symbol = ""
@@ -90,7 +90,7 @@ def _extract_gene_info(entry: dict) -> tuple[str, Optional[str], list[str]]:
     return symbol.upper() if symbol else "", accession, synonyms
 
 
-async def _fetch_ncbi_gene_id(symbol: str, client: httpx.AsyncClient) -> Optional[str]:
+async def _fetch_ncbi_gene_id(symbol: str, client: httpx.AsyncClient) -> str | None:
     params = {
         "db": "gene",
         "term": f"{symbol}[Gene Name] AND Homo sapiens[Organism]",

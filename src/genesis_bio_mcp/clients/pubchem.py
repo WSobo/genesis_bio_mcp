@@ -15,10 +15,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from genesis_bio_mcp.models import CompoundActivity, Compounds
 
@@ -42,7 +41,7 @@ class PubChemClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
 
-    async def get_compounds(self, gene_symbol: str) -> Optional[Compounds]:
+    async def get_compounds(self, gene_symbol: str) -> Compounds | None:
         """Return active small molecules with bioactivity against a gene target."""
         symbol = gene_symbol.strip().upper()
 
@@ -85,7 +84,9 @@ class PubChemClient:
                     by_cid[c.cid] = c
 
         active = [c for c in by_cid.values() if c.activity_outcome == "Active"]
-        active.sort(key=lambda c: c.activity_value if c.activity_value is not None else float("inf"))
+        active.sort(
+            key=lambda c: c.activity_value if c.activity_value is not None else float("inf")
+        )
 
         return Compounds(
             gene_symbol=symbol,
@@ -95,7 +96,9 @@ class PubChemClient:
 
     async def _search_assays_entrez(self, symbol: str) -> list[int]:
         """Use NCBI Entrez to find BioAssay IDs with active compounds against this gene."""
-        term = f'("{symbol}"[Gene Symbol]) AND "active"[Activity Outcome] AND "IC50"[Measurement Type]'
+        term = (
+            f'("{symbol}"[Gene Symbol]) AND "active"[Activity Outcome] AND "IC50"[Measurement Type]'
+        )
         params = {
             "db": "pcassay",
             "term": term,
@@ -181,7 +184,9 @@ class PubChemClient:
                     continue
                 cids = data.get("IdentifierList", {}).get("CID", [])
                 if cids:
-                    return await self._fetch_compound_properties(cids[:10], aid=0, gene_symbol=symbol)
+                    return await self._fetch_compound_properties(
+                        cids[:10], aid=0, gene_symbol=symbol
+                    )
             except Exception:
                 continue
         return []
@@ -191,7 +196,7 @@ class PubChemClient:
         wait=wait_exponential(min=1, max=8),
         stop=stop_after_attempt(3),
     )
-    async def _get(self, url: str, params: Optional[dict] = None) -> Optional[dict]:
+    async def _get(self, url: str, params: dict | None = None) -> dict | None:
         async with _SEMAPHORE:
             resp = await self._client.get(url, params=params, timeout=20.0)
             if resp.status_code == 404:
