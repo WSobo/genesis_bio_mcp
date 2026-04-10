@@ -1,0 +1,276 @@
+{
+  "gene_symbol": "TP53",
+  "indication": "squamous cell carcinoma",
+  "resolution": {
+    "hgnc_symbol": "TP53",
+    "hgnc_id": null,
+    "ncbi_gene_id": "7157",
+    "uniprot_accession": "P04637",
+    "synonyms": [
+      "P53"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "P04637",
+    "gene_symbol": "TP53",
+    "protein_name": "Cellular tumor antigen p53",
+    "organism": "Homo sapiens",
+    "function_summary": "Multifunctional transcription factor that induces cell cycle arrest, DNA repair or apoptosis upon binding to its target DNA sequence (PubMed:11025664, PubMed:12524540, PubMed:12810724, PubMed:15186775, PubMed:15340061, PubMed:17317671, PubMed:17349958, PubMed:19556538, PubMed:20673990, PubMed:20959462, PubMed:22726440, PubMed:24051492, PubMed:24652652, PubMed:35618207, PubMed:36634798, PubMed:38653238, PubMed:9840937). Acts as a tumor suppressor in many tumor types; induces growth arrest or apoptosis depending on the physiological circumstances and cell type (PubMed:11025664, PubMed:12524540, PubMed:12810724, PubMed:15186775, PubMed:15340061, PubMed:17189187, PubMed:17317671, PubMed:17349958, PubMed:19556538, PubMed:20673990, PubMed:20959462, PubMed:22726440, PubMed:24051492, PubMed:24652652, PubMed:38653238, PubMed:9840937). Negatively regulates cell division by controlling expression of a set of genes required for this process (PubMed:11025664, PubMed:12524540, PubMed:12810724, PubMed:15186775, PubMed:15340061, PubMed:17317671, PubMed:17349958, PubMed:19556538, PubMed:20673990, PubMed:20959462, PubMed:22726440, PubMed:24051492, PubMed:24652652, PubMed:9840937). One of the activated genes is an inhibitor of cyclin-dependent kinases. Apoptosis induction seems to be mediated either by stimulation of BAX and FAS antigen expression, or by repression of Bcl-2 expression (PubMed:12524540, PubMed:17189187). Its pro-apoptotic activity is activated via its interaction with PPP1R13B/ASPP1 or TP53BP2/ASPP2 (PubMed:12524540). However, this activity is inhibited when the interaction with PPP1R13B/ASPP1 or TP53BP2/ASPP2 is displaced by PPP1R13L/iASPP (PubMed:12524540). In cooperation with mitochondrial PPIF is involved in activating oxidative stress-induced necrosis; the function is largely independent of transcription. Induces the transcription of long intergenic non-coding RNA p21 (lincRNA-p21) and lincRNA-Mkln1. LincRNA-p21 participates in TP53-dependent transcriptional repression leading to apoptosis and seems to have an effect on cell-cycle regulation. Implicated in Notch signaling cross-over. Prevents CDK7 kinase activity when associated to CAK complex in response to DNA damage, thus stopping cell cycle progression. Isoform 2 enhances the transactivation activity of isoform 1 from some but not all TP53-inducible promoters. Isoform 4 suppresses transactivation activity and impairs growth suppression mediated by isoform 1. Isoform 7 inhibits isoform 1-mediated apoptosis. Regulates the circadian clock by repressing CLOCK-BMAL1-mediated transcriptional activation of PER2 (PubMed:24051492)",
+    "subcellular_locations": [
+      "Cytoplasm",
+      "Nucleus",
+      "Nucleus, PML body",
+      "Endoplasmic reticulum",
+      "Mitochondrion matrix",
+      "Cytoplasm, cytoskeleton, microtubule organizing center, centrosome"
+    ],
+    "pathways": [
+      "Activation of NOXA and translocation to mitochondria",
+      "Activation of PUMA and translocation to mitochondria",
+      "Pre-NOTCH Transcription and Translation",
+      "Oxidative Stress Induced Senescence",
+      "Formation of Senescence-Associated Heterochromatin Foci (SAHF)",
+      "Oncogene Induced Senescence",
+      "DNA Damage/Telomere Stress Induced Senescence",
+      "SUMOylation of transcription factors",
+      "Autodegradation of the E3 ubiquitin ligase COP1",
+      "Association of TriC/CCT with target proteins during biosynthesis",
+      "Pyroptosis",
+      "TP53 Regulates Metabolic Genes",
+      "Ub-specific processing proteases",
+      "Ovarian tumor domain proteases",
+      "Recruitment and ATM-mediated phosphorylation of repair and signaling proteins at DNA double strand breaks",
+      "Interleukin-4 and Interleukin-13 signaling",
+      "TP53 Regulates Transcription of DNA Repair Genes",
+      "TP53 Regulates Transcription of Genes Involved in Cytochrome C Release",
+      "TP53 regulates transcription of several additional cell death genes whose specific roles in p53-dependent apoptosis remain uncertain",
+      "TP53 Regulates Transcription of Caspase Activators and Caspases",
+      "TP53 Regulates Transcription of Death Receptors and Ligands",
+      "TP53 Regulates Transcription of Genes Involved in G2 Cell Cycle Arrest",
+      "TP53 regulates transcription of additional cell cycle genes whose exact role in the p53 pathway remain uncertain",
+      "TP53 Regulates Transcription of Genes Involved in G1 Cell Cycle Arrest",
+      "Regulation of TP53 Expression",
+      "Regulation of TP53 Activity through Phosphorylation",
+      "Regulation of TP53 Degradation",
+      "Regulation of TP53 Activity through Acetylation",
+      "Regulation of TP53 Activity through Association with Co-factors",
+      "Regulation of TP53 Activity through Methylation",
+      "PI5P Regulates TP53 Acetylation",
+      "G2/M DNA damage checkpoint",
+      "G2/M Checkpoints",
+      "Stabilization of p53",
+      "Transcriptional activation of cell cycle inhibitor p21",
+      "The role of GTSE1 in G2/M progression after G2 checkpoint",
+      "Transcriptional Regulation by VENTX",
+      "RUNX3 regulates CDKN1A transcription",
+      "Regulation of PTEN gene transcription",
+      "Loss of function of TP53 in cancer due to loss of tetramerization ability",
+      "Signaling by ALK fusions and activated point mutants",
+      "Regulation of NF-kappa B signaling",
+      "Zygotic genome activation (ZGA)",
+      "Factors involved in megakaryocyte development and platelet production",
+      "PKR-mediated signaling"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "1A1U",
+      "1AIE",
+      "1C26",
+      "1DT7",
+      "1GZH",
+      "1H26",
+      "1HS5",
+      "1JSP",
+      "1KZY",
+      "1MA3",
+      "1OLG",
+      "1OLH",
+      "1PES",
+      "1PET",
+      "1SAE",
+      "1SAF",
+      "1SAK",
+      "1SAL",
+      "1TSR",
+      "1TUP"
+    ],
+    "known_variants": [
+      {
+        "position": "5",
+        "original": "Q",
+        "variant": "H",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "6",
+        "original": "S",
+        "variant": "L",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "7",
+        "original": "D",
+        "variant": "H",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "8",
+        "original": "P",
+        "variant": "S",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "10",
+        "original": "V",
+        "variant": "I",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "11",
+        "original": "E",
+        "variant": "K",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "11",
+        "original": "E",
+        "variant": "Q",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "15",
+        "original": "S",
+        "variant": "R",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "16",
+        "original": "Q",
+        "variant": "L",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "17",
+        "original": "E",
+        "variant": "D",
+        "disease": null,
+        "clinical_significance": null
+      }
+    ],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "TP53",
+    "disease_name": "squamous cell carcinoma",
+    "disease_efo_id": "EFO_0000707",
+    "ensembl_id": "ENSG00000141510",
+    "overall_score": 0.520309380185558,
+    "genetic_association_score": null,
+    "somatic_mutation_score": 0.6677782072431652,
+    "known_drug_score": null,
+    "literature_mining_score": 0.9515998190778843,
+    "evidence_count": 2,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "literature",
+        "score": 0.9515998190778843
+      },
+      {
+        "evidence_type": "somatic_mutation",
+        "score": 0.6677782072431652
+      }
+    ]
+  },
+  "cancer_dependency": {
+    "gene_symbol": "TP53",
+    "mean_ceres_score": -1.5939,
+    "fraction_dependent_lines": 1.0,
+    "pan_essential": false,
+    "top_dependent_lineages": [
+      "cancer or benign tumor"
+    ],
+    "cell_lines": [
+      {
+        "cell_line": "pancreatic adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.838,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "urinary bladder cancer",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.819,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "breast adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.804,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "ovarian cancer",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.794,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "esophageal cancer",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.789,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "ovarian epithelial tumor",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.78,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "hereditary breast carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.748,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "Hereditary breast cancer",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.748,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "lip and oral cavity carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.74,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "lung adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.739,
+        "is_dependent": true
+      }
+    ],
+    "data_source": "Open Targets Platform v4 \u2014 somatic mutation evidence (proxy; DepMap gene not found in Chronos Combined summary)"
+  },
+  "gwas_evidence": null,
+  "compounds": null,
+  "priority_score": 4.46,
+  "priority_tier": "Medium",
+  "evidence_summary": "TP53 shows strong Open Targets association with squamous cell carcinoma (score: 0.52, n=2 evidence items). DepMap CRISPR data show dependency in 100% of cancer lines, highest in cancer or benign tumor.",
+  "data_gaps": [
+    "gwas",
+    "pubchem"
+  ],
+  "errors": {}
+}

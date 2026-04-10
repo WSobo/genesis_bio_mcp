@@ -1,0 +1,165 @@
+{
+  "gene_symbol": "CD274",
+  "indication": "melanoma",
+  "resolution": {
+    "hgnc_symbol": "CD274",
+    "hgnc_id": null,
+    "ncbi_gene_id": "29126",
+    "uniprot_accession": "Q9NZQ7",
+    "synonyms": [
+      "B7H1",
+      "PDCD1L1",
+      "PDCD1LG1",
+      "PDL1"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "Q9NZQ7",
+    "gene_symbol": "CD274",
+    "protein_name": "Programmed cell death 1 ligand 1",
+    "organism": "Homo sapiens",
+    "function_summary": "The PDCD1-mediated inhibitory pathway is exploited by tumors to attenuate anti-tumor immunity and escape destruction by the immune system, thereby facilitating tumor survival (PubMed:28813410, PubMed:28813417). The interaction with PDCD1/PD-1 inhibits cytotoxic T lymphocytes (CTLs) effector function (By similarity). The blockage of the PDCD1-mediated pathway results in the reversal of the exhausted T-cell phenotype and the normalization of the anti-tumor response, providing a rationale for cancer immunotherapy (By similarity)",
+    "subcellular_locations": [
+      "Cell membrane",
+      "Early endosome membrane",
+      "Recycling endosome membrane",
+      "Nucleus",
+      "Endomembrane system",
+      "Secreted"
+    ],
+    "pathways": [
+      "Co-inhibition by PD-1",
+      "STAT3 nuclear events downstream of ALK signaling"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "3BIK",
+      "3BIS",
+      "3FN3",
+      "3SBW",
+      "4Z18",
+      "4ZQK",
+      "5C3T",
+      "5GGT",
+      "5GRJ",
+      "5IUS",
+      "5J89",
+      "5J8O",
+      "5JDR",
+      "5JDS",
+      "5N2D",
+      "5N2F",
+      "5NIU",
+      "5O45",
+      "5O4Y",
+      "5X8L"
+    ],
+    "known_variants": [],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "CD274",
+    "disease_name": "melanoma",
+    "disease_efo_id": "EFO_0000756",
+    "ensembl_id": "ENSG00000120217",
+    "overall_score": 0.39868239883835177,
+    "genetic_association_score": null,
+    "somatic_mutation_score": null,
+    "known_drug_score": null,
+    "literature_mining_score": 0.9857030030557767,
+    "evidence_count": 2,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "literature",
+        "score": 0.9857030030557767
+      },
+      {
+        "evidence_type": "clinical",
+        "score": 0.6065171227451398
+      }
+    ]
+  },
+  "cancer_dependency": {
+    "gene_symbol": "CD274",
+    "mean_ceres_score": -0.8938,
+    "fraction_dependent_lines": 0.02,
+    "pan_essential": false,
+    "top_dependent_lineages": [
+      "cancer or benign tumor"
+    ],
+    "cell_lines": [
+      {
+        "cell_line": "cutaneous melanoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.216,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "lymphoid neoplasm",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      },
+      {
+        "cell_line": "multiple myeloma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      },
+      {
+        "cell_line": "pancreatic carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      },
+      {
+        "cell_line": "prostate carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      },
+      {
+        "cell_line": "rectal adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      },
+      {
+        "cell_line": "osteosarcoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      },
+      {
+        "cell_line": "colon adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      },
+      {
+        "cell_line": "clear cell renal carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      },
+      {
+        "cell_line": "cervical squamous cell carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -0.912,
+        "is_dependent": false
+      }
+    ],
+    "data_source": "Open Targets Platform v4 \u2014 somatic mutation evidence (proxy; DepMap gene not found in Chronos Combined summary)"
+  },
+  "gwas_evidence": null,
+  "compounds": null,
+  "priority_score": 1.72,
+  "priority_tier": "Low",
+  "evidence_summary": "CD274 shows modest Open Targets association with melanoma (score: 0.40, n=2 evidence items). DepMap CRISPR data show dependency in 2% of cancer lines, highest in cancer or benign tumor.",
+  "data_gaps": [
+    "gwas",
+    "pubchem"
+  ],
+  "errors": {}
+}

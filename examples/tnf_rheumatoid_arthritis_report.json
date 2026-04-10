@@ -1,0 +1,130 @@
+{
+  "gene_symbol": "TNF",
+  "indication": "rheumatoid arthritis",
+  "resolution": {
+    "hgnc_symbol": "TNF",
+    "hgnc_id": null,
+    "ncbi_gene_id": "7124",
+    "uniprot_accession": "P01375",
+    "synonyms": [
+      "TNFA",
+      "TNFSF2"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "P01375",
+    "gene_symbol": "TNF",
+    "protein_name": "Tumor necrosis factor",
+    "organism": "Homo sapiens",
+    "function_summary": "The TNF intracellular domain (ICD) form induces IL12 production in dendritic cells",
+    "subcellular_locations": [
+      "Cell membrane",
+      "Membrane",
+      "Secreted"
+    ],
+    "pathways": [
+      "Transcriptional regulation of white adipocyte differentiation",
+      "TNFR1-induced proapoptotic signaling",
+      "Regulation of TNFR1 signaling",
+      "TNFR1-induced NF-kappa-B signaling pathway",
+      "TNFR1-mediated ceramide production",
+      "TNFR2 non-canonical NF-kB pathway",
+      "Interleukin-10 signaling",
+      "Interleukin-4 and Interleukin-13 signaling",
+      "TNF signaling"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "1A8M",
+      "1TNF",
+      "2AZ5",
+      "2E7A",
+      "2TUN",
+      "2ZJC",
+      "2ZPX",
+      "3ALQ",
+      "3IT8",
+      "3L9J",
+      "3WD5",
+      "4G3Y",
+      "4TSV",
+      "4TWT",
+      "4Y6O",
+      "5M2I",
+      "5M2J",
+      "5M2M",
+      "5MU8",
+      "5TSW"
+    ],
+    "known_variants": [
+      {
+        "position": "84",
+        "original": "P",
+        "variant": "L",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "94",
+        "original": "A",
+        "variant": "T",
+        "disease": null,
+        "clinical_significance": null
+      }
+    ],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "TNF",
+    "disease_name": "rheumatoid arthritis",
+    "disease_efo_id": "EFO_0000685",
+    "ensembl_id": "ENSG00000232810",
+    "overall_score": 0.6424639366506499,
+    "genetic_association_score": null,
+    "somatic_mutation_score": null,
+    "known_drug_score": null,
+    "literature_mining_score": 0.9974276299204594,
+    "evidence_count": 3,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "literature",
+        "score": 0.9974276299204594
+      },
+      {
+        "evidence_type": "animal_model",
+        "score": 0.4126701802054085
+      },
+      {
+        "evidence_type": "clinical",
+        "score": 0.9977625615658098
+      }
+    ]
+  },
+  "cancer_dependency": null,
+  "gwas_evidence": null,
+  "compounds": {
+    "gene_symbol": "TNF",
+    "total_active_compounds": 1,
+    "compounds": [
+      {
+        "cid": 8521,
+        "name": "2,4,7-trinitrofluoren-9-one",
+        "molecular_formula": "C13H5N3O7",
+        "molecular_weight": 315.19,
+        "activity_outcome": "Active",
+        "activity_value": null,
+        "activity_type": null,
+        "assay_id": 0
+      }
+    ]
+  },
+  "priority_score": 3.44,
+  "priority_tier": "Low",
+  "evidence_summary": "TNF shows strong Open Targets association with rheumatoid arthritis (score: 0.64, n=3 evidence items). PubChem reports 1 active compounds against TNF, indicating emerging druggability.",
+  "data_gaps": [
+    "depmap",
+    "gwas"
+  ],
+  "errors": {}
+}

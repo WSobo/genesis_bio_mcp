@@ -147,7 +147,7 @@ async def test_depmap_returns_essentiality(http_client):
         httpx.Response(200, json=MOCK_OT_GENE_SEARCH),      # gene resolution
         httpx.Response(200, json=MOCK_DEPMAP_OT_CANCER),    # cancer associations
     ]
-    client = DepMapClient(http_client)
+    client = DepMapClient(http_client, gene_dep_cache={})
     result = await client.get_essentiality("BRAF")
 
     assert result is not None
@@ -165,7 +165,7 @@ async def test_depmap_returns_none_when_gene_not_found(http_client):
     respx.post("https://api.platform.opentargets.org/api/v4/graphql").mock(
         return_value=httpx.Response(200, json={"data": {"search": {"hits": []}}})
     )
-    client = DepMapClient(http_client)
+    client = DepMapClient(http_client, gene_dep_cache={})
     result = await client.get_essentiality("FAKEGENE")
     assert result is None
 

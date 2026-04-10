@@ -1,0 +1,174 @@
+{
+  "gene_symbol": "PCSK9",
+  "indication": "hypercholesterolemia",
+  "resolution": {
+    "hgnc_symbol": "PCSK9",
+    "hgnc_id": null,
+    "ncbi_gene_id": "255738",
+    "uniprot_accession": "Q8NBP7",
+    "synonyms": [
+      "NARC1"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "Q8NBP7",
+    "gene_symbol": "PCSK9",
+    "protein_name": "Proprotein convertase subtilisin/kexin type 9",
+    "organism": "Homo sapiens",
+    "function_summary": "Crucial player in the regulation of plasma cholesterol homeostasis. Binds to low-density lipid receptor family members: low density lipoprotein receptor (LDLR), very low density lipoprotein receptor (VLDLR), apolipoprotein E receptor (LRP1/APOER) and apolipoprotein receptor 2 (LRP8/APOER2), and promotes their degradation in intracellular acidic compartments (PubMed:18039658). Acts via a non-proteolytic mechanism to enhance the degradation of the hepatic LDLR through a clathrin LDLRAP1/ARH-mediated pathway. May prevent the recycling of LDLR from endosomes to the cell surface or direct it to lysosomes for degradation. Can induce ubiquitination of LDLR leading to its subsequent degradation (PubMed:17461796, PubMed:18197702, PubMed:18799458, PubMed:22074827). Inhibits intracellular degradation of APOB via the autophagosome/lysosome pathway in a LDLR-independent manner. Involved in the disposal of non-acetylated intermediates of BACE1 in the early secretory pathway (PubMed:18660751). Inhibits epithelial Na(+) channel (ENaC)-mediated Na(+) absorption by reducing ENaC surface expression primarily by increasing its proteasomal degradation. Regulates neuronal apoptosis via modulation of LRP8/APOER2 levels and related anti-apoptotic signaling pathways",
+    "subcellular_locations": [
+      "Cytoplasm",
+      "Secreted",
+      "Endosome",
+      "Lysosome",
+      "Cell surface",
+      "Endoplasmic reticulum",
+      "Golgi apparatus"
+    ],
+    "pathways": [
+      "Regulation of Insulin-like Growth Factor (IGF) transport and uptake by Insulin-like Growth Factor Binding Proteins (IGFBPs)",
+      "VLDLR internalisation and degradation",
+      "Post-translational protein phosphorylation",
+      "LDL clearance"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "2P4E",
+      "2PMW",
+      "2QTW",
+      "2W2M",
+      "2W2N",
+      "2W2O",
+      "2W2P",
+      "2W2Q",
+      "2XTJ",
+      "3BPS",
+      "3GCW",
+      "3GCX",
+      "3H42",
+      "3M0C",
+      "3P5B",
+      "3P5C",
+      "3SQO",
+      "4K8R",
+      "4NE9",
+      "4NMX"
+    ],
+    "known_variants": [
+      {
+        "position": "23",
+        "original": "L",
+        "variant": "LL",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "46",
+        "original": "R",
+        "variant": "L",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "53",
+        "original": "A",
+        "variant": "V",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "57",
+        "original": "E",
+        "variant": "K",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "77",
+        "original": "T",
+        "variant": "I",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "93",
+        "original": "R",
+        "variant": "C",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "106",
+        "original": "G",
+        "variant": "R",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "114",
+        "original": "V",
+        "variant": "A",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "127",
+        "original": "S",
+        "variant": "R",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "129",
+        "original": "D",
+        "variant": "G",
+        "disease": null,
+        "clinical_significance": null
+      }
+    ],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "PCSK9",
+    "disease_name": "Hypercholesterolemia",
+    "disease_efo_id": "HP_0003124",
+    "ensembl_id": "ENSG00000169174",
+    "overall_score": 0.826654499695062,
+    "genetic_association_score": 0.9425041566412744,
+    "somatic_mutation_score": null,
+    "known_drug_score": null,
+    "literature_mining_score": 0.7131003477545801,
+    "evidence_count": 4,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "literature",
+        "score": 0.7131003477545801
+      },
+      {
+        "evidence_type": "genetic_association",
+        "score": 0.9425041566412744
+      },
+      {
+        "evidence_type": "genetic_literature",
+        "score": 0.607930797611621
+      },
+      {
+        "evidence_type": "clinical",
+        "score": 0.9765760382342404
+      }
+    ]
+  },
+  "cancer_dependency": null,
+  "gwas_evidence": null,
+  "compounds": null,
+  "priority_score": 3.98,
+  "priority_tier": "Low",
+  "evidence_summary": "PCSK9 shows strong Open Targets association with hypercholesterolemia (score: 0.83, n=4 evidence items).",
+  "data_gaps": [
+    "depmap",
+    "gwas",
+    "pubchem"
+  ],
+  "errors": {}
+}

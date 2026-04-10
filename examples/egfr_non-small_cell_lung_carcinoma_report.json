@@ -1,0 +1,302 @@
+{
+  "gene_symbol": "EGFR",
+  "indication": "non-small cell lung carcinoma",
+  "resolution": {
+    "hgnc_symbol": "EGFR",
+    "hgnc_id": null,
+    "ncbi_gene_id": "1956",
+    "uniprot_accession": "P00533",
+    "synonyms": [
+      "ERBB",
+      "ERBB1",
+      "HER1"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "P00533",
+    "gene_symbol": "EGFR",
+    "protein_name": "Epidermal growth factor receptor",
+    "organism": "Homo sapiens",
+    "function_summary": "(Microbial infection) Acts as a receptor for hepatitis C virus (HCV) in hepatocytes and facilitates its cell entry. Mediates HCV entry by promoting the formation of the CD81-CLDN1 receptor complexes that are essential for HCV entry and by enhancing membrane fusion of cells expressing HCV envelope glycoproteins",
+    "subcellular_locations": [
+      "Cell membrane",
+      "Endoplasmic reticulum membrane",
+      "Golgi apparatus membrane",
+      "Nucleus membrane",
+      "Endosome",
+      "Endosome membrane",
+      "Nucleus",
+      "Secreted"
+    ],
+    "pathways": [
+      "Signaling by ERBB2",
+      "Constitutive Signaling by Ligand-Responsive EGFR Cancer Variants",
+      "Signaling by ERBB4",
+      "SHC1 events in ERBB2 signaling",
+      "PLCG1 events in ERBB2 signaling",
+      "PIP3 activates AKT signaling",
+      "Signaling by EGFR",
+      "GRB2 events in EGFR signaling",
+      "GAB1 signalosome",
+      "SHC1 events in EGFR signaling",
+      "EGFR downregulation",
+      "GRB2 events in ERBB2 signaling",
+      "PI3K events in ERBB2 signaling",
+      "EGFR interacts with phospholipase C-gamma",
+      "EGFR Transactivation by Gastrin",
+      "Constitutive Signaling by Aberrant PI3K in Cancer",
+      "Signal transduction by L1",
+      "Constitutive Signaling by EGFRvIII",
+      "Inhibition of Signaling by Overexpressed EGFR",
+      "RAF/MAP kinase cascade",
+      "ERBB2 Regulates Cell Motility",
+      "PI5P, PP2A and IER3 Regulate PI3K/AKT Signaling",
+      "ERBB2 Activates PTK6 Signaling",
+      "Cargo recognition for clathrin-mediated endocytosis",
+      "Clathrin-mediated endocytosis",
+      "PTK6 promotes HIF1A stabilization",
+      "Downregulation of ERBB2 signaling",
+      "TFAP2 (AP-2) family regulates transcription of growth factors and their receptors",
+      "Extra-nuclear estrogen signaling",
+      "NOTCH3 Activation and Transmission of Signal to the Nucleus",
+      "HCMV Early Events",
+      "Estrogen-dependent nuclear events downstream of ESR-membrane signaling",
+      "Signaling by ERBB2 KD Mutants",
+      "Signaling by ERBB2 ECD mutants",
+      "Signaling by ERBB2 TMD/JMD mutants",
+      "Respiratory syncytial virus (RSV) attachment and entry",
+      "Developmental Lineage of Mammary Gland Myoepithelial Cells"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "1IVO",
+      "1M14",
+      "1M17",
+      "1MOX",
+      "1NQL",
+      "1XKK",
+      "1YY9",
+      "1Z9I",
+      "2EB2",
+      "2EB3",
+      "2GS2",
+      "2GS6",
+      "2GS7",
+      "2ITN",
+      "2ITO",
+      "2ITP",
+      "2ITQ",
+      "2ITT",
+      "2ITU",
+      "2ITV"
+    ],
+    "known_variants": [
+      {
+        "position": "30",
+        "original": "",
+        "variant": "",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "98",
+        "original": "R",
+        "variant": "Q",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "266",
+        "original": "P",
+        "variant": "R",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "428",
+        "original": "G",
+        "variant": "D",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "521",
+        "original": "R",
+        "variant": "K",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "674",
+        "original": "V",
+        "variant": "I",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "709",
+        "original": "E",
+        "variant": "A",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "709",
+        "original": "E",
+        "variant": "G",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "709",
+        "original": "E",
+        "variant": "K",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "719",
+        "original": "G",
+        "variant": "A",
+        "disease": null,
+        "clinical_significance": null
+      }
+    ],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "EGFR",
+    "disease_name": "non-small cell lung carcinoma",
+    "disease_efo_id": "EFO_0003060",
+    "ensembl_id": "ENSG00000146648",
+    "overall_score": 0.8524327529356227,
+    "genetic_association_score": 0.7464039237342681,
+    "somatic_mutation_score": 0.8315878016229145,
+    "known_drug_score": null,
+    "literature_mining_score": 0.9992646256403374,
+    "evidence_count": 6,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "genetic_literature",
+        "score": 0.607930797611621
+      },
+      {
+        "evidence_type": "clinical",
+        "score": 0.9957276325687947
+      },
+      {
+        "evidence_type": "affected_pathway",
+        "score": 0.8209966976180988
+      },
+      {
+        "evidence_type": "literature",
+        "score": 0.9992646256403374
+      },
+      {
+        "evidence_type": "genetic_association",
+        "score": 0.7464039237342681
+      },
+      {
+        "evidence_type": "somatic_mutation",
+        "score": 0.8315878016229145
+      }
+    ]
+  },
+  "cancer_dependency": {
+    "gene_symbol": "EGFR",
+    "mean_ceres_score": -1.0743,
+    "fraction_dependent_lines": 0.3878,
+    "pan_essential": false,
+    "top_dependent_lineages": [
+      "cancer or benign tumor"
+    ],
+    "cell_lines": [
+      {
+        "cell_line": "lung adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.734,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "glioblastoma multiforme",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.714,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "non-small cell lung carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.663,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "urinary bladder cancer",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.632,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "urinary bladder carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.488,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "lung cancer",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.398,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "lung carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.216,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "low grade glioma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.216,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "Atypical Meningioma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.216,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "Transitional Meningioma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.216,
+        "is_dependent": true
+      }
+    ],
+    "data_source": "Open Targets Platform v4 \u2014 somatic mutation evidence (proxy; DepMap gene not found in Chronos Combined summary)"
+  },
+  "gwas_evidence": null,
+  "compounds": {
+    "gene_symbol": "EGFR",
+    "total_active_compounds": 1,
+    "compounds": [
+      {
+        "cid": 9549299,
+        "name": "N-[3-[[6-[3-(trifluoromethyl)anilino]pyrimidin-4-yl]amino]phenyl]cyclopropanecar",
+        "molecular_formula": "C21H18F3N5O",
+        "molecular_weight": 413.4,
+        "activity_outcome": "Active",
+        "activity_value": null,
+        "activity_type": null,
+        "assay_id": 0
+      }
+    ]
+  },
+  "priority_score": 4.62,
+  "priority_tier": "Medium",
+  "evidence_summary": "EGFR shows strong Open Targets association with non-small cell lung carcinoma (score: 0.85, n=6 evidence items). DepMap CRISPR data show dependency in 38% of cancer lines, highest in cancer or benign tumor. PubChem reports 1 active compounds against EGFR, indicating emerging druggability.",
+  "data_gaps": [
+    "gwas"
+  ],
+  "errors": {}
+}

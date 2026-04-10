@@ -8,6 +8,7 @@ from typing import Any, Optional, TYPE_CHECKING
 
 from genesis_bio_mcp.models import (
     CancerDependency,
+    ChEMBLCompounds,
     Compounds,
     GwasEvidence,
     GeneResolution,
@@ -18,6 +19,7 @@ from genesis_bio_mcp.models import (
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene
 
 if TYPE_CHECKING:
+    from genesis_bio_mcp.clients.chembl import ChEMBLClient
     from genesis_bio_mcp.clients.uniprot import UniProtClient
     from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
     from genesis_bio_mcp.clients.depmap import DepMapClient
@@ -36,6 +38,7 @@ async def prioritize_target(
     depmap: "DepMapClient",
     gwas: "GwasClient",
     pubchem: "PubChemClient",
+    chembl: "ChEMBLClient",
 ) -> TargetPrioritizationReport:
     """Run all database queries in parallel and synthesize a target prioritization report.
 
@@ -52,13 +55,14 @@ async def prioritize_target(
     ncbi_id = resolution.ncbi_gene_id if resolution else None
 
     # Run all independent lookups concurrently
-    (protein, protein_err), (disease_assoc, da_err), (cancer_dep, cd_err), (gwas_ev, gw_err), (compounds, co_err) = (
+    (protein, protein_err), (disease_assoc, da_err), (cancer_dep, cd_err), (gwas_ev, gw_err), (compounds, co_err), (chembl_compounds, chembl_err) = (
         await asyncio.gather(
             _safe(uniprot.get_protein(symbol)),
             _safe(open_targets.get_association(symbol, indication)),
             _safe(depmap.get_essentiality(symbol)),
             _safe(gwas.get_evidence(symbol, indication, ncbi_gene_id=ncbi_id)),
             _safe(pubchem.get_compounds(symbol)),
+            _safe(chembl.get_compounds(symbol)),
         )
     )
 
@@ -80,10 +84,11 @@ async def prioritize_target(
     _check("depmap", cancer_dep, cd_err)
     _check("gwas", gwas_ev, gw_err)
     _check("pubchem", compounds, co_err)
+    _check("chembl", chembl_compounds, chembl_err)
 
-    priority_score = _compute_score(disease_assoc, cancer_dep, gwas_ev, compounds, protein)
+    priority_score = _compute_score(disease_assoc, cancer_dep, gwas_ev, compounds, protein, chembl_compounds)
     priority_tier = _tier(priority_score)
-    evidence_summary = _build_summary(symbol, indication, disease_assoc, cancer_dep, gwas_ev, compounds)
+    evidence_summary = _build_summary(symbol, indication, disease_assoc, cancer_dep, gwas_ev, compounds, chembl_compounds)
 
     return TargetPrioritizationReport(
         gene_symbol=symbol,
@@ -94,6 +99,7 @@ async def prioritize_target(
         cancer_dependency=cancer_dep,
         gwas_evidence=gwas_ev,
         compounds=compounds,
+        chembl_compounds=chembl_compounds,
         priority_score=round(priority_score, 2),
         priority_tier=priority_tier,
         evidence_summary=evidence_summary,
@@ -118,6 +124,7 @@ def _compute_score(
     gwas_ev: Optional[GwasEvidence],
     compounds: Optional[Compounds],
     protein: Optional[ProteinInfo],
+    chembl_compounds: Optional[ChEMBLCompounds] = None,
 ) -> float:
     score = 0.0
 
@@ -126,8 +133,11 @@ def _compute_score(
         score += disease_assoc.overall_score * 3.0
 
     # DepMap cancer dependency (max 2.0)
+    # Apply 0.7x confidence discount when using OT somatic mutation proxy instead of real CRISPR data
     if cancer_dep and not cancer_dep.pan_essential:
-        score += cancer_dep.fraction_dependent_lines * 2.0
+        is_real_depmap = "DepMap Chronos" in cancer_dep.data_source
+        confidence = 1.0 if is_real_depmap else 0.7
+        score += cancer_dep.fraction_dependent_lines * 2.0 * confidence
     elif cancer_dep and cancer_dep.pan_essential:
         # Pan-essential genes have narrow therapeutic windows — cap contribution
         score += 0.5
@@ -137,7 +147,18 @@ def _compute_score(
         score += min(gwas_ev.total_associations, 10) / 10 * 2.0
 
     # Chemical matter (max 1.5)
-    if compounds:
+    # ChEMBL potency-based scoring takes precedence over PubChem count-based scoring
+    if chembl_compounds and chembl_compounds.best_pchembl is not None:
+        bp = chembl_compounds.best_pchembl
+        if bp >= 9:
+            score += 1.5   # IC50 ≤ 1 nM — clinical-grade potency
+        elif bp >= 7:
+            score += 1.0   # IC50 ≤ 100 nM — lead quality
+        elif bp >= 5:
+            score += 0.5   # IC50 ≤ 10 µM — hit quality
+        else:
+            score += 0.25  # active but weak
+    elif compounds:
         score += min(compounds.total_active_compounds, 100) / 100 * 1.5
 
     # Protein quality (max 1.5)
@@ -164,6 +185,7 @@ def _build_summary(
     cancer_dep: Optional[CancerDependency],
     gwas_ev: Optional[GwasEvidence],
     compounds: Optional[Compounds],
+    chembl_compounds: Optional[ChEMBLCompounds] = None,
 ) -> str:
     parts: list[str] = []
 
@@ -197,7 +219,16 @@ def _build_summary(
             f"to '{indication}'-related traits (strongest p={p_str})."
         )
 
-    if compounds:
+    if chembl_compounds and chembl_compounds.best_pchembl is not None:
+        bp = chembl_compounds.best_pchembl
+        ic50_nm = 10 ** (9 - bp)
+        ic50_str = f"{ic50_nm:.1f} nM" if ic50_nm < 1000 else f"{ic50_nm/1000:.1f} µM"
+        potency_label = "clinical-grade" if bp >= 9 else "lead-quality" if bp >= 7 else "hit-quality"
+        parts.append(
+            f"ChEMBL reports {chembl_compounds.total_active_compounds} compounds with potency data "
+            f"against {symbol}; best IC50 ≈ {ic50_str} ({potency_label}, pChEMBL={bp:.1f})."
+        )
+    elif compounds:
         parts.append(
             f"PubChem reports {compounds.total_active_compounds} active compounds against {symbol}, "
             f"indicating {'strong' if compounds.total_active_compounds > 50 else 'emerging'} druggability."

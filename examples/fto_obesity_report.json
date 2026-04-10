@@ -1,0 +1,163 @@
+{
+  "gene_symbol": "FTO",
+  "indication": "obesity",
+  "resolution": {
+    "hgnc_symbol": "FTO",
+    "hgnc_id": null,
+    "ncbi_gene_id": "79068",
+    "uniprot_accession": "Q9C0B1",
+    "synonyms": [
+      "KIAA1752"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "Q9C0B1",
+    "gene_symbol": "FTO",
+    "protein_name": "Alpha-ketoglutarate-dependent dioxygenase FTO",
+    "organism": "Homo sapiens",
+    "function_summary": "RNA demethylase that mediates oxidative demethylation of different RNA species, such as mRNAs, tRNAs and snRNAs, and acts as a regulator of fat mass, adipogenesis and energy homeostasis (PubMed:22002720, PubMed:25452335, PubMed:26457839, PubMed:26458103, PubMed:28002401, PubMed:30197295). Specifically demethylates N(6)-methyladenosine (m6A) RNA, the most prevalent internal modification of messenger RNA (mRNA) in higher eukaryotes (PubMed:22002720, PubMed:25452335, PubMed:26457839, PubMed:26458103, PubMed:30197295). M6A demethylation by FTO affects mRNA expression and stability (PubMed:30197295). Also able to demethylate m6A in U6 small nuclear RNA (snRNA) (PubMed:30197295). Mediates demethylation of N(6),2'-O-dimethyladenosine cap (m6A(m)), by demethylating the N(6)-methyladenosine at the second transcribed position of mRNAs and U6 snRNA (PubMed:28002401, PubMed:30197295). Demethylation of m6A(m) in the 5'-cap by FTO affects mRNA stability by promoting susceptibility to decapping (PubMed:28002401). Also acts as a tRNA demethylase by removing N(1)-methyladenine from various tRNAs (PubMed:30197295). Has no activity towards 1-methylguanine (PubMed:20376003). Has no detectable activity towards double-stranded DNA (PubMed:20376003). Also able to repair alkylated DNA and RNA by oxidative demethylation: demethylates single-stranded RNA containing 3-methyluracil, single-stranded DNA containing 3-methylthymine and has low demethylase activity towards single-stranded DNA containing 1-methyladenine or 3-methylcytosine (PubMed:18775698, PubMed:20376003). Ability to repair alkylated DNA and RNA is however unsure in vivo (PubMed:18775698, PubMed:20376003). Involved in the regulation of fat mass, adipogenesis and body weight, thereby contributing to the regulation of body size and body fat accumulation (PubMed:18775698, PubMed:20376003). Involved in the regulation of thermogenesis and the control of adipocyte differentiation into brown or white fat cells (PubMed:26287746). Regulates activity of the dopaminergic midbrain circuitry via its ability to demethylate m6A in mRNAs (By similarity). Plays an oncogenic role in a number of acute myeloid leukemias by enhancing leukemic oncogene-mediated cell transformation: acts by mediating m6A demethylation of target transcripts such as MYC, CEBPA, ASB2 and RARA, leading to promote their expression (PubMed:28017614, PubMed:29249359)",
+    "subcellular_locations": [
+      "Nucleus",
+      "Nucleus speckle",
+      "Cytoplasm"
+    ],
+    "pathways": [
+      "Reversal of alkylation damage by DNA dioxygenases"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "3LFM",
+      "4CXW",
+      "4CXX",
+      "4CXY",
+      "4IDZ",
+      "4IE0",
+      "4IE4",
+      "4IE5",
+      "4IE6",
+      "4IE7",
+      "4QHO",
+      "4QKN",
+      "4ZS2",
+      "4ZS3",
+      "5DAB",
+      "5F8P",
+      "5ZMD",
+      "6AEJ",
+      "6AK4",
+      "6AKW"
+    ],
+    "known_variants": [
+      {
+        "position": "271",
+        "original": "H",
+        "variant": "P",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "316",
+        "original": "R",
+        "variant": "Q",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "319",
+        "original": "S",
+        "variant": "F",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "322",
+        "original": "R",
+        "variant": "Q",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "405",
+        "original": "A",
+        "variant": "V",
+        "disease": null,
+        "clinical_significance": null
+      }
+    ],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "FTO",
+    "disease_name": "obesity",
+    "disease_efo_id": "EFO_0001073",
+    "ensembl_id": "ENSG00000140718",
+    "overall_score": 0.6000504859092535,
+    "genetic_association_score": 0.8082430004758977,
+    "somatic_mutation_score": null,
+    "known_drug_score": null,
+    "literature_mining_score": 0.9786816952517124,
+    "evidence_count": 4,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "literature",
+        "score": 0.9786816952517124
+      },
+      {
+        "evidence_type": "animal_model",
+        "score": 0.40506429044862313
+      },
+      {
+        "evidence_type": "genetic_association",
+        "score": 0.8082430004758977
+      },
+      {
+        "evidence_type": "genetic_literature",
+        "score": 0.607930797611621
+      }
+    ]
+  },
+  "cancer_dependency": null,
+  "gwas_evidence": {
+    "gene_symbol": "FTO",
+    "trait_query": "obesity",
+    "total_associations": 1,
+    "associations": [
+      {
+        "study_accession": "",
+        "trait": "Obesity",
+        "mapped_gene": "",
+        "risk_allele": "rs568974867-C",
+        "p_value": 6e-07,
+        "beta_or_or": 1.2,
+        "sample_size": null,
+        "population": "7,813 Korean ancestry male cases, 11,782 Korean ancestry male controls",
+        "pubmed_id": null
+      }
+    ],
+    "strongest_p_value": 6e-07
+  },
+  "compounds": {
+    "gene_symbol": "FTO",
+    "total_active_compounds": 1,
+    "compounds": [
+      {
+        "cid": 5479543,
+        "name": "tert-butyl N-[(2S,3R,5R)-6-[[(2S)-1-[[(2S)-1-amino-1-oxo-3-phenylpropan-2-yl]ami",
+        "molecular_formula": "C39H52N4O6",
+        "molecular_weight": 672.9,
+        "activity_outcome": "Active",
+        "activity_value": null,
+        "activity_type": null,
+        "assay_id": 0
+      }
+    ]
+  },
+  "priority_score": 3.52,
+  "priority_tier": "Low",
+  "evidence_summary": "FTO shows strong Open Targets association with obesity (score: 0.60, n=4 evidence items). GWAS Catalog links 1 variants near FTO to 'obesity'-related traits (strongest p=6.00e-07). PubChem reports 1 active compounds against FTO, indicating emerging druggability.",
+  "data_gaps": [
+    "depmap"
+  ],
+  "errors": {}
+}

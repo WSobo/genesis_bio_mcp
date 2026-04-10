@@ -65,18 +65,18 @@ Ask Claude:
 ```
 prioritize_target("BRAF", "melanoma")
 
-→ priority_score: 7.97 / 10
-→ priority_tier: High
+→ priority_score: 5.97 / 10
+→ priority_tier: Medium
 → evidence_summary: "BRAF shows strong Open Targets association with melanoma (score: 0.82,
-  n=4 evidence datatypes). DepMap cancer dependency data (via Open Targets somatic mutation
-  proxy) show high dependency in cancer lines. PubChem reports active BRAF inhibitors including
-  vemurafenib and dabrafenib."
+  n=5 evidence items). DepMap CRISPR data show dependency in 100% of cancer lines, highest
+  in cancer or benign tumor. PubChem reports 1 active compounds against BRAF, indicating
+  emerging druggability."
 
 → disease_association.overall_score: 0.82
-→ disease_association.somatic_mutation_score: 0.95   # BRAF V600E in ~50% of melanomas
-→ disease_association.known_drug_score: 0.88
-→ cancer_dependency.fraction_dependent_lines: 0.61
-→ compounds[0]: vemurafenib (IC50 active), dabrafenib (IC50 active)
+→ disease_association.somatic_mutation_score: 0.80   # BRAF V600E is a major somatic driver
+→ disease_association.known_drug_score: null
+→ cancer_dependency.fraction_dependent_lines: 1.0    # 100% dependency in tested lines
+→ compounds[0]: CID 53438230 (active)
 → data_gaps: ["gwas"]   # expected — BRAF's cancer relevance is somatic, not germline GWAS
 ```
 

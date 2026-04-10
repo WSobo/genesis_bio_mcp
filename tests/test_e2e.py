@@ -64,7 +64,10 @@ def _mock_clients(
     pubchem = AsyncMock()
     pubchem.get_compounds.return_value = compounds or build_mock_compounds()
 
-    return uniprot, open_targets, depmap, gwas_client, pubchem
+    chembl = AsyncMock()
+    chembl.get_compounds.return_value = None  # ChEMBL absent by default; tests opt-in
+
+    return uniprot, open_targets, depmap, gwas_client, pubchem, chembl
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +77,7 @@ def _mock_clients(
 
 async def test_braf_melanoma_full_report():
     """BRAF assessed for melanoma should return a High priority report with all fields."""
-    uniprot, open_targets, depmap, gwas_client, pubchem = _mock_clients(
+    uniprot, open_targets, depmap, gwas_client, pubchem, chembl = _mock_clients(
         protein=build_mock_protein_info("BRAF"),
         association=build_mock_association("BRAF", "melanoma", score=0.89),
         dependency=build_mock_dependency("BRAF", mean_score=-0.72, fraction_dependent=0.61),
@@ -90,6 +93,7 @@ async def test_braf_melanoma_full_report():
         depmap=depmap,
         gwas=gwas_client,
         pubchem=pubchem,
+        chembl=chembl,
     )
 
     # Core identity
@@ -112,8 +116,8 @@ async def test_braf_melanoma_full_report():
     assert report.compounds is not None
     assert report.compounds.total_active_compounds == 312
 
-    # No gaps when all APIs succeed
-    assert len(report.data_gaps) == 0
+    # Core APIs all succeeded — only ChEMBL (optional, returns None by default in mock) may be a gap
+    assert set(report.data_gaps) <= {"chembl"}
     assert len(report.errors) == 0
 
     # Evidence summary is non-empty and mentions BRAF
@@ -132,7 +136,7 @@ async def test_braf_melanoma_full_report():
 
 async def test_prioritization_handles_api_failures_gracefully():
     """When DepMap and GWAS fail, report still returns with correct data_gaps."""
-    uniprot, open_targets, depmap, gwas_client, pubchem = _mock_clients()
+    uniprot, open_targets, depmap, gwas_client, pubchem, chembl = _mock_clients()
 
     depmap.get_essentiality.side_effect = Exception("Connection timeout")
     gwas_client.get_evidence.side_effect = Exception("503 Service Unavailable")
@@ -145,6 +149,7 @@ async def test_prioritization_handles_api_failures_gracefully():
         depmap=depmap,
         gwas=gwas_client,
         pubchem=pubchem,
+        chembl=chembl,
     )
 
     # Failed modules result in None fields
@@ -173,13 +178,14 @@ async def test_prioritization_handles_api_failures_gracefully():
 
 async def test_prioritization_all_apis_fail():
     """When all APIs fail, report returns with all data_gaps and Low priority."""
-    uniprot, open_targets, depmap, gwas_client, pubchem = _mock_clients()
+    uniprot, open_targets, depmap, gwas_client, pubchem, chembl = _mock_clients()
 
     uniprot.get_protein.side_effect = Exception("UniProt unreachable")
     open_targets.get_association.side_effect = Exception("Open Targets unreachable")
     depmap.get_essentiality.side_effect = Exception("DepMap unreachable")
     gwas_client.get_evidence.side_effect = Exception("GWAS unreachable")
     pubchem.get_compounds.side_effect = Exception("PubChem unreachable")
+    chembl.get_compounds.side_effect = Exception("ChEMBL unreachable")
 
     report = await prioritize_target(
         gene_symbol="TP53",
@@ -189,6 +195,7 @@ async def test_prioritization_all_apis_fail():
         depmap=depmap,
         gwas=gwas_client,
         pubchem=pubchem,
+        chembl=chembl,
     )
 
     assert report.protein_info is None
@@ -196,7 +203,7 @@ async def test_prioritization_all_apis_fail():
     assert report.cancer_dependency is None
     assert report.gwas_evidence is None
     assert report.compounds is None
-    assert len(report.data_gaps) == 5
+    assert len(report.data_gaps) == 6  # includes chembl
     assert report.priority_score == pytest.approx(0.0)
     assert report.priority_tier == "Low"
     assert report is not None  # Never raises
@@ -212,7 +219,7 @@ async def test_pan_essential_gene_capped_score():
     pan_essential_dep = build_mock_dependency("MYC", mean_score=-1.8, fraction_dependent=0.95)
     pan_essential_dep = pan_essential_dep.model_copy(update={"pan_essential": True})
 
-    uniprot, open_targets, depmap, gwas_client, pubchem = _mock_clients(
+    uniprot, open_targets, depmap, gwas_client, pubchem, chembl = _mock_clients(
         dependency=pan_essential_dep
     )
 
@@ -224,6 +231,7 @@ async def test_pan_essential_gene_capped_score():
         depmap=depmap,
         gwas=gwas_client,
         pubchem=pubchem,
+        chembl=chembl,
     )
 
     # Pan-essential contribution is capped at 0.5, not 2.0

@@ -1,0 +1,266 @@
+{
+  "gene_symbol": "HER2",
+  "indication": "breast cancer",
+  "resolution": {
+    "hgnc_symbol": "ERBB2",
+    "hgnc_id": null,
+    "ncbi_gene_id": "2064",
+    "uniprot_accession": "P04626",
+    "synonyms": [
+      "HER2",
+      "MLN19",
+      "NEU",
+      "NGL"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "P04626",
+    "gene_symbol": "ERBB2",
+    "protein_name": "Receptor tyrosine-protein kinase erbB-2",
+    "organism": "Homo sapiens",
+    "function_summary": "In the nucleus is involved in transcriptional regulation. Associates with the 5'-TCAAATTC-3' sequence in the PTGS2/COX-2 promoter and activates its transcription. Implicated in transcriptional activation of CDKN1A; the function involves STAT3 and SRC. Involved in the transcription of rRNA genes by RNA Pol I and enhances protein synthesis and cell growth",
+    "subcellular_locations": [
+      "Cell membrane",
+      "Cell projection, ruffle membrane",
+      "Early endosome",
+      "Cytoplasm, perinuclear region",
+      "Nucleus",
+      "Cytoplasm"
+    ],
+    "pathways": [
+      "Signaling by ERBB2",
+      "SHC1 events in ERBB2 signaling",
+      "PLCG1 events in ERBB2 signaling",
+      "PIP3 activates AKT signaling",
+      "GRB7 events in ERBB2 signaling",
+      "Downregulation of ERBB2:ERBB3 signaling",
+      "GRB2 events in ERBB2 signaling",
+      "PI3K events in ERBB2 signaling",
+      "Constitutive Signaling by Aberrant PI3K in Cancer",
+      "Sema4D induced cell migration and growth-cone collapse",
+      "RAF/MAP kinase cascade",
+      "ERBB2 Regulates Cell Motility",
+      "PI5P, PP2A and IER3 Regulate PI3K/AKT Signaling",
+      "ERBB2 Activates PTK6 Signaling",
+      "Downregulation of ERBB2 signaling",
+      "TFAP2 (AP-2) family regulates transcription of growth factors and their receptors",
+      "Constitutive Signaling by Overexpressed ERBB2",
+      "Drug-mediated inhibition of ERBB2 signaling",
+      "Signaling by ERBB2 KD Mutants",
+      "Resistance of ERBB2 KD mutants to trastuzumab",
+      "Resistance of ERBB2 KD mutants to sapitinib",
+      "Resistance of ERBB2 KD mutants to tesevatinib",
+      "Resistance of ERBB2 KD mutants to neratinib",
+      "Resistance of ERBB2 KD mutants to osimertinib",
+      "Resistance of ERBB2 KD mutants to afatinib",
+      "Resistance of ERBB2 KD mutants to AEE788",
+      "Resistance of ERBB2 KD mutants to lapatinib",
+      "Signaling by ERBB2 ECD mutants",
+      "Signaling by ERBB2 TMD/JMD mutants",
+      "Drug resistance in ERBB2 TMD/JMD mutants",
+      "Developmental Lineage of Mammary Gland Myoepithelial Cells",
+      "Developmental Lineage of Mammary Stem Cells"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "1MFG",
+      "1MFL",
+      "1MW4",
+      "1N8Z",
+      "1QR1",
+      "1S78",
+      "2A91",
+      "2JWA",
+      "2KS1",
+      "2L4K",
+      "2N2A",
+      "3BE1",
+      "3H3B",
+      "3MZW",
+      "3N85",
+      "3PP0",
+      "3RCD",
+      "3WLW",
+      "3WSQ",
+      "4GFU"
+    ],
+    "known_variants": [
+      {
+        "position": "452",
+        "original": "W",
+        "variant": "C",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "654",
+        "original": "I",
+        "variant": "V",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "655",
+        "original": "I",
+        "variant": "V",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "710",
+        "original": "A",
+        "variant": "V",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "755",
+        "original": "L",
+        "variant": "P",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "768",
+        "original": "L",
+        "variant": "S",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "774",
+        "original": "M",
+        "variant": "MAYVM",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "776",
+        "original": "G",
+        "variant": "S",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "779",
+        "original": "S",
+        "variant": "SVGS",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "857",
+        "original": "N",
+        "variant": "S",
+        "disease": null,
+        "clinical_significance": null
+      }
+    ],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "HER2",
+    "disease_name": "breast cancer",
+    "disease_efo_id": "MONDO_0007254",
+    "ensembl_id": "ENSG00000141736",
+    "overall_score": 0.6343854308788797,
+    "genetic_association_score": null,
+    "somatic_mutation_score": null,
+    "known_drug_score": null,
+    "literature_mining_score": 0.9996580731878387,
+    "evidence_count": 2,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "literature",
+        "score": 0.9996580731878387
+      },
+      {
+        "evidence_type": "clinical",
+        "score": 0.9935329592828885
+      }
+    ]
+  },
+  "cancer_dependency": {
+    "gene_symbol": "HER2",
+    "mean_ceres_score": -1.1413,
+    "fraction_dependent_lines": 0.66,
+    "pan_essential": false,
+    "top_dependent_lineages": [
+      "cancer or benign tumor"
+    ],
+    "cell_lines": [
+      {
+        "cell_line": "urinary bladder cancer",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.663,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "breast adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.605,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "urinary bladder carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.524,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "non-small cell lung carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.429,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "lung adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.4,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "gastric adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.398,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "cervical squamous cell carcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.228,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "breast ductal adenocarcinoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.216,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "Atypical Meningioma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.216,
+        "is_dependent": true
+      },
+      {
+        "cell_line": "cutaneous melanoma",
+        "lineage": "cancer or benign tumor",
+        "ceres_score": -1.216,
+        "is_dependent": true
+      }
+    ],
+    "data_source": "Open Targets Platform v4 \u2014 somatic mutation evidence (proxy; DepMap gene not found in Chronos Combined summary)"
+  },
+  "gwas_evidence": null,
+  "compounds": null,
+  "priority_score": 4.33,
+  "priority_tier": "Medium",
+  "evidence_summary": "HER2 shows strong Open Targets association with breast cancer (score: 0.63, n=2 evidence items). DepMap CRISPR data show dependency in 66% of cancer lines, highest in cancer or benign tumor.",
+  "data_gaps": [
+    "gwas",
+    "pubchem"
+  ],
+  "errors": {}
+}

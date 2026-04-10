@@ -1,0 +1,119 @@
+{
+  "gene_symbol": "PTGS2",
+  "indication": "inflammation",
+  "resolution": {
+    "hgnc_symbol": "PTGS2",
+    "hgnc_id": null,
+    "ncbi_gene_id": "5743",
+    "uniprot_accession": "P35354",
+    "synonyms": [
+      "COX2"
+    ],
+    "source": "uniprot"
+  },
+  "protein_info": {
+    "uniprot_accession": "P35354",
+    "gene_symbol": "PTGS2",
+    "protein_name": "Prostaglandin G/H synthase 2",
+    "organism": "Homo sapiens",
+    "function_summary": "Dual cyclooxygenase and peroxidase in the biosynthesis pathway of prostanoids, a class of C20 oxylipins mainly derived from arachidonate ((5Z,8Z,11Z,14Z)-eicosatetraenoate, AA, C20:4(n-6)), with a particular role in the inflammatory response (PubMed:11939906, PubMed:16373578, PubMed:19540099, PubMed:22942274, PubMed:26859324, PubMed:27226593, PubMed:7592599, PubMed:7947975, PubMed:9261177). The cyclooxygenase activity oxygenates AA to the hydroperoxy endoperoxide prostaglandin G2 (PGG2), and the peroxidase activity reduces PGG2 to the hydroxy endoperoxide prostaglandin H2 (PGH2), the precursor of all 2-series prostaglandins and thromboxanes (PubMed:16373578, PubMed:22942274, PubMed:26859324, PubMed:27226593, PubMed:7592599, PubMed:7947975, PubMed:9261177). This complex transformation is initiated by abstraction of hydrogen at carbon 13 (with S-stereochemistry), followed by insertion of molecular O2 to form the endoperoxide bridge between carbon 9 and 11 that defines prostaglandins. The insertion of a second molecule of O2 (bis-oxygenase activity) yields a hydroperoxy group in PGG2 that is then reduced to PGH2 by two electrons (PubMed:16373578, PubMed:22942274, PubMed:26859324, PubMed:27226593, PubMed:7592599, PubMed:7947975, PubMed:9261177). Similarly catalyzes successive cyclooxygenation and peroxidation of dihomo-gamma-linoleate (DGLA, C20:3(n-6)) and eicosapentaenoate (EPA, C20:5(n-3)) to corresponding PGH1 and PGH3, the precursors of 1- and 3-series prostaglandins (PubMed:11939906, PubMed:19540099). In an alternative pathway of prostanoid biosynthesis, converts 2-arachidonoyl lysophopholipids to prostanoid lysophopholipids, which are then hydrolyzed by intracellular phospholipases to release free prostanoids (PubMed:27642067). Metabolizes 2-arachidonoyl glycerol yielding the glyceryl ester of PGH2, a process that can contribute to pain response (PubMed:22942274). Generates lipid mediators from n-3 and n-6 polyunsaturated fatty acids (PUFAs) via a lipoxygenase-type mechanism. Oxygenates PUFAs to hydroperoxy compounds and then reduces them to corresponding alcohols (PubMed:11034610, PubMed:11192938, PubMed:9048568, PubMed:9261177). Plays a role in the generation of resolution phase interaction products (resolvins) during both sterile and infectious inflammation (PubMed:12391014). Metabolizes docosahexaenoate (DHA, C22:6(n-3)) to 17R-HDHA, a precursor of the D-series resolvins (RvDs) (PubMed:12391014). As a component of the biosynthetic pathway of E-series resolvins (RvEs), converts eicosapentaenoate (EPA, C20:5(n-3)) primarily to 18S-HEPE that is further metabolized by ALOX5 and LTA4H to generate 18S-RvE1 and 18S-RvE2 (PubMed:21206090). In vascular endothelial cells, converts docosapentaenoate (DPA, C22:5(n-3)) to 13R-HDPA, a precursor for 13-series resolvins (RvTs) shown to activate macrophage phagocytosis during bacterial infection (PubMed:26236990). In activated leukocytes, contributes to oxygenation of hydroxyeicosatetraenoates (HETE) to diHETES (5,15-diHETE and 5,11-diHETE) (PubMed:22068350, PubMed:26282205). Can also use linoleate (LA, (9Z,12Z)-octadecadienoate, C18:2(n-6)) as substrate and produce hydroxyoctadecadienoates (HODEs) in a regio- and stereospecific manner, being (9R)-HODE ((9R)-hydroxy-(10E,12Z)-octadecadienoate) and (13S)-HODE ((13S)-hydroxy-(9Z,11E)-octadecadienoate) its major products (By similarity). During neuroinflammation, plays a role in neuronal secretion of specialized preresolving mediators (SPMs) 15R-lipoxin A4 that regulates phagocytic microglia (By similarity)",
+    "subcellular_locations": [
+      "Microsome membrane",
+      "Endoplasmic reticulum membrane",
+      "Nucleus inner membrane",
+      "Nucleus outer membrane"
+    ],
+    "pathways": [
+      "Synthesis of 15-eicosatetraenoic acid derivatives",
+      "Synthesis of Prostaglandins (PG) and Thromboxanes (TX)",
+      "Interleukin-10 signaling",
+      "Interleukin-4 and Interleukin-13 signaling",
+      "Biosynthesis of DHA-derived SPMs",
+      "Biosynthesis of EPA-derived SPMs",
+      "Biosynthesis of DPAn-3 SPMs",
+      "Biosynthesis of electrophilic Omega-3 PUFA oxo-derivatives"
+    ],
+    "disease_associations": [],
+    "pdb_structures": [
+      "5F19",
+      "5F1A",
+      "5IKQ",
+      "5IKR",
+      "5IKT",
+      "5IKV",
+      "5KIR"
+    ],
+    "known_variants": [
+      {
+        "position": "228",
+        "original": "R",
+        "variant": "H",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "428",
+        "original": "P",
+        "variant": "A",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "488",
+        "original": "E",
+        "variant": "G",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "511",
+        "original": "V",
+        "variant": "A",
+        "disease": null,
+        "clinical_significance": null
+      },
+      {
+        "position": "587",
+        "original": "G",
+        "variant": "R",
+        "disease": null,
+        "clinical_significance": null
+      }
+    ],
+    "reviewed": true
+  },
+  "disease_association": {
+    "gene_symbol": "PTGS2",
+    "disease_name": "inflammation",
+    "disease_efo_id": "MP_0001845",
+    "ensembl_id": "ENSG00000073756",
+    "overall_score": 0.6006862607305072,
+    "genetic_association_score": null,
+    "somatic_mutation_score": null,
+    "known_drug_score": null,
+    "literature_mining_score": 0.09525725249955093,
+    "evidence_count": 2,
+    "evidence_breakdown": [
+      {
+        "evidence_type": "literature",
+        "score": 0.09525725249955093
+      },
+      {
+        "evidence_type": "clinical",
+        "score": 0.9833204243057465
+      }
+    ]
+  },
+  "cancer_dependency": null,
+  "gwas_evidence": null,
+  "compounds": null,
+  "priority_score": 3.3,
+  "priority_tier": "Low",
+  "evidence_summary": "PTGS2 shows strong Open Targets association with inflammation (score: 0.60, n=2 evidence items).",
+  "data_gaps": [
+    "depmap",
+    "gwas",
+    "pubchem"
+  ],
+  "errors": {}
+}
