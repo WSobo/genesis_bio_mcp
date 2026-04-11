@@ -83,7 +83,9 @@ class GwasClient:
 
     async def _fetch_by_gene_id(self, ncbi_id: str) -> list[GwasHit]:
         url = f"{_BASE_URL}/associations/search/findByEntrezMappedGeneId"
-        params = {"entrezMappedGeneId": ncbi_id, "size": 50}
+        # size=200: primary path is a single HTTP call regardless of result count;
+        # cutting this caused PCSK9 to lose 12 real lipid-trait hits.
+        params = {"entrezMappedGeneId": ncbi_id, "size": 200}
         return await self._fetch_associations(url, params)
 
     async def _fetch_associations_from_snps(self, url: str, params: dict) -> list[GwasHit]:
@@ -118,7 +120,7 @@ class GwasClient:
             hits = [_parse_association(a) for a in raw_assocs]
             return [h for h in hits if h is not None]
         except Exception as exc:
-            logger.warning("GWAS Catalog SNP fetch failed: %s", exc)
+            logger.warning("GWAS Catalog SNP fetch failed: %s", repr(exc))
             return []
 
     async def _resolve_study_data(self, assocs: list[dict]) -> None:
@@ -159,7 +161,9 @@ class GwasClient:
 
     async def _fetch_associations(self, url: str, params: dict) -> list[GwasHit]:
         try:
-            resp = await self._client.get(url, params=params, timeout=15.0)
+            # 25s: primary path is one HTTP call; GWAS Catalog can be slow for
+            # gene IDs with many associations (TNF, FTO were timing out at 15s).
+            resp = await self._client.get(url, params=params, timeout=25.0)
             if resp.status_code in (404, 400):
                 return []
             resp.raise_for_status()
@@ -168,7 +172,7 @@ class GwasClient:
             hits = [_parse_association(a) for a in associations]
             return [h for h in hits if h is not None]
         except Exception as exc:
-            logger.warning("GWAS Catalog association fetch failed: %s", exc)
+            logger.warning("GWAS Catalog association fetch failed: %s", repr(exc))
             return []
 
 
