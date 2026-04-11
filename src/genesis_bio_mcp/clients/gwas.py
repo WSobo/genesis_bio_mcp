@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import unicodedata
 
@@ -77,37 +78,39 @@ class GwasClient:
 
     async def _fetch_by_gene_symbol(self, symbol: str) -> list[GwasHit]:
         url = f"{_BASE_URL}/singleNucleotidePolymorphisms/search/findByGene"
-        params = {"geneName": symbol, "size": 200}
+        params = {"geneName": symbol, "size": 50}
         return await self._fetch_associations_from_snps(url, params)
 
     async def _fetch_by_gene_id(self, ncbi_id: str) -> list[GwasHit]:
         url = f"{_BASE_URL}/associations/search/findByEntrezMappedGeneId"
-        params = {"entrezMappedGeneId": ncbi_id, "size": 200}
+        params = {"entrezMappedGeneId": ncbi_id, "size": 50}
         return await self._fetch_associations(url, params)
 
     async def _fetch_associations_from_snps(self, url: str, params: dict) -> list[GwasHit]:
-        """Fetch SNPs, follow their association links, and resolve missing study data."""
+        """Fetch SNPs, follow their association links concurrently, resolve study data."""
         try:
-            resp = await self._client.get(url, params=params, timeout=30.0)
+            resp = await self._client.get(url, params=params, timeout=15.0)
             if resp.status_code in (404, 400):
                 return []
             resp.raise_for_status()
             body = resp.json()
             snps = body.get("_embedded", {}).get("singleNucleotidePolymorphisms", [])
 
-            raw_assocs: list[dict] = []
-            for snp in snps[:30]:
+            async def _fetch_snp_assocs(snp: dict) -> list[dict]:
                 assoc_href = snp.get("_links", {}).get("associations", {}).get("href")
                 if not assoc_href:
-                    continue
+                    return []
                 try:
-                    ar = await self._client.get(assoc_href, timeout=15.0)
+                    ar = await self._client.get(assoc_href, timeout=8.0)
                     ar.raise_for_status()
                     ab = ar.json()
-                    for assoc in ab.get("_embedded", {}).get("associations", [])[:3]:
-                        raw_assocs.append(assoc)
+                    return ab.get("_embedded", {}).get("associations", [])[:3]
                 except Exception:
-                    continue
+                    return []
+
+            # Fan out all SNP→association fetches concurrently (was sequential)
+            results = await asyncio.gather(*[_fetch_snp_assocs(s) for s in snps[:10]])
+            raw_assocs = [assoc for batch in results for assoc in batch]
 
             # Resolve study data for associations that don't embed it
             await self._resolve_study_data(raw_assocs)
@@ -126,19 +129,26 @@ class GwasClient:
         study URLs and inject the result back into the raw assoc dicts so _parse_association
         can extract studyAccession and diseaseTrait.
         """
-        study_cache: dict[str, dict] = {}
+        # Collect unique study URLs that need resolution
+        pending: dict[str, None] = {}  # ordered set
         for assoc in assocs:
             if assoc.get("study"):
-                continue  # already embedded
-            study_link = assoc.get("_links", {}).get("study", {}).get("href", "")
-            if not study_link or study_link in study_cache:
                 continue
+            study_link = assoc.get("_links", {}).get("study", {}).get("href", "")
+            if study_link:
+                pending[study_link] = None
+
+        async def _fetch_study(link: str) -> tuple[str, dict]:
             try:
-                sr = await self._client.get(study_link, timeout=10.0)
+                sr = await self._client.get(link, timeout=5.0)
                 sr.raise_for_status()
-                study_cache[study_link] = sr.json()
+                return link, sr.json()
             except Exception:
-                study_cache[study_link] = {}
+                return link, {}
+
+        # Fan out study fetches concurrently (was sequential)
+        fetched = await asyncio.gather(*[_fetch_study(link) for link in pending])
+        study_cache = dict(fetched)
 
         for assoc in assocs:
             if assoc.get("study"):
@@ -149,7 +159,7 @@ class GwasClient:
 
     async def _fetch_associations(self, url: str, params: dict) -> list[GwasHit]:
         try:
-            resp = await self._client.get(url, params=params, timeout=30.0)
+            resp = await self._client.get(url, params=params, timeout=15.0)
             if resp.status_code in (404, 400):
                 return []
             resp.raise_for_status()
