@@ -44,6 +44,7 @@ from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.reactome import ReactomeClient
 from genesis_bio_mcp.clients.string_db import StringDbClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
+from genesis_bio_mcp.config.efo_resolver import EFOResolver
 from genesis_bio_mcp.models import ComparisonReport, DrugHistory, TargetComparisonRow
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
@@ -75,7 +76,7 @@ async def lifespan(server: FastMCP):
         server.state.uniprot = UniProtClient(client)
         server.state.open_targets = OpenTargetsClient(client)
         server.state.depmap = DepMapClient(client, gene_dep_cache)
-        server.state.gwas = GwasClient(client)
+        server.state.gwas = GwasClient(client, efo_resolver=EFOResolver(client))
         server.state.pubchem = PubChemClient(client)
         server.state.chembl = ChEMBLClient(client)
         server.state.alphafold = AlphaFoldClient(client)

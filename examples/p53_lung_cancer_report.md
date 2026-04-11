@@ -28,5 +28,15 @@ TP53 shows modest Open Targets association with lung cancer (score: 0.41, n=5 ev
 **Data coverage:** 67% of core sources returned data
 **Score range:** 2.8–3.9/10 (uncertainty from 33% missing sources)
 
+## API Latency
+| API | Latency (s) |
+|---|---|
+| pubchem | 1.95 ← slowest |
+| chembl | 1.26 |
+| open_targets | 0.65 |
+| depmap | 0.47 |
+| uniprot | 0.00 |
+| gwas | 0.00 |
+
 ---
 _Resolved: TP53 | NCBI Gene: 7157 | UniProt: P04637_

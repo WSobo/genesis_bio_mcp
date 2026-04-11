@@ -27,6 +27,7 @@ from genesis_bio_mcp.clients.gwas import GwasClient
 from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
 from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
+from genesis_bio_mcp.config.efo_resolver import EFOResolver
 from genesis_bio_mcp.tools.target_prioritization import prioritize_target
 
 HEADERS = {
@@ -110,6 +111,13 @@ async def run_one(
         )
 
     print(f"  Time:     {elapsed:.1f}s")
+    if result.api_latency_s:
+        slowest_api = max(result.api_latency_s, key=result.api_latency_s.get)
+        latency_parts = ", ".join(
+            f"{k}={v:.1f}s" for k, v in sorted(result.api_latency_s.items(), key=lambda kv: -kv[1])
+        )
+        print(f"  Latency:  {latency_parts}")
+        print(f"  Slowest:  {slowest_api} ({result.api_latency_s[slowest_api]:.1f}s)")
     print()
     print(result.evidence_summary)
 
@@ -135,6 +143,10 @@ async def run_one(
         "depmap_real": result.cancer_dependency is not None
         and "DepMap Chronos" in result.cancer_dependency.data_source,
         "elapsed_s": round(elapsed, 1),
+        "api_latency_s": result.api_latency_s,
+        "slowest_api": max(result.api_latency_s, key=result.api_latency_s.get)
+        if result.api_latency_s
+        else None,
     }
 
 
@@ -155,7 +167,7 @@ async def run(cases: list[tuple[str, str]]) -> None:
             uniprot=UniProtClient(http),
             open_targets=OpenTargetsClient(http),
             depmap=DepMapClient(http, cache),
-            gwas=GwasClient(http),
+            gwas=GwasClient(http, efo_resolver=EFOResolver(http)),
             pubchem=PubChemClient(http),
             chembl=ChEMBLClient(http),
         )
@@ -170,15 +182,16 @@ async def run(cases: list[tuple[str, str]]) -> None:
     print("SUMMARY")
     print(f"{'=' * 70}")
     print(
-        f"{'Input':<10} {'Resolved':<10} {'Indication':<30} {'Score':>6} {'Tier':<8} {'DepMap':>8} {'t(s)':>5}"
+        f"{'Input':<10} {'Resolved':<10} {'Indication':<30} {'Score':>6} {'Tier':<8} {'DepMap':>8} {'t(s)':>5}  {'slowest API':<13}"
     )
-    print("-" * 70)
+    print("-" * 85)
     for r in summary:
         dep = "real" if r["depmap_real"] else "proxy"
         gaps = ",".join(r["data_gaps"]) if r["data_gaps"] else "-"
+        slowest = r.get("slowest_api") or "?"
         print(
             f"{r['gene_input']:<10} {r['resolved']:<10} {r['indication'][:29]:<30} "
-            f"{r['score']:>5.1f}  {r['tier']:<8} {dep:>8} {r['elapsed_s']:>4.1f}s"
+            f"{r['score']:>5.1f}  {r['tier']:<8} {dep:>8} {r['elapsed_s']:>4.1f}s  {slowest:<13}"
             + (f"  [gaps: {gaps}]" if r["data_gaps"] else "")
         )
 

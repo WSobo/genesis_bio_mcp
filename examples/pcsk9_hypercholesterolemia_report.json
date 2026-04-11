@@ -171,85 +171,8 @@
   "gwas_evidence": {
     "gene_symbol": "PCSK9",
     "trait_query": "hypercholesterolemia",
-    "total_associations": 16,
+    "total_associations": 4,
     "associations": [
-      {
-        "study_accession": "",
-        "trait": "LDL x depression interaction (2df test)",
-        "mapped_gene": "",
-        "risk_allele": "rs553741-C",
-        "p_value": 2e-36,
-        "beta_or_or": 0.1593,
-        "sample_size": null,
-        "population": "19,133 African American or Afro-Caribbean individuals, 4,672 Asian ancestry individuals, 89,939 Euro",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Low density lipoprotein cholesterol levels",
-        "mapped_gene": "NR",
-        "risk_allele": "rs191448950-G",
-        "p_value": 2.9999999999999998e-36,
-        "beta_or_or": 0.388,
-        "sample_size": null,
-        "population": "76,627 European ancestry individuals, 7,795 Hispanic individuals, 6,855 East Asian ancestry individu",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Low density lipoprotein cholesterol levels",
-        "mapped_gene": "NR",
-        "risk_allele": "rs191448950-G",
-        "p_value": 6e-35,
-        "beta_or_or": 0.394,
-        "sample_size": null,
-        "population": "76,627 European ancestry individuals, 7,795 Hispanic individuals, 6,855 East Asian ancestry individu",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "LDL x depression interaction (2df test)",
-        "mapped_gene": "",
-        "risk_allele": "rs17111648-T",
-        "p_value": 8e-28,
-        "beta_or_or": 1.895,
-        "sample_size": null,
-        "population": "19,133 African American or Afro-Caribbean individuals",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Low density lipoprotein cholesterol levels",
-        "mapped_gene": "NR",
-        "risk_allele": "rs7523141-?",
-        "p_value": 3.0000000000000002e-25,
-        "beta_or_or": 0.06155,
-        "sample_size": null,
-        "population": "72,866 Japanese ancestry individuals",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Total cholesterol levels",
-        "mapped_gene": "PCSK9",
-        "risk_allele": "rs45576433-?",
-        "p_value": 1e-23,
-        "beta_or_or": 0.0619,
-        "sample_size": null,
-        "population": "128,305 Japanese ancestry individuals",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "LDL cholesterol levels x short total sleep time interaction (2df test)",
-        "mapped_gene": "PCSK9",
-        "risk_allele": "rs553741-?",
-        "p_value": 6e-23,
-        "beta_or_or": 1.681,
-        "sample_size": null,
-        "population": "2,974 African American short sleepers, 365 Chinese ancestry short sleepers, 110 Asian ancestry short",
-        "pubmed_id": null
-      },
       {
         "study_accession": "",
         "trait": "Low density lipoprotein cholesterol levels",
@@ -259,29 +182,8 @@
         "beta_or_or": 0.07746,
         "sample_size": null,
         "population": "72,866 Japanese ancestry individuals",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Free cholesterol to total lipids ratio in chylomicrons and extremely large VLDL",
-        "mapped_gene": "",
-        "risk_allele": "rs191448950-A",
-        "p_value": 5.999999999999999e-20,
-        "beta_or_or": 0.1782,
-        "sample_size": null,
-        "population": "4,435 East Asian ancestry individuals, 11,340 South Asian ancestry individuals, 110,896 European anc",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "LDL cholesterol levels x long total sleep time interaction (2df test)",
-        "mapped_gene": "PCSK9",
-        "risk_allele": "rs2274538-?",
-        "p_value": 2e-18,
-        "beta_or_or": 2.974,
-        "sample_size": null,
-        "population": "2,913 African American long sleepers, 358 Chinese ancestry long sleepers, 110 Asian ancestry long sl",
-        "pubmed_id": null
+        "pubmed_id": null,
+        "efo_uri": null
       },
       {
         "study_accession": "",
@@ -292,7 +194,8 @@
         "beta_or_or": 0.194,
         "sample_size": null,
         "population": "38,000 South Asian ancestry individuals",
-        "pubmed_id": null
+        "pubmed_id": null,
+        "efo_uri": null
       },
       {
         "study_accession": "",
@@ -303,29 +206,8 @@
         "beta_or_or": 3.59404,
         "sample_size": null,
         "population": "9,720 African American individuals, 17,373 Hispanic/Latino individuals, 2,316 Asian ancestry individ",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "LDL cholesterol levels x short total sleep time interaction (2df test)",
-        "mapped_gene": "PCSK9",
-        "risk_allele": "rs17111697-?",
-        "p_value": 2e-13,
-        "beta_or_or": 2.77,
-        "sample_size": null,
-        "population": "2,974 African American short sleepers, 365 Chinese ancestry short sleepers, 110 Asian ancestry short",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "LDL x anxiety interaction (2df test)",
-        "mapped_gene": "",
-        "risk_allele": "rs17111648-T",
-        "p_value": 6e-10,
-        "beta_or_or": 1.404,
-        "sample_size": null,
-        "population": "19,133 African American or Afro-Caribbean individuals",
-        "pubmed_id": null
+        "pubmed_id": null,
+        "efo_uri": null
       },
       {
         "study_accession": "",
@@ -336,21 +218,11 @@
         "beta_or_or": 3.266727,
         "sample_size": null,
         "population": "10,137 African American individuals, 17,802 Hispanic/Latino individuals, 2,387 Asian ancestry indivi",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Total cholesterol levels",
-        "mapped_gene": "",
-        "risk_allele": "rs74492184-?",
-        "p_value": 1e-08,
-        "beta_or_or": null,
-        "sample_size": null,
-        "population": "76,578 Taiwanese ancestry individuals",
-        "pubmed_id": null
+        "pubmed_id": null,
+        "efo_uri": null
       }
     ],
-    "strongest_p_value": 2e-36
+    "strongest_p_value": 4e-20
   },
   "compounds": null,
   "chembl_compounds": {
@@ -507,7 +379,7 @@
   "pathway_context": null,
   "priority_score": 9.05,
   "priority_tier": "High",
-  "evidence_summary": "PCSK9 shows strong Open Targets association with hypercholesterolemia (score: 0.83, n=4 evidence items). Open Targets reports strong known-drug evidence for PCSK9 (score: 0.98), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 5% of cancer lines. GWAS Catalog links 16 variants near PCSK9 to 'hypercholesterolemia'-related traits (strongest p=2.00e-36). ChEMBL reports 76 compounds with potency data against PCSK9; best IC50 \u2248 0.2 nM (clinical-grade, pChEMBL=9.8).",
+  "evidence_summary": "PCSK9 shows strong Open Targets association with hypercholesterolemia (score: 0.83, n=4 evidence items). Open Targets reports strong known-drug evidence for PCSK9 (score: 0.98), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 5% of cancer lines. GWAS Catalog links 4 variants near PCSK9 to 'hypercholesterolemia'-related traits (strongest p=4.00e-20). ChEMBL reports 76 compounds with potency data against PCSK9; best IC50 \u2248 0.2 nM (clinical-grade, pChEMBL=9.8).",
   "data_gaps": [
     "pubchem"
   ],
@@ -517,5 +389,13 @@
   "score_confidence_interval": [
     8.29,
     9.81
-  ]
+  ],
+  "api_latency_s": {
+    "uniprot": 0.18,
+    "open_targets": 0.73,
+    "depmap": 0.53,
+    "gwas": 15.02,
+    "pubchem": 1.94,
+    "chembl": 2.84
+  }
 }

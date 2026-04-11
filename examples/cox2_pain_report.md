@@ -28,5 +28,15 @@ PTGS2 shows strong Open Targets association with pain (score: 0.61, n=2 evidence
 **Data coverage:** 67% of core sources returned data
 **Score range:** 6.5–9.0/10 (uncertainty from 33% missing sources)
 
+## API Latency
+| API | Latency (s) |
+|---|---|
+| pubchem | 1.63 ← slowest |
+| chembl | 1.22 |
+| open_targets | 0.53 |
+| depmap | 0.35 |
+| uniprot | 0.00 |
+| gwas | 0.00 |
+
 ---
 _Resolved: PTGS2 | NCBI Gene: 5743 | UniProt: P35354_

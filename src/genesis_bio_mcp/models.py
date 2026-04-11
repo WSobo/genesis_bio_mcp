@@ -280,6 +280,10 @@ class GwasHit(BaseModel):
     sample_size: int | None = Field(None, description="Total discovery sample size")
     population: str | None = Field(None, description="Ancestry/population of study cohort")
     pubmed_id: str | None = Field(None, description="PubMed ID of the primary publication")
+    efo_uri: str | None = Field(
+        None,
+        description="EFO ontology URI, e.g. 'http://www.ebi.ac.uk/efo/EFO_0001073' (gene-ID path only)",
+    )
 
 
 class GwasEvidence(BaseModel):
@@ -803,6 +807,13 @@ class TargetPrioritizationReport(BaseModel):
             "None when all core sources returned data."
         ),
     )
+    api_latency_s: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Per-API wall-clock latency in seconds for the parallel gather phase. "
+            "Keys: 'uniprot', 'open_targets', 'depmap', 'gwas', 'pubchem', 'chembl'."
+        ),
+    )
 
     def to_markdown(self) -> str:
         tier_emoji = {
@@ -937,6 +948,16 @@ class TargetPrioritizationReport(BaseModel):
                     if is_proxy:
                         label = _proxy_labels.get(axis, axis)
                         lines.append(f"  - {label}")
+
+        # API latency breakdown (populated when instrumentation is active)
+        if self.api_latency_s:
+            slowest = max(self.api_latency_s, key=self.api_latency_s.get)
+            lines += ["", "## API Latency"]
+            lines.append("| API | Latency (s) |")
+            lines.append("|---|---|")
+            for api, secs in sorted(self.api_latency_s.items(), key=lambda kv: -kv[1]):
+                marker = " ← slowest" if api == slowest else ""
+                lines.append(f"| {api} | {secs:.2f}{marker} |")
 
         # Extended mode sections
         if self.protein_structure:

@@ -125,19 +125,19 @@ async def prioritize_target(
 
     # Run all independent lookups concurrently
     (
-        (protein, protein_err),
-        (disease_assoc, da_err),
-        (cancer_dep, cd_err),
-        (gwas_ev, gw_err),
-        (compounds, co_err),
-        (chembl_compounds, chembl_err),
+        (protein, protein_err, t_uniprot),
+        (disease_assoc, da_err, t_ot),
+        (cancer_dep, cd_err, t_depmap),
+        (gwas_ev, gw_err, t_gwas),
+        (compounds, co_err, t_pubchem),
+        (chembl_compounds, chembl_err, t_chembl),
     ) = await asyncio.gather(
-        _safe(uniprot.get_protein(symbol)),
-        _safe(open_targets.get_association(symbol, indication)),
-        _safe(depmap.get_essentiality(symbol)),
-        _safe(gwas.get_evidence(symbol, indication, ncbi_gene_id=ncbi_id)),
-        _safe(pubchem.get_compounds(symbol)),
-        _safe(chembl.get_compounds(symbol)),
+        _safe_timed("uniprot", uniprot.get_protein(symbol)),
+        _safe_timed("open_targets", open_targets.get_association(symbol, indication)),
+        _safe_timed("depmap", depmap.get_essentiality(symbol)),
+        _safe_timed("gwas", gwas.get_evidence(symbol, indication, ncbi_gene_id=ncbi_id)),
+        _safe_timed("pubchem", pubchem.get_compounds(symbol)),
+        _safe_timed("chembl", chembl.get_compounds(symbol)),
     )
 
     data_gaps: list[str] = []
@@ -228,6 +228,21 @@ async def prioritize_target(
             (ext_pathway, _),
         ) = ext_results
 
+    api_latency_s: dict[str, float] = {
+        "uniprot": round(t_uniprot, 2),
+        "open_targets": round(t_ot, 2),
+        "depmap": round(t_depmap, 2),
+        "gwas": round(t_gwas, 2),
+        "pubchem": round(t_pubchem, 2),
+        "chembl": round(t_chembl, 2),
+    }
+    logger.info(
+        "API latencies for %s/%s: %s",
+        symbol,
+        indication,
+        {k: f"{v:.2f}s" for k, v in api_latency_s.items()},
+    )
+
     return TargetPrioritizationReport(
         gene_symbol=symbol,
         indication=indication,
@@ -246,6 +261,7 @@ async def prioritize_target(
         data_coverage_pct=data_coverage_pct,
         proxy_data_flags=proxy_data_flags,
         score_confidence_interval=score_confidence_interval,
+        api_latency_s=api_latency_s,
         protein_structure=ext_structure,
         protein_interactome=ext_interactome,
         drug_history=ext_drug_history,
@@ -261,6 +277,13 @@ async def _safe(coro, fallback=None) -> tuple[Any, str | None]:
     except Exception as exc:
         logger.warning("Tool sub-query failed: %s", exc)
         return fallback, str(exc)
+
+
+async def _safe_timed(name: str, coro, fallback=None) -> tuple[Any, str | None, float]:
+    """Like _safe(), but also returns wall-clock seconds for the awaited coroutine."""
+    t0 = asyncio.get_running_loop().time()
+    result, err = await _safe(coro, fallback)
+    return result, err, asyncio.get_running_loop().time() - t0
 
 
 async def _safe_none() -> tuple[None, None]:
@@ -356,8 +379,10 @@ def _compute_score(
         score += 0.5
 
     # GWAS evidence (max 2.0)
+    # Cap at 3: ≥3 replicated trait hits = full credit. Keeps score stable whether
+    # the fetch returned 3 or 30 hits — pagination differences don't affect scoring.
     if gwas_ev:
-        score += min(gwas_ev.total_associations, 10) / 10 * 2.0
+        score += min(gwas_ev.total_associations, 3) / 3 * 2.0
 
     # Clinical / known-drug evidence (max 1.5)
     # Distinguishes targets with approved drugs from literature-only at the same OT overall_score

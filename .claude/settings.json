@@ -6,5 +6,21 @@
       "Bash(uv add:*)",
       "Bash(rtk git:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(*git commit*)",
+            "command": "uv run python -c \"\nimport sys, json, subprocess, os\ndata = json.load(sys.stdin)\ncmd = data.get('tool_input', {}).get('command', '')\nif 'git commit' in cmd:\n    os.chdir('/home/wsobolew/projects/genesis-bio-mcp')\n    r1 = subprocess.run(['uv', 'run', 'ruff', 'format', '.'])\n    r2 = subprocess.run(['uv', 'run', 'ruff', 'check', '--fix', '.'])\n    if r1.returncode != 0 or r2.returncode != 0:\n        print('{\\\"continue\\\":false,\\\"stopReason\\\":\\\"Ruff linting failed. Fix errors before committing.\\\"}')  \n\"",
+            "timeout": 60,
+            "statusMessage": "Running ruff format + check before commit..."
+          }
+        ]
+      }
+    ]
   }
 }

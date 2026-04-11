@@ -2,26 +2,111 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
-import unicodedata
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
+from genesis_bio_mcp.config.trait_synonyms import filter_by_trait
 from genesis_bio_mcp.models import GwasEvidence, GwasHit
+
+if TYPE_CHECKING:
+    from genesis_bio_mcp.config.efo_resolver import EFOResolver, EFOTerm
 
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://www.ebi.ac.uk/gwas/rest/api"
+_CACHE_PATH = Path("data/gwas_cache.json")
+_CACHE_TTL_SECS = 86400  # 24 hours
 
 
-def _normalize(text: str) -> str:
-    """Normalize Unicode to ASCII-comparable form (handles curly apostrophes etc.)."""
-    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii").lower()
+def _load_gwas_cache() -> dict[str, dict]:
+    try:
+        if _CACHE_PATH.exists():
+            return json.loads(_CACHE_PATH.read_text())
+    except Exception as exc:
+        logger.warning("Failed to load GWAS cache: %s", repr(exc))
+    return {}
+
+
+def _get_cached(cache: dict[str, dict], symbol: str, trait: str) -> GwasEvidence | None:
+    entry = cache.get(f"{symbol}:{trait}")
+    if not entry:
+        return None
+    if time.time() - entry.get("fetched_at", 0) > _CACHE_TTL_SECS:
+        return None
+    try:
+        return GwasEvidence.model_validate(entry["result"])
+    except Exception:
+        return None
+
+
+def _set_cached(cache: dict[str, dict], symbol: str, trait: str, result: GwasEvidence) -> None:
+    cache[f"{symbol}:{trait}"] = {"result": result.model_dump(), "fetched_at": time.time()}
+    try:
+        _CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _CACHE_PATH.write_text(json.dumps(cache, indent=2, default=str))
+    except Exception as exc:
+        logger.warning("Failed to write GWAS cache: %s", repr(exc))
+
+
+def _process_for_trait(
+    raw: list[GwasHit],
+    symbol: str,
+    trait: str,
+    efo_terms: list[EFOTerm] | None = None,
+) -> GwasEvidence | None:
+    """Dedup, trait-filter, and package raw hits into a GwasEvidence result."""
+    # Deduplicate: same association can appear via both fetch paths
+    seen: set[tuple] = set()
+    unique: list[GwasHit] = []
+    for h in raw:
+        key = (h.risk_allele, h.study_accession, h.p_value)
+        if key not in seen:
+            seen.add(key)
+            unique.append(h)
+
+    filtered = filter_by_trait(unique, trait, efo_terms=efo_terms)
+    if not filtered:
+        return None
+
+    # Remove zero p-value artifacts and sort
+    filtered = [a for a in filtered if a.p_value and a.p_value > 0]
+    filtered.sort(key=lambda h: h.p_value)
+
+    if not filtered:
+        return None
+
+    return GwasEvidence(
+        gene_symbol=symbol,
+        trait_query=trait,
+        total_associations=len(filtered),
+        associations=filtered[:50],
+        strongest_p_value=filtered[0].p_value if filtered else None,
+    )
+
+
+async def _resolve_empty() -> list:
+    return []
 
 
 class GwasClient:
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        efo_resolver: EFOResolver | None = None,
+    ) -> None:
         self._client = client
+        self._efo_resolver = efo_resolver
+        self._disk_cache: dict[str, dict] = _load_gwas_cache()
+        # Session-level gene cache: raw associations per gene symbol.
+        # Avoids re-fetching the same gene for different trait queries
+        # (e.g. PTGS2 for "inflammation" then COX2→PTGS2 for "pain").
+        self._gene_cache: dict[str, list[GwasHit]] = {}
 
     async def get_evidence(
         self, gene_symbol: str, trait: str, ncbi_gene_id: str | None = None
@@ -29,85 +114,114 @@ class GwasClient:
         """Return GWAS Catalog hits for a gene–trait pair."""
         symbol = gene_symbol.strip().upper()
 
-        # Primary: gene-ID path returns fully-embedded study + EFO traits
-        associations: list[GwasHit] = []
-        if ncbi_gene_id:
-            associations = await self._fetch_by_gene_id(ncbi_gene_id)
+        if symbol not in self._gene_cache:
+            # Run gene fetch and EFO resolution concurrently.
+            # EFO adds ~0ms (cached) or ~200ms (cold), gene fetch takes 2–15s —
+            # so EFO resolution is always done before we need it.
+            raw, efo_terms = await asyncio.gather(
+                self._fetch_all(symbol, ncbi_gene_id),
+                self._efo_resolver.resolve(trait) if self._efo_resolver else _resolve_empty(),
+            )
+            # Only cache successful fetches. A timeout returns [] which we don't
+            # cache — preserves the ability to retry on a subsequent trait query
+            # for the same gene, and avoids poisoning the cache with transient
+            # infrastructure failures (GWAS API is the slowest dependency).
+            if raw:
+                self._gene_cache[symbol] = raw
+        else:
+            raw = self._gene_cache[symbol]
+            efo_terms = await self._efo_resolver.resolve(trait) if self._efo_resolver else []
 
-        # Fallback: SNP path (study links need a follow-up request)
-        if not associations:
-            associations = await self._fetch_by_gene_symbol(symbol)
-
-        if not associations:
+        if not raw:
+            # Disk cache fallback — timeouts are infrastructure failures,
+            # not evidence of absent GWAS signal.
+            cached = _get_cached(self._disk_cache, symbol, trait)
+            if cached is not None:
+                logger.info("GWAS live fetch empty for %s/%s, serving cached result", symbol, trait)
+                return cached
             return None
 
-        # Deduplicate: same association can appear multiple times (multiple SNPs → same locus)
-        seen: set[tuple] = set()
-        unique: list[GwasHit] = []
-        for h in associations:
-            key = (h.risk_allele, h.study_accession, h.p_value)
-            if key not in seen:
-                seen.add(key)
-                unique.append(h)
-        associations = unique
-
-        filtered = _filter_by_trait(associations, trait)
-        if not filtered:
+        result = _process_for_trait(raw, symbol, trait, efo_terms=efo_terms)
+        if result:
+            _set_cached(self._disk_cache, symbol, trait, result)
+        else:
             logger.info(
                 "GWAS: no '%s' trait hits for %s — returning None (data gap)",
                 trait,
                 symbol,
             )
-            return None
+        return result
 
-        # Remove zero p-value artifacts and sort
-        filtered = [a for a in filtered if a.p_value and a.p_value > 0]
-        filtered.sort(key=lambda h: h.p_value)
+    async def _fetch_all(self, symbol: str, ncbi_gene_id: str | None) -> list[GwasHit]:
+        """Run primary (gene-ID) and SNP paths concurrently, return merged results.
 
-        if not filtered:
-            return None
+        Uses asyncio.wait with a 15s global bound so worst case = max(paths),
+        not sum(paths). Whatever completes within the window is kept; the rest
+        is cancelled.
+        """
+        tasks: list[asyncio.Task] = []
+        if ncbi_gene_id:
+            tasks.append(asyncio.create_task(self._fetch_by_gene_id(ncbi_gene_id)))
+        tasks.append(asyncio.create_task(self._fetch_by_gene_symbol(symbol)))
 
-        return GwasEvidence(
-            gene_symbol=symbol,
-            trait_query=trait,
-            total_associations=len(filtered),
-            associations=filtered[:50],
-            strongest_p_value=filtered[0].p_value if filtered else None,
-        )
+        if not tasks:
+            return []
+
+        # 15s global bound: if primary times out at 25s but SNP returns in 12s,
+        # we get SNP results at the 15s mark instead of waiting 45s total.
+        done, pending = await asyncio.wait(tasks, timeout=15.0)
+        for t in pending:
+            t.cancel()
+
+        merged: list[GwasHit] = []
+        for t in done:
+            try:
+                merged.extend(t.result())
+            except Exception as exc:
+                logger.warning("GWAS fetch path failed: %s", repr(exc))
+
+        if not merged and pending:
+            logger.warning("GWAS: all fetch paths timed out for %s within 15s window", symbol)
+
+        return merged
 
     async def _fetch_by_gene_symbol(self, symbol: str) -> list[GwasHit]:
         url = f"{_BASE_URL}/singleNucleotidePolymorphisms/search/findByGene"
-        params = {"geneName": symbol, "size": 200}
+        params = {"geneName": symbol, "size": 50}
         return await self._fetch_associations_from_snps(url, params)
 
     async def _fetch_by_gene_id(self, ncbi_id: str) -> list[GwasHit]:
         url = f"{_BASE_URL}/associations/search/findByEntrezMappedGeneId"
+        # size=200: primary path is a single HTTP call regardless of result count;
+        # cutting this caused PCSK9 to lose 12 real lipid-trait hits.
         params = {"entrezMappedGeneId": ncbi_id, "size": 200}
         return await self._fetch_associations(url, params)
 
     async def _fetch_associations_from_snps(self, url: str, params: dict) -> list[GwasHit]:
-        """Fetch SNPs, follow their association links, and resolve missing study data."""
+        """Fetch SNPs, follow their association links concurrently, resolve study data."""
         try:
-            resp = await self._client.get(url, params=params, timeout=30.0)
+            resp = await self._client.get(url, params=params, timeout=15.0)
             if resp.status_code in (404, 400):
                 return []
             resp.raise_for_status()
             body = resp.json()
             snps = body.get("_embedded", {}).get("singleNucleotidePolymorphisms", [])
 
-            raw_assocs: list[dict] = []
-            for snp in snps[:30]:
+            async def _fetch_snp_assocs(snp: dict) -> list[dict]:
                 assoc_href = snp.get("_links", {}).get("associations", {}).get("href")
                 if not assoc_href:
-                    continue
+                    return []
                 try:
-                    ar = await self._client.get(assoc_href, timeout=15.0)
+                    ar = await self._client.get(assoc_href, timeout=8.0)
                     ar.raise_for_status()
                     ab = ar.json()
-                    for assoc in ab.get("_embedded", {}).get("associations", [])[:3]:
-                        raw_assocs.append(assoc)
+                    return ab.get("_embedded", {}).get("associations", [])[:3]
                 except Exception:
-                    continue
+                    return []
+
+            # Fan out all SNP→association fetches concurrently
+            results = await asyncio.gather(*[_fetch_snp_assocs(s) for s in snps[:10]])
+            raw_assocs = [assoc for batch in results for assoc in batch]
 
             # Resolve study data for associations that don't embed it
             await self._resolve_study_data(raw_assocs)
@@ -115,7 +229,7 @@ class GwasClient:
             hits = [_parse_association(a) for a in raw_assocs]
             return [h for h in hits if h is not None]
         except Exception as exc:
-            logger.warning("GWAS Catalog SNP fetch failed: %s", exc)
+            logger.warning("GWAS Catalog SNP fetch failed: %s", repr(exc))
             return []
 
     async def _resolve_study_data(self, assocs: list[dict]) -> None:
@@ -126,19 +240,24 @@ class GwasClient:
         study URLs and inject the result back into the raw assoc dicts so _parse_association
         can extract studyAccession and diseaseTrait.
         """
-        study_cache: dict[str, dict] = {}
+        pending: dict[str, None] = {}  # ordered set
         for assoc in assocs:
             if assoc.get("study"):
-                continue  # already embedded
-            study_link = assoc.get("_links", {}).get("study", {}).get("href", "")
-            if not study_link or study_link in study_cache:
                 continue
+            study_link = assoc.get("_links", {}).get("study", {}).get("href", "")
+            if study_link:
+                pending[study_link] = None
+
+        async def _fetch_study(link: str) -> tuple[str, dict]:
             try:
-                sr = await self._client.get(study_link, timeout=10.0)
+                sr = await self._client.get(link, timeout=5.0)
                 sr.raise_for_status()
-                study_cache[study_link] = sr.json()
+                return link, sr.json()
             except Exception:
-                study_cache[study_link] = {}
+                return link, {}
+
+        fetched = await asyncio.gather(*[_fetch_study(link) for link in pending])
+        study_cache = dict(fetched)
 
         for assoc in assocs:
             if assoc.get("study"):
@@ -149,7 +268,9 @@ class GwasClient:
 
     async def _fetch_associations(self, url: str, params: dict) -> list[GwasHit]:
         try:
-            resp = await self._client.get(url, params=params, timeout=30.0)
+            # 25s: primary path is one HTTP call; GWAS Catalog can be slow for
+            # gene IDs with many associations (TNF, FTO were timing out at 15s).
+            resp = await self._client.get(url, params=params, timeout=25.0)
             if resp.status_code in (404, 400):
                 return []
             resp.raise_for_status()
@@ -158,7 +279,7 @@ class GwasClient:
             hits = [_parse_association(a) for a in associations]
             return [h for h in hits if h is not None]
         except Exception as exc:
-            logger.warning("GWAS Catalog association fetch failed: %s", exc)
+            logger.warning("GWAS Catalog association fetch failed: %s", repr(exc))
             return []
 
 
@@ -189,11 +310,13 @@ def _parse_association(assoc: dict) -> GwasHit | None:
         efo_traits = assoc.get("efoTraits", [])
         if efo_traits:
             trait = efo_traits[0].get("trait", "")
+            efo_uri = efo_traits[0].get("uri") or None
         else:
             # Fall back to study.diseaseTrait.trait (populated after _resolve_study_data)
             trait = assoc.get("study", {}).get("diseaseTrait", {}).get("trait", "") or assoc.get(
                 "traitName", ""
             )
+            efo_uri = None
 
         # Study info — may be embedded directly or injected by _resolve_study_data
         study = assoc.get("study", {})
@@ -216,6 +339,7 @@ def _parse_association(assoc: dict) -> GwasHit | None:
         return GwasHit(
             study_accession=study_accession,
             trait=trait,
+            efo_uri=efo_uri,
             mapped_gene=mapped_gene,
             risk_allele=risk_allele,
             p_value=p_value,
@@ -227,52 +351,3 @@ def _parse_association(assoc: dict) -> GwasHit | None:
     except Exception as exc:
         logger.debug("Failed to parse GWAS association: %s", exc)
         return None
-
-
-_TRAIT_SYNONYMS: dict[str, list[str]] = {
-    "hypercholesterolemia": ["cholesterol", "ldl", "low-density lipoprotein", "lipid"],
-    "hypercholesterolaemia": ["cholesterol", "ldl", "low-density lipoprotein", "lipid"],
-    "obesity": [
-        "obesity",
-        "body mass index",
-        "bmi",
-        "adiposity",
-        "overweight",
-        "waist",
-    ],
-    "rheumatoid arthritis": ["rheumatoid arthritis", "arthritis"],
-    "inflammation": ["inflammation", "inflammatory", "c-reactive protein", "crp"],
-    "cardiovascular disease": [
-        "cardiovascular",
-        "coronary artery",
-        "myocardial infarction",
-        "heart disease",
-    ],
-    "type 2 diabetes": [
-        "type 2 diabetes",
-        "t2d",
-        "diabetes mellitus",
-        "glycated haemoglobin",
-        "hba1c",
-    ],
-    "alzheimer disease": ["alzheimer", "dementia", "cognitive decline"],
-    "non-small cell lung carcinoma": [
-        "lung cancer",
-        "lung carcinoma",
-        "non-small cell lung",
-    ],
-    "squamous cell carcinoma": ["squamous cell", "carcinoma"],
-    "pain": ["pain"],
-}
-
-
-def _filter_by_trait(hits: list[GwasHit], trait: str) -> list[GwasHit]:
-    trait_norm = _normalize(trait)
-    synonyms = _TRAIT_SYNONYMS.get(trait_norm, [])
-    match_terms = [trait_norm] + [_normalize(s) for s in synonyms]
-
-    def _matches(hit_trait: str) -> bool:
-        ht = _normalize(hit_trait)
-        return any(term in ht for term in match_terms)
-
-    return [h for h in hits if _matches(h.trait)]

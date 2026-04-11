@@ -1,6 +1,6 @@
 {
   "gene_symbol": "FTO",
-  "indication": "obesity",
+  "indication": "fat",
   "resolution": {
     "hgnc_symbol": "FTO",
     "hgnc_id": null,
@@ -89,31 +89,23 @@
   },
   "disease_association": {
     "gene_symbol": "FTO",
-    "disease_name": "obesity",
-    "disease_efo_id": "EFO_0001073",
+    "disease_name": "polyunsaturated fatty acids to monounsaturated fatty acids ratio ",
+    "disease_efo_id": "EFO_0022302",
     "ensembl_id": "ENSG00000140718",
-    "overall_score": 0.6000504859092535,
-    "genetic_association_score": 0.8082430004758977,
+    "overall_score": 0.7063867554804457,
+    "genetic_association_score": 0.7972631888598636,
     "somatic_mutation_score": null,
     "known_drug_score": null,
-    "literature_mining_score": 0.9786816952517124,
-    "evidence_count": 4,
+    "literature_mining_score": null,
+    "evidence_count": 2,
     "evidence_breakdown": [
       {
-        "evidence_type": "literature",
-        "score": 0.9786816952517124
-      },
-      {
-        "evidence_type": "animal_model",
-        "score": 0.40506429044862313
-      },
-      {
         "evidence_type": "genetic_association",
-        "score": 0.8082430004758977
+        "score": 0.7972631888598636
       },
       {
         "evidence_type": "genetic_literature",
-        "score": 0.607930797611621
+        "score": 0.653401539922776
       }
     ]
   },
@@ -295,9 +287,9 @@
   "protein_interactome": null,
   "drug_history": null,
   "pathway_context": null,
-  "priority_score": 4.31,
+  "priority_score": 4.63,
   "priority_tier": "Medium",
-  "evidence_summary": "FTO shows strong Open Targets association with obesity (score: 0.60, n=4 evidence items). DepMap CRISPR data show dependency in 0% of cancer lines. ChEMBL reports 92 compounds with potency data against FTO; best IC50 \u2248 60.3 nM (lead-quality, pChEMBL=7.2).",
+  "evidence_summary": "FTO shows strong Open Targets association with fat (score: 0.71, n=2 evidence items). DepMap CRISPR data show dependency in 0% of cancer lines. ChEMBL reports 92 compounds with potency data against FTO; best IC50 \u2248 60.3 nM (lead-quality, pChEMBL=7.2).",
   "data_gaps": [
     "gwas"
   ],
@@ -305,15 +297,15 @@
   "data_coverage_pct": 83.3,
   "proxy_data_flags": {},
   "score_confidence_interval": [
-    3.95,
-    4.67
+    4.24,
+    5.02
   ],
   "api_latency_s": {
-    "uniprot": 0.16,
-    "open_targets": 0.69,
-    "depmap": 0.54,
-    "gwas": 6.46,
-    "pubchem": 1.15,
-    "chembl": 1.63
+    "uniprot": 0.17,
+    "open_targets": 0.88,
+    "depmap": 0.5,
+    "gwas": 5.07,
+    "pubchem": 1.47,
+    "chembl": 2.67
   }
 }

@@ -1,161 +1,22 @@
 [
   {
-    "gene_input": "BRAF",
-    "resolved": "BRAF",
-    "indication": "melanoma",
-    "score": 7.15,
-    "tier": "High",
-    "data_gaps": [
-      "gwas"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 14.8
-  },
-  {
-    "gene_input": "EGFR",
-    "resolved": "EGFR",
-    "indication": "non-small cell lung carcinoma",
-    "score": 7.51,
-    "tier": "High",
-    "data_gaps": [
-      "gwas"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 47.1
-  },
-  {
-    "gene_input": "KRAS",
-    "resolved": "KRAS",
-    "indication": "pancreatic cancer",
-    "score": 4.94,
-    "tier": "Medium",
-    "data_gaps": [
-      "gwas",
-      "pubchem"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 17.3
-  },
-  {
-    "gene_input": "HER2",
-    "resolved": "ERBB2",
-    "indication": "breast cancer",
-    "score": 7.64,
-    "tier": "High",
-    "data_gaps": [
-      "gwas",
-      "pubchem"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 48.7
-  },
-  {
-    "gene_input": "PCSK9",
-    "resolved": "PCSK9",
-    "indication": "hypercholesterolemia",
-    "score": 9.05,
-    "tier": "High",
-    "data_gaps": [
-      "pubchem"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 16.7
-  },
-  {
-    "gene_input": "FTO",
-    "resolved": "FTO",
-    "indication": "obesity",
-    "score": 5.31,
-    "tier": "Medium",
-    "data_gaps": [],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 48.4
-  },
-  {
     "gene_input": "TNF",
     "resolved": "TNF",
-    "indication": "rheumatoid arthritis",
-    "score": 7.1,
-    "tier": "High",
+    "indication": "joint inflammation",
+    "score": 5.4,
+    "tier": "Medium",
     "data_gaps": [],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 18.5
-  },
-  {
-    "gene_input": "PTGS2",
-    "resolved": "PTGS2",
-    "indication": "inflammation",
-    "score": 7.72,
-    "tier": "High",
-    "data_gaps": [
-      "gwas",
-      "pubchem"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 50.3
-  },
-  {
-    "gene_input": "TP53",
-    "resolved": "TP53",
-    "indication": "squamous cell carcinoma",
-    "score": 3.57,
-    "tier": "Low",
-    "data_gaps": [
-      "gwas",
-      "pubchem"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 18.7
-  },
-  {
-    "gene_input": "CD274",
-    "resolved": "CD274",
-    "indication": "melanoma",
-    "score": 4.11,
-    "tier": "Medium",
-    "data_gaps": [
-      "gwas",
-      "pubchem"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 47.3
-  },
-  {
-    "gene_input": "p53",
-    "resolved": "TP53",
-    "indication": "lung cancer",
-    "score": 3.35,
-    "tier": "Low",
-    "data_gaps": [
-      "gwas",
-      "pubchem"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 36.2
-  },
-  {
-    "gene_input": "COX2",
-    "resolved": "PTGS2",
-    "indication": "pain",
-    "score": 7.75,
-    "tier": "High",
-    "data_gaps": [
-      "gwas",
-      "pubchem"
-    ],
-    "errors": [],
-    "depmap_real": true,
-    "elapsed_s": 30.9
+    "elapsed_s": 10.2,
+    "api_latency_s": {
+      "uniprot": 0.19,
+      "open_targets": 0.78,
+      "depmap": 0.55,
+      "gwas": 9.16,
+      "pubchem": 2.22,
+      "chembl": 1.46
+    },
+    "slowest_api": "gwas"
   }
 ]

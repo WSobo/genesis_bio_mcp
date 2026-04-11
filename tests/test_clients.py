@@ -14,6 +14,9 @@ from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.reactome import ReactomeClient
 from genesis_bio_mcp.clients.string_db import StringDbClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
+from genesis_bio_mcp.config.efo_resolver import EFOResolver, EFOTerm
+from genesis_bio_mcp.config.trait_synonyms import filter_by_trait
+from genesis_bio_mcp.models import GwasHit
 from tests.conftest import (
     MOCK_DEPMAP_OT_CANCER,
     MOCK_ENTREZ_AIDS,
@@ -601,3 +604,139 @@ async def test_reactome_returns_none_on_failure(http_client):
     client = ReactomeClient(http_client)
     result = await client.get_pathway_context("BRAF")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# EFOResolver tests
+# ---------------------------------------------------------------------------
+
+_MOCK_OLS4_OBESITY = {
+    "response": {
+        "docs": [
+            {
+                "iri": "http://www.ebi.ac.uk/efo/EFO_0001073",
+                "label": "obesity",
+                "synonym": ["overweight", "adiposity", "fat body mass"],
+            },
+            {
+                "iri": "http://www.ebi.ac.uk/efo/EFO_0004340",
+                "label": "body mass index",
+                "synonym": ["BMI"],
+            },
+        ]
+    }
+}
+
+
+@respx.mock
+async def test_efo_resolver_returns_terms(http_client):
+    respx.get(url__regex=r"ols4/api/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_OLS4_OBESITY)
+    )
+    resolver = EFOResolver(http_client, cache_path=None)
+    terms = await resolver.resolve("obesity")
+
+    assert len(terms) == 2
+    assert terms[0].uri == "http://www.ebi.ac.uk/efo/EFO_0001073"
+    assert terms[0].label == "obesity"
+    assert "adiposity" in terms[0].synonyms
+    assert terms[1].label == "body mass index"
+
+
+@respx.mock
+async def test_efo_resolver_falls_back_on_ols_failure(http_client):
+    respx.get(url__regex=r"ols4/api/search").mock(return_value=httpx.Response(503))
+    resolver = EFOResolver(http_client, cache_path=None)
+    terms = await resolver.resolve("obesity")
+    # Must return [] gracefully — callers fall back to synonym dict
+    assert terms == []
+
+
+@respx.mock
+async def test_efo_resolver_session_cache_prevents_duplicate_calls(http_client):
+    call_count = 0
+
+    def side_effect(request):
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(200, json=_MOCK_OLS4_OBESITY)
+
+    respx.get(url__regex=r"ols4/api/search").mock(side_effect=side_effect)
+    resolver = EFOResolver(http_client, cache_path=None)
+
+    await resolver.resolve("obesity")
+    await resolver.resolve("obesity")  # second call — must hit session cache
+
+    assert call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# filter_by_trait tests
+# ---------------------------------------------------------------------------
+
+
+def _make_hit(trait: str, efo_uri: str | None = None) -> GwasHit:
+    return GwasHit(
+        study_accession="GCST000001",
+        trait=trait,
+        mapped_gene="FTO",
+        risk_allele="rs1234-A",
+        p_value=1e-10,
+        efo_uri=efo_uri,
+    )
+
+
+def test_filter_by_trait_efo_uri_exact_match():
+    """EFO URI hit matches precisely — string content of trait label is irrelevant."""
+    hits = [
+        _make_hit("body mass index", efo_uri="http://www.ebi.ac.uk/efo/EFO_0001073"),
+        _make_hit("type 2 diabetes", efo_uri="http://www.ebi.ac.uk/efo/EFO_0000400"),
+    ]
+    efo_terms = [EFOTerm(uri="http://www.ebi.ac.uk/efo/EFO_0001073", label="obesity", synonyms=[])]
+    result = filter_by_trait(hits, "fat", efo_terms=efo_terms)
+
+    assert len(result) == 1
+    assert result[0].trait == "body mass index"
+
+
+def test_filter_by_trait_efo_synonym_string_match():
+    """EFO synonym expansion catches label variants not in the hardcoded dict."""
+    hits = [
+        _make_hit("fat body mass"),  # no efo_uri — SNP path
+        _make_hit("coronary artery disease"),
+    ]
+    efo_terms = [
+        EFOTerm(
+            uri="http://www.ebi.ac.uk/efo/EFO_0001073",
+            label="obesity",
+            synonyms=["fat body mass", "adiposity"],
+        )
+    ]
+    result = filter_by_trait(hits, "fat", efo_terms=efo_terms)
+
+    assert len(result) == 1
+    assert result[0].trait == "fat body mass"
+
+
+def test_filter_by_trait_fallback_to_synonym_dict_when_no_efo():
+    """When efo_terms is None, falls back to hardcoded TRAIT_SYNONYMS dict."""
+    hits = [
+        _make_hit("low-density lipoprotein cholesterol"),
+        _make_hit("type 2 diabetes"),
+    ]
+    result = filter_by_trait(hits, "hypercholesterolemia", efo_terms=None)
+
+    assert len(result) == 1
+    assert "cholesterol" in result[0].trait
+
+
+def test_filter_by_trait_unknown_indication_direct_substring():
+    """Indication not in dict and no EFO terms — falls back to direct substring match."""
+    hits = [
+        _make_hit("autoimmune thyroid disease"),
+        _make_hit("melanoma"),
+    ]
+    result = filter_by_trait(hits, "thyroid disease", efo_terms=None)
+
+    assert len(result) == 1
+    assert result[0].trait == "autoimmune thyroid disease"
