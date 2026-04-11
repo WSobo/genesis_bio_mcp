@@ -373,7 +373,7 @@
   "protein_interactome": null,
   "drug_history": null,
   "pathway_context": null,
-  "priority_score": 8.65,
+  "priority_score": 9.05,
   "priority_tier": "High",
   "evidence_summary": "PCSK9 shows strong Open Targets association with hypercholesterolemia (score: 0.83, n=4 evidence items). Open Targets reports strong known-drug evidence for PCSK9 (score: 0.98), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 5% of cancer lines. GWAS Catalog links 4 variants near PCSK9 to 'hypercholesterolemia'-related traits (strongest p=4.00e-20). ChEMBL reports 76 compounds with potency data against PCSK9; best IC50 \u2248 0.2 nM (clinical-grade, pChEMBL=9.8).",
   "data_gaps": [
@@ -383,15 +383,15 @@
   "data_coverage_pct": 83.3,
   "proxy_data_flags": {},
   "score_confidence_interval": [
-    7.93,
-    9.37
+    8.29,
+    9.81
   ],
   "api_latency_s": {
-    "uniprot": 0.19,
-    "open_targets": 0.54,
+    "uniprot": 0.18,
+    "open_targets": 0.52,
     "depmap": 0.37,
-    "gwas": 1.68,
-    "pubchem": 1.92,
-    "chembl": 1.47
+    "gwas": 1.19,
+    "pubchem": 2.02,
+    "chembl": 0.65
   }
 }

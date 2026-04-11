@@ -31,10 +31,10 @@ PTGS2 shows strong Open Targets association with pain (score: 0.61, n=2 evidence
 ## API Latency
 | API | Latency (s) |
 |---|---|
-| pubchem | 1.89 ← slowest |
-| chembl | 1.57 |
-| open_targets | 0.52 |
-| depmap | 0.35 |
+| pubchem | 1.77 ← slowest |
+| chembl | 1.70 |
+| open_targets | 0.57 |
+| depmap | 0.40 |
 | uniprot | 0.00 |
 | gwas | 0.00 |
 

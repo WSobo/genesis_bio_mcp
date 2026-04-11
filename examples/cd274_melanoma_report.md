@@ -32,10 +32,10 @@ CD274 shows modest Open Targets association with melanoma (score: 0.40, n=2 evid
 | API | Latency (s) |
 |---|---|
 | pubchem | 1.70 ← slowest |
-| chembl | 1.26 |
-| gwas | 1.20 |
+| gwas | 1.53 |
+| chembl | 0.87 |
 | open_targets | 0.52 |
-| depmap | 0.35 |
+| depmap | 0.36 |
 | uniprot | 0.17 |
 
 ---

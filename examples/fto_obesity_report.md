@@ -31,11 +31,11 @@ FTO shows strong Open Targets association with obesity (score: 0.60, n=4 evidenc
 ## API Latency
 | API | Latency (s) |
 |---|---|
-| gwas | 14.19 ← slowest |
-| pubchem | 1.00 |
-| chembl | 0.60 |
-| open_targets | 0.54 |
-| depmap | 0.37 |
+| gwas | 14.11 ← slowest |
+| pubchem | 1.10 |
+| chembl | 0.82 |
+| open_targets | 0.53 |
+| depmap | 0.36 |
 | uniprot | 0.17 |
 
 ---

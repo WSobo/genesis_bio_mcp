@@ -462,11 +462,11 @@
     8.14
   ],
   "api_latency_s": {
-    "uniprot": 0.19,
+    "uniprot": 0.2,
     "open_targets": 0.52,
-    "depmap": 0.36,
-    "gwas": 1.47,
-    "pubchem": 2.99,
-    "chembl": 2.44
+    "depmap": 0.37,
+    "gwas": 1.57,
+    "pubchem": 1.96,
+    "chembl": 1.33
   }
 }

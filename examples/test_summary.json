@@ -10,16 +10,16 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 4.4,
+    "elapsed_s": 4.3,
     "api_latency_s": {
-      "uniprot": 0.33,
-      "open_targets": 0.71,
-      "depmap": 0.52,
-      "gwas": 3.2,
-      "pubchem": 3.36,
+      "uniprot": 0.19,
+      "open_targets": 0.66,
+      "depmap": 0.5,
+      "gwas": 3.22,
+      "pubchem": 2.19,
       "chembl": 2.14
     },
-    "slowest_api": "pubchem"
+    "slowest_api": "gwas"
   },
   {
     "gene_input": "EGFR",
@@ -32,14 +32,14 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 3.3,
+    "elapsed_s": 2.2,
     "api_latency_s": {
-      "uniprot": 0.19,
+      "uniprot": 0.2,
       "open_targets": 0.52,
-      "depmap": 0.36,
-      "gwas": 1.47,
-      "pubchem": 2.99,
-      "chembl": 2.44
+      "depmap": 0.37,
+      "gwas": 1.57,
+      "pubchem": 1.96,
+      "chembl": 1.33
     },
     "slowest_api": "pubchem"
   },
@@ -55,14 +55,14 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 2.0,
+    "elapsed_s": 2.2,
     "api_latency_s": {
-      "uniprot": 0.24,
-      "open_targets": 0.52,
+      "uniprot": 0.23,
+      "open_targets": 0.55,
       "depmap": 0.37,
-      "gwas": 1.24,
-      "pubchem": 1.65,
-      "chembl": 0.79
+      "gwas": 1.39,
+      "pubchem": 1.89,
+      "chembl": 1.48
     },
     "slowest_api": "pubchem"
   },
@@ -78,36 +78,36 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 3.1,
+    "elapsed_s": 2.0,
     "api_latency_s": {
-      "uniprot": 0.2,
-      "open_targets": 0.54,
-      "depmap": 0.36,
-      "gwas": 2.76,
-      "pubchem": 1.68,
-      "chembl": 1.16
+      "uniprot": 0.18,
+      "open_targets": 0.52,
+      "depmap": 0.34,
+      "gwas": 1.52,
+      "pubchem": 1.75,
+      "chembl": 0.81
     },
-    "slowest_api": "gwas"
+    "slowest_api": "pubchem"
   },
   {
     "gene_input": "PCSK9",
     "resolved": "PCSK9",
     "indication": "hypercholesterolemia",
-    "score": 8.65,
+    "score": 9.05,
     "tier": "High",
     "data_gaps": [
       "pubchem"
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 2.2,
+    "elapsed_s": 2.3,
     "api_latency_s": {
-      "uniprot": 0.19,
-      "open_targets": 0.54,
+      "uniprot": 0.18,
+      "open_targets": 0.52,
       "depmap": 0.37,
-      "gwas": 1.68,
-      "pubchem": 1.92,
-      "chembl": 1.47
+      "gwas": 1.19,
+      "pubchem": 2.02,
+      "chembl": 0.65
     },
     "slowest_api": "pubchem"
   },
@@ -122,14 +122,14 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 14.5,
+    "elapsed_s": 14.4,
     "api_latency_s": {
       "uniprot": 0.17,
-      "open_targets": 0.54,
-      "depmap": 0.37,
-      "gwas": 14.19,
-      "pubchem": 1.0,
-      "chembl": 0.6
+      "open_targets": 0.53,
+      "depmap": 0.36,
+      "gwas": 14.11,
+      "pubchem": 1.1,
+      "chembl": 0.82
     },
     "slowest_api": "gwas"
   },
@@ -137,19 +137,19 @@
     "gene_input": "TNF",
     "resolved": "TNF",
     "indication": "rheumatoid arthritis",
-    "score": 6.9,
-    "tier": "Medium",
+    "score": 7.17,
+    "tier": "High",
     "data_gaps": [],
     "errors": [],
     "depmap_real": true,
     "elapsed_s": 16.1,
     "api_latency_s": {
-      "uniprot": 0.17,
-      "open_targets": 0.65,
-      "depmap": 0.49,
+      "uniprot": 0.19,
+      "open_targets": 0.77,
+      "depmap": 0.6,
       "gwas": 15.01,
-      "pubchem": 2.23,
-      "chembl": 1.69
+      "pubchem": 2.33,
+      "chembl": 1.66
     },
     "slowest_api": "gwas"
   },
@@ -165,14 +165,14 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 16.2,
+    "elapsed_s": 16.0,
     "api_latency_s": {
-      "uniprot": 0.18,
-      "open_targets": 0.82,
-      "depmap": 0.65,
+      "uniprot": 0.17,
+      "open_targets": 0.65,
+      "depmap": 0.48,
       "gwas": 15.0,
-      "pubchem": 2.26,
-      "chembl": 1.83
+      "pubchem": 1.93,
+      "chembl": 1.86
     },
     "slowest_api": "gwas"
   },
@@ -188,14 +188,14 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 6.3,
+    "elapsed_s": 5.7,
     "api_latency_s": {
-      "uniprot": 0.25,
-      "open_targets": 0.72,
-      "depmap": 0.68,
-      "gwas": 5.05,
-      "pubchem": 2.1,
-      "chembl": 1.4
+      "uniprot": 0.26,
+      "open_targets": 0.69,
+      "depmap": 0.54,
+      "gwas": 4.45,
+      "pubchem": 1.83,
+      "chembl": 1.96
     },
     "slowest_api": "gwas"
   },
@@ -211,14 +211,14 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 2.3,
+    "elapsed_s": 2.2,
     "api_latency_s": {
       "uniprot": 0.17,
       "open_targets": 0.52,
-      "depmap": 0.35,
-      "gwas": 1.2,
+      "depmap": 0.36,
+      "gwas": 1.53,
       "pubchem": 1.7,
-      "chembl": 1.26
+      "chembl": 0.87
     },
     "slowest_api": "pubchem"
   },
@@ -237,11 +237,11 @@
     "elapsed_s": 2.0,
     "api_latency_s": {
       "uniprot": 0.0,
-      "open_targets": 0.52,
-      "depmap": 0.35,
+      "open_targets": 0.53,
+      "depmap": 0.37,
       "gwas": 0.0,
-      "pubchem": 1.65,
-      "chembl": 0.82
+      "pubchem": 1.6,
+      "chembl": 0.86
     },
     "slowest_api": "pubchem"
   },
@@ -257,14 +257,14 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 2.3,
+    "elapsed_s": 2.2,
     "api_latency_s": {
       "uniprot": 0.0,
-      "open_targets": 0.52,
-      "depmap": 0.35,
+      "open_targets": 0.57,
+      "depmap": 0.4,
       "gwas": 0.0,
-      "pubchem": 1.89,
-      "chembl": 1.57
+      "pubchem": 1.77,
+      "chembl": 1.7
     },
     "slowest_api": "pubchem"
   }

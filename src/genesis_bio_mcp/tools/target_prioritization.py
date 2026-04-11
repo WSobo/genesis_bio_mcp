@@ -379,10 +379,10 @@ def _compute_score(
         score += 0.5
 
     # GWAS evidence (max 2.0)
-    # Cap at 5: ≥5 hits saturates the score so pagination limits (we fetch at most
-    # one page of associations) don't produce scoring artifacts.
+    # Cap at 3: ≥3 replicated trait hits = full credit. Keeps score stable whether
+    # the fetch returned 3 or 30 hits — pagination differences don't affect scoring.
     if gwas_ev:
-        score += min(gwas_ev.total_associations, 5) / 5 * 2.0
+        score += min(gwas_ev.total_associations, 3) / 3 * 2.0
 
     # Clinical / known-drug evidence (max 1.5)
     # Distinguishes targets with approved drugs from literature-only at the same OT overall_score
