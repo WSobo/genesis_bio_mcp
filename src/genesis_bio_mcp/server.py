@@ -25,6 +25,7 @@ import asyncio
 import json as _json
 import logging
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -68,6 +69,7 @@ async def lifespan(server: FastMCP):
         # Fetch DepMap gene_dep_summary once at startup for instant lookups
         gene_dep_cache = await load_depmap_cache(client)
 
+        server.state = SimpleNamespace()
         server.state.uniprot = UniProtClient(client)
         server.state.open_targets = OpenTargetsClient(client)
         server.state.depmap = DepMapClient(client, gene_dep_cache)
