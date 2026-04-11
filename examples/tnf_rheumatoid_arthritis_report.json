@@ -113,32 +113,43 @@
   "gwas_evidence": {
     "gene_symbol": "TNF",
     "trait_query": "rheumatoid arthritis",
-    "total_associations": 2,
+    "total_associations": 3,
     "associations": [
       {
         "study_accession": "",
-        "trait": "Psoriatic arthritis",
-        "mapped_gene": "NR",
-        "risk_allele": "rs116340302-?",
-        "p_value": 5e-16,
-        "beta_or_or": 8.11,
+        "trait": "Hypothyroidism or rheumatoid arthritis (pleiotropy)",
+        "mapped_gene": "",
+        "risk_allele": "rs17200628-?",
+        "p_value": 9e-25,
+        "beta_or_or": null,
         "sample_size": null,
-        "population": "744 Spanish ancestry cases, 1,454 Spanish ancestry controls ",
+        "population": "22,350 European ancestry rheumatoid arthritis cases, 51,194 European ancestry hypothyroidism cases, ",
         "pubmed_id": null
       },
       {
         "study_accession": "",
-        "trait": "Psoriatic arthritis",
-        "mapped_gene": "NR",
-        "risk_allele": "rs115872194-?",
-        "p_value": 9e-10,
-        "beta_or_or": 6.12,
+        "trait": "Hypothyroidism or rheumatoid arthritis (pleiotropy)",
+        "mapped_gene": "",
+        "risk_allele": "rs16899682-?",
+        "p_value": 5e-13,
+        "beta_or_or": null,
         "sample_size": null,
-        "population": "744 Spanish ancestry cases, 1,454 Spanish ancestry controls ",
+        "population": "22,350 European ancestry rheumatoid arthritis cases, 51,194 European ancestry hypothyroidism cases, ",
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "",
+        "trait": "Rheumatoid arthritis",
+        "mapped_gene": "",
+        "risk_allele": "rs28478022-?",
+        "p_value": 5e-09,
+        "beta_or_or": null,
+        "sample_size": null,
+        "population": "6,754 European ancestry cases, 452,384 European ancestry controls",
         "pubmed_id": null
       }
     ],
-    "strongest_p_value": 5e-16
+    "strongest_p_value": 9e-25
   },
   "compounds": {
     "gene_symbol": "TNF",
@@ -171,9 +182,16 @@
       }
     ]
   },
-  "priority_score": 5.58,
-  "priority_tier": "Medium",
-  "evidence_summary": "TNF shows strong Open Targets association with rheumatoid arthritis (score: 0.64, n=3 evidence items). Open Targets reports strong known-drug evidence for TNF (score: 1.00), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 0% of cancer lines. GWAS Catalog links 2 variants near TNF to 'rheumatoid arthritis'-related traits (strongest p=5.00e-16). ChEMBL reports 1 compounds with potency data against TNF; best IC50 \u2248 34.7 \u00b5M (hit-quality, pChEMBL=4.5).",
+  "protein_structure": null,
+  "protein_interactome": null,
+  "drug_history": null,
+  "pathway_context": null,
+  "priority_score": 7.1,
+  "priority_tier": "High",
+  "evidence_summary": "TNF shows strong Open Targets association with rheumatoid arthritis (score: 0.64, n=3 evidence items). Open Targets reports strong known-drug evidence for TNF (score: 1.00), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 0% of cancer lines. GWAS Catalog links 3 variants near TNF to 'rheumatoid arthritis'-related traits (strongest p=9.00e-25). ChEMBL reports 1 compounds with potency data against TNF; best IC50 \u2248 34.7 \u00b5M (hit-quality, pChEMBL=4.5).",
   "data_gaps": [],
-  "errors": {}
+  "errors": {},
+  "data_coverage_pct": 100.0,
+  "proxy_data_flags": {},
+  "score_confidence_interval": null
 }

@@ -209,7 +209,11 @@
     "fraction_dependent_lines": 0.1896,
     "pan_essential": false,
     "top_dependent_lineages": [
-      "cancer or benign tumor"
+      "lung adenocarcinoma",
+      "glioblastoma multiforme",
+      "non-small cell lung carcinoma",
+      "urinary bladder cancer",
+      "urinary bladder carcinoma"
     ],
     "cell_lines": [
       {
@@ -440,11 +444,21 @@
       }
     ]
   },
-  "priority_score": 7.43,
+  "protein_structure": null,
+  "protein_interactome": null,
+  "drug_history": null,
+  "pathway_context": null,
+  "priority_score": 7.51,
   "priority_tier": "High",
-  "evidence_summary": "EGFR shows strong Open Targets association with non-small cell lung carcinoma (score: 0.85, n=6 evidence items). Open Targets reports strong known-drug evidence for EGFR (score: 1.00), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 18% of cancer lines, highest in cancer or benign tumor. ChEMBL reports 67 compounds with potency data against EGFR; best IC50 \u2248 0.4 nM (clinical-grade, pChEMBL=9.3).",
+  "evidence_summary": "EGFR shows strong Open Targets association with non-small cell lung carcinoma (score: 0.85, n=6 evidence items). Open Targets reports strong known-drug evidence for EGFR (score: 1.00), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 18% of cancer lines, highest in lung adenocarcinoma, glioblastoma multiforme, non-small cell lung carcinoma [DepMap score boosted 1.2\u00d7 \u2014 indication matches top lineage]. ChEMBL reports 67 compounds with potency data against EGFR; best IC50 \u2248 0.4 nM (clinical-grade, pChEMBL=9.3).",
   "data_gaps": [
     "gwas"
   ],
-  "errors": {}
+  "errors": {},
+  "data_coverage_pct": 83.3,
+  "proxy_data_flags": {},
+  "score_confidence_interval": [
+    6.88,
+    8.14
+  ]
 }

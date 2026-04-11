@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -165,25 +166,38 @@ class OpenTargetsClient:
         return _parse_row(row, gene_symbol, disease_name, efo_id, ensembl_id)
 
     async def _graphql(self, query: str, variables: dict) -> dict | None:
-        try:
-            resp = await self._client.post(
-                _GRAPHQL_URL,
-                json={"query": query, "variables": variables},
-                headers={"Content-Type": "application/json"},
-                timeout=30.0,
-            )
-            resp.raise_for_status()
-            body = resp.json()
-            if "errors" in body:
-                logger.warning(
-                    "Open Targets GraphQL errors: %s",
-                    body["errors"][0].get("message", ""),
+        for attempt in range(2):
+            try:
+                resp = await self._client.post(
+                    _GRAPHQL_URL,
+                    json={"query": query, "variables": variables},
+                    headers={"Content-Type": "application/json"},
+                    timeout=30.0,
                 )
+                resp.raise_for_status()
+                body = resp.json()
+                if "errors" in body:
+                    logger.warning(
+                        "Open Targets GraphQL errors: %s",
+                        body["errors"][0].get("message", ""),
+                    )
+                    return None
+                return body
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code >= 500 and attempt == 0:
+                    logger.warning(
+                        "Open Targets 5xx on attempt %d (%s), retrying in 2s",
+                        attempt + 1,
+                        exc.response.status_code,
+                    )
+                    await asyncio.sleep(2.0)
+                    continue
+                logger.warning("Open Targets HTTP error: %s", exc)
                 return None
-            return body
-        except Exception as exc:
-            logger.warning("Open Targets GraphQL request failed: %s", exc)
-            return None
+            except Exception as exc:
+                logger.warning("Open Targets GraphQL request failed: %s", exc)
+                return None
+        return None
 
 
 def _extract_row(data: dict | None, efo_id: str) -> dict | None:

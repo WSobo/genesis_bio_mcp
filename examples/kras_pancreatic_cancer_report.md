@@ -24,5 +24,9 @@ KRAS shows strong Open Targets association with pancreatic cancer (score: 0.60, 
 
 **Data gaps:** gwas, pubchem
 
+## Confidence Assessment
+**Data coverage:** 67% of core sources returned data
+**Score range:** 4.1–5.8/10 (uncertainty from 33% missing sources)
+
 ---
 _Resolved: KRAS | NCBI Gene: 3845 | UniProt: P01116_

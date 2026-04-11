@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); da=d['disease_association']; cd=d['cancer_dependency']; print\\('OT:', da['overall_score'] if da else None, 'evidence_breakdown:', da['evidence_breakdown'] if da else None\\); print\\('DepMap pan_essential:', cd['pan_essential'] if cd else None, 'frac:', cd['fraction_dependent_lines'] if cd else None\\); print\\('Score:', d['priority_score']\\)\")",
       "WebSearch",
-      "Bash(uv add:*)"
+      "Bash(uv add:*)",
+      "Bash(rtk git:*)"
     ]
   }
 }

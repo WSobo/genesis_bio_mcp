@@ -3,27 +3,27 @@
     "gene_input": "BRAF",
     "resolved": "BRAF",
     "indication": "melanoma",
-    "score": 7.11,
+    "score": 7.15,
     "tier": "High",
     "data_gaps": [
       "gwas"
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 15.2
+    "elapsed_s": 14.8
   },
   {
     "gene_input": "EGFR",
     "resolved": "EGFR",
     "indication": "non-small cell lung carcinoma",
-    "score": 7.43,
+    "score": 7.51,
     "tier": "High",
     "data_gaps": [
       "gwas"
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 46.4
+    "elapsed_s": 47.1
   },
   {
     "gene_input": "KRAS",
@@ -37,21 +37,21 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 20.2
+    "elapsed_s": 17.3
   },
   {
     "gene_input": "HER2",
     "resolved": "ERBB2",
     "indication": "breast cancer",
-    "score": 6.3,
-    "tier": "Medium",
+    "score": 7.64,
+    "tier": "High",
     "data_gaps": [
       "gwas",
       "pubchem"
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 45.6
+    "elapsed_s": 48.7
   },
   {
     "gene_input": "PCSK9",
@@ -64,7 +64,7 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 21.6
+    "elapsed_s": 16.7
   },
   {
     "gene_input": "FTO",
@@ -75,32 +75,32 @@
     "data_gaps": [],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 48.5
+    "elapsed_s": 48.4
   },
   {
     "gene_input": "TNF",
     "resolved": "TNF",
     "indication": "rheumatoid arthritis",
-    "score": 5.58,
-    "tier": "Medium",
+    "score": 7.1,
+    "tier": "High",
     "data_gaps": [],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 18.1
+    "elapsed_s": 18.5
   },
   {
     "gene_input": "PTGS2",
     "resolved": "PTGS2",
     "indication": "inflammation",
-    "score": 6.28,
-    "tier": "Medium",
+    "score": 7.72,
+    "tier": "High",
     "data_gaps": [
       "gwas",
       "pubchem"
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 49.1
+    "elapsed_s": 50.3
   },
   {
     "gene_input": "TP53",
@@ -114,7 +114,7 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 16.4
+    "elapsed_s": 18.7
   },
   {
     "gene_input": "CD274",
@@ -128,7 +128,7 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 45.4
+    "elapsed_s": 47.3
   },
   {
     "gene_input": "p53",
@@ -142,20 +142,20 @@
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 18.4
+    "elapsed_s": 36.2
   },
   {
     "gene_input": "COX2",
     "resolved": "PTGS2",
     "indication": "pain",
-    "score": 6.32,
-    "tier": "Medium",
+    "score": 7.75,
+    "tier": "High",
     "data_gaps": [
       "gwas",
       "pubchem"
     ],
     "errors": [],
     "depmap_real": true,
-    "elapsed_s": 49.5
+    "elapsed_s": 30.9
   }
 ]

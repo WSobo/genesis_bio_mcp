@@ -133,61 +133,61 @@
     "associations": [
       {
         "study_accession": "",
-        "trait": "Body mass index (MTAG)",
+        "trait": "Body mass index and bone mineral density (pleiotropy)",
         "mapped_gene": "",
-        "risk_allele": "rs16945088-A",
-        "p_value": 4e-22,
-        "beta_or_or": 0.026839,
+        "risk_allele": "rs17817712-G",
+        "p_value": 1e-121,
+        "beta_or_or": 0.142,
         "sample_size": null,
-        "population": "694,649 European ancestry individuals",
+        "population": "14,489 individuals",
         "pubmed_id": null
       },
       {
         "study_accession": "",
         "trait": "Body mass index",
-        "mapped_gene": "",
-        "risk_allele": "rs62048377-C",
-        "p_value": 8e-10,
-        "beta_or_or": 0.02,
+        "mapped_gene": "FTO",
+        "risk_allele": "rs9939609-A",
+        "p_value": 4e-51,
+        "beta_or_or": 0.33,
         "sample_size": null,
-        "population": "1,122,049 European ancestry individuals",
+        "population": "32,387 European ancestry individuals",
+        "pubmed_id": null
+      },
+      {
+        "study_accession": "",
+        "trait": "BMI at 8 years old",
+        "mapped_gene": "",
+        "risk_allele": "rs17817288-A",
+        "p_value": 1e-12,
+        "beta_or_or": 0.0952937,
+        "sample_size": null,
+        "population": "14,280 European ancestry individuals",
         "pubmed_id": null
       },
       {
         "study_accession": "",
         "trait": "Body mass index",
-        "mapped_gene": "",
-        "risk_allele": "rs12920255-?",
-        "p_value": 2e-08,
-        "beta_or_or": null,
+        "mapped_gene": "FTO",
+        "risk_allele": "rs10680802-CAG",
+        "p_value": 1e-06,
+        "beta_or_or": 0.0355,
         "sample_size": null,
-        "population": "approximately 458,000 European ancestry individuals",
+        "population": "1,249 whole genome sequenced European ancestry individuals, 3,538 whole genome sequenced individuals",
         "pubmed_id": null
       },
       {
         "study_accession": "",
         "trait": "Body mass index",
-        "mapped_gene": "NR",
-        "risk_allele": "rs12920255-?",
-        "p_value": 4e-08,
-        "beta_or_or": null,
+        "mapped_gene": "FTO",
+        "risk_allele": "rs17817712-?",
+        "p_value": 1e-06,
+        "beta_or_or": 0.348,
         "sample_size": null,
-        "population": "457,822 European ancestry individuals",
-        "pubmed_id": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Obesity",
-        "mapped_gene": "",
-        "risk_allele": "rs568974867-C",
-        "p_value": 6e-07,
-        "beta_or_or": 1.2,
-        "sample_size": null,
-        "population": "7,813 Korean ancestry male cases, 11,782 Korean ancestry male controls",
+        "population": "8,832 Korean ancestry individuals",
         "pubmed_id": null
       }
     ],
-    "strongest_p_value": 4e-22
+    "strongest_p_value": 1e-121
   },
   "compounds": {
     "gene_symbol": "FTO",
@@ -353,9 +353,16 @@
       }
     ]
   },
+  "protein_structure": null,
+  "protein_interactome": null,
+  "drug_history": null,
+  "pathway_context": null,
   "priority_score": 5.31,
   "priority_tier": "Medium",
-  "evidence_summary": "FTO shows strong Open Targets association with obesity (score: 0.60, n=4 evidence items). DepMap CRISPR data show dependency in 0% of cancer lines. GWAS Catalog links 5 variants near FTO to 'obesity'-related traits (strongest p=4.00e-22). ChEMBL reports 92 compounds with potency data against FTO; best IC50 \u2248 60.3 nM (lead-quality, pChEMBL=7.2).",
+  "evidence_summary": "FTO shows strong Open Targets association with obesity (score: 0.60, n=4 evidence items). DepMap CRISPR data show dependency in 0% of cancer lines. GWAS Catalog links 5 variants near FTO to 'obesity'-related traits (strongest p=1.00e-121). ChEMBL reports 92 compounds with potency data against FTO; best IC50 \u2248 60.3 nM (lead-quality, pChEMBL=7.2).",
   "data_gaps": [],
-  "errors": {}
+  "errors": {},
+  "data_coverage_pct": 100.0,
+  "proxy_data_flags": {},
+  "score_confidence_interval": null
 }

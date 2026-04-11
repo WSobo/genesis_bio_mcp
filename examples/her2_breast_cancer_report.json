@@ -4,7 +4,7 @@
   "resolution": {
     "hgnc_symbol": "ERBB2",
     "hgnc_id": null,
-    "ncbi_gene_id": null,
+    "ncbi_gene_id": "2064",
     "uniprot_accession": "P04626",
     "synonyms": [
       "HER2",
@@ -187,7 +187,11 @@
     "fraction_dependent_lines": 0.2012,
     "pan_essential": false,
     "top_dependent_lineages": [
-      "cancer or benign tumor"
+      "urinary bladder cancer",
+      "breast adenocarcinoma",
+      "urinary bladder carcinoma",
+      "non-small cell lung carcinoma",
+      "lung adenocarcinoma"
     ],
     "cell_lines": [
       {
@@ -403,12 +407,22 @@
       }
     ]
   },
-  "priority_score": 6.3,
-  "priority_tier": "Medium",
-  "evidence_summary": "ERBB2 shows strong Open Targets association with breast cancer (score: 0.63, n=2 evidence items). Open Targets reports strong known-drug evidence for ERBB2 (score: 0.99), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 20% of cancer lines, highest in cancer or benign tumor. ChEMBL reports 74 compounds with potency data against ERBB2; best IC50 \u2248 5.0 nM (lead-quality, pChEMBL=8.3).",
+  "protein_structure": null,
+  "protein_interactome": null,
+  "drug_history": null,
+  "pathway_context": null,
+  "priority_score": 7.64,
+  "priority_tier": "High",
+  "evidence_summary": "ERBB2 shows strong Open Targets association with breast cancer (score: 0.63, n=2 evidence items). Open Targets reports strong known-drug evidence for ERBB2 (score: 0.99), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 20% of cancer lines, highest in urinary bladder cancer, breast adenocarcinoma, urinary bladder carcinoma. ChEMBL reports 74 compounds with potency data against ERBB2; best IC50 \u2248 5.0 nM (lead-quality, pChEMBL=8.3).",
   "data_gaps": [
     "gwas",
     "pubchem"
   ],
-  "errors": {}
+  "errors": {},
+  "data_coverage_pct": 66.7,
+  "proxy_data_flags": {},
+  "score_confidence_interval": [
+    6.37,
+    8.91
+  ]
 }

@@ -237,7 +237,11 @@
     "fraction_dependent_lines": 0.5762,
     "pan_essential": true,
     "top_dependent_lineages": [
-      "cancer or benign tumor"
+      "colorectal adenocarcinoma",
+      "non-small cell lung carcinoma",
+      "endometrial cancer",
+      "cholangiocarcinoma",
+      "lung adenocarcinoma"
     ],
     "cell_lines": [
       {
@@ -453,6 +457,10 @@
       }
     ]
   },
+  "protein_structure": null,
+  "protein_interactome": null,
+  "drug_history": null,
+  "pathway_context": null,
   "priority_score": 4.94,
   "priority_tier": "Medium",
   "evidence_summary": "KRAS shows strong Open Targets association with pancreatic cancer (score: 0.60, n=6 evidence items). CRISPR screens show KRAS is pan-essential (57% of lines dependent), suggesting a potentially narrow therapeutic window. ChEMBL reports 58 compounds with potency data against KRAS; best IC50 \u2248 8.9 nM (lead-quality, pChEMBL=8.1).",
@@ -460,5 +468,11 @@
     "gwas",
     "pubchem"
   ],
-  "errors": {}
+  "errors": {},
+  "data_coverage_pct": 66.7,
+  "proxy_data_flags": {},
+  "score_confidence_interval": [
+    4.12,
+    5.76
+  ]
 }

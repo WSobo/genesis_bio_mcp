@@ -64,6 +64,25 @@ logger = logging.getLogger(__name__)
 LINEAGE_MATCH_FACTOR = 1.2
 PUBCHEM_MIN_COMPOUNDS = 5
 
+# OT_CLINICALLY_VALIDATED_FLOOR (3.25):
+#   Minimum OT contribution for targets with approved drugs (known_drug_score > 0.9).
+#   OT's overall_score is a composite across 6-8 evidence datatypes (genetic, somatic,
+#   known_drug, literature, expression, pathways, animal models, etc.). For biologics
+#   targets, expression/pathway/animal model datatypes score moderately (~0.4-0.7),
+#   pulling the composite below 0.7 even when known_drug and literature are ~0.99.
+#   Approved drugs are the gold standard of target-disease validation; a composite
+#   score of 0.63-0.64 for TNF/RA and HER2/breast cancer understates that certainty.
+#   The floor ensures pharmacological validation is never washed out by weak-but-
+#   populated orthogonal evidence types.
+#
+#   Value exceeds the OT axis natural max (3.0) by design: the excess 0.25 represents
+#   certainty from approved drug evidence that OT's multi-datatype average cannot fully
+#   express. Calibrated so HER2/breast cancer (OT base 1.902 → 7.65 High) and TNF/RA
+#   (OT base 1.926 → 7.10 High) reach the correct tier. Range to consider: 3.0–3.5.
+#   Below 3.15 leaves TNF at Medium; above 3.5 risks over-scoring targets with one
+#   approved drug and a weak OT overall.
+OT_CLINICALLY_VALIDATED_FLOOR = 3.25
+
 
 async def prioritize_target(
     gene_symbol: str,
@@ -180,6 +199,7 @@ async def prioritize_target(
         gwas_ev,
         compounds,
         chembl_compounds,
+        ot_error=da_err,
     )
 
     # Extended mode: structure, interactome, drug history, pathway context
@@ -295,9 +315,24 @@ def _compute_score(
 ) -> float:
     score = 0.0
 
-    # Open Targets association (max 3.0)
+    # Open Targets association (max 3.0; floor raised for clinically validated targets)
+    # When known_drug_score > 0.9 AND both genetic_association and somatic_mutation
+    # subscores are null, floor the OT contribution at OT_CLINICALLY_VALIDATED_FLOOR.
+    #
+    # The two-gate condition matters: genetic/somatic null means the OT composite is
+    # artificially low because those evidence classes are non-applicable for this
+    # target mechanism (CNV amplification, cytokine inhibition) — not because the
+    # evidence is weak. When somatic or genetic IS populated (e.g. BRAF V600E), the
+    # OT composite accurately reflects the full evidence base and should not be floored.
     if disease_assoc:
-        score += disease_assoc.overall_score * 3.0
+        ot_contrib = disease_assoc.overall_score * 3.0
+        if (
+            (disease_assoc.known_drug_score or 0.0) > 0.9
+            and disease_assoc.genetic_association_score is None
+            and disease_assoc.somatic_mutation_score is None
+        ):
+            ot_contrib = max(ot_contrib, OT_CLINICALLY_VALIDATED_FLOOR)
+        score += ot_contrib
 
     # DepMap cancer dependency (max 2.0)
     # Apply 0.7x confidence discount when using OT somatic mutation proxy instead of real CRISPR data.
@@ -370,6 +405,7 @@ def _build_summary(
     gwas_ev: GwasEvidence | None,
     compounds: Compounds | None,
     chembl_compounds: ChEMBLCompounds | None = None,
+    ot_error: str | None = None,
 ) -> str:
     parts: list[str] = []
 
@@ -385,6 +421,12 @@ def _build_summary(
                 f"(score: {disease_assoc.known_drug_score:.2f}), suggesting existing approved or "
                 f"clinical-stage therapeutics — likely biologics if small-molecule data is sparse."
             )
+    elif ot_error:
+        parts.append(
+            f"[OT UNAVAILABLE — score based on ChEMBL/DepMap/GWAS only] "
+            f"Open Targets API error for {symbol}/{indication} ({ot_error[:80]}). "
+            f"Score may understate target-disease association strength."
+        )
     else:
         parts.append(f"No Open Targets association data found for {symbol} in {indication}.")
 
@@ -419,15 +461,27 @@ def _build_summary(
             f"GWAS Catalog links {gwas_ev.total_associations} variants near {symbol} "
             f"to '{indication}'-related traits (strongest p={p_str})."
         )
-        # Causal caveat: high GWAS signal without curated disease association may reflect
-        # linkage disequilibrium with a nearby causal gene rather than direct causality.
-        ot_score = disease_assoc.overall_score if disease_assoc else 0.0
-        if gwas_ev.total_associations >= 5 and ot_score < 0.2:
+        # Causal caveat: high GWAS signal without known-drug evidence AND sparse literature
+        # suggests LD noise, comorbidity confounding, or indirect drug effects (e.g. cancer drugs
+        # affecting metabolic markers in T2D patient registries).
+        # Three-gate condition uses literature_mining_score as the causal discriminator:
+        # - FTO/obesity: literature ~0.98 (massive validated biology) → gate suppresses caveat ✓
+        # - BRAF/T2D: literature ~0.07 (no real BRAF-T2D biology) → gate fires caveat ✓
+        # genetic_association_score was NOT used: OT accumulates GWAS Catalog counts and both
+        # targets score ~0.7–0.8, measuring signal volume rather than causal validation.
+        # Threshold 0.15: separates replicated functional loci (>0.5) from GWAS noise (<0.1).
+        # Tuning range: 0.1–0.25.
+        known_drug_score = (disease_assoc.known_drug_score or 0.0) if disease_assoc else 0.0
+        literature_score = (disease_assoc.literature_mining_score or 0.0) if disease_assoc else 0.0
+        if gwas_ev.total_associations >= 5 and known_drug_score < 0.1 and literature_score < 0.15:
+            ot_score = disease_assoc.overall_score if disease_assoc else 0.0
             parts.append(
-                f"Caution: high GWAS hit count with low Open Targets association ({ot_score:.2f}) "
-                f"may indicate linkage disequilibrium with nearby causal variants rather than "
-                f"direct causal involvement of {symbol} in {indication}. "
-                f"Functional validation is recommended before treating this as target evidence."
+                f"Caution: {gwas_ev.total_associations} GWAS hits near {symbol} for {indication} "
+                f"with no known-drug evidence and sparse literature support "
+                f"(OT drug score={known_drug_score:.2f}, literature={literature_score:.2f}, "
+                f"overall={ot_score:.2f}). This pattern is consistent with LD with a nearby causal "
+                f"variant, comorbidity confounding, or indirect drug effects — not direct target biology. "
+                f"Functional validation is recommended before treating GWAS signal as target evidence."
             )
 
     if chembl_compounds and chembl_compounds.best_pchembl is not None:

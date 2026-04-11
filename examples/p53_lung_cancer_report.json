@@ -209,7 +209,11 @@
     "fraction_dependent_lines": 0.0041,
     "pan_essential": false,
     "top_dependent_lineages": [
-      "cancer or benign tumor"
+      "pancreatic adenocarcinoma",
+      "urinary bladder cancer",
+      "breast adenocarcinoma",
+      "ovarian cancer",
+      "esophageal cancer"
     ],
     "cell_lines": [
       {
@@ -425,12 +429,22 @@
       }
     ]
   },
+  "protein_structure": null,
+  "protein_interactome": null,
+  "drug_history": null,
+  "pathway_context": null,
   "priority_score": 3.35,
   "priority_tier": "Low",
-  "evidence_summary": "TP53 shows modest Open Targets association with lung cancer (score: 0.41, n=5 evidence items). DepMap CRISPR data show dependency in 0% of cancer lines, highest in cancer or benign tumor. ChEMBL reports 55 compounds with potency data against TP53; best IC50 \u2248 457.1 nM (hit-quality, pChEMBL=6.3).",
+  "evidence_summary": "TP53 shows modest Open Targets association with lung cancer (score: 0.41, n=5 evidence items). DepMap CRISPR data show dependency in 0% of cancer lines, highest in pancreatic adenocarcinoma, urinary bladder cancer, breast adenocarcinoma. ChEMBL reports 55 compounds with potency data against TP53; best IC50 \u2248 457.1 nM (hit-quality, pChEMBL=6.3).",
   "data_gaps": [
     "gwas",
     "pubchem"
   ],
-  "errors": {}
+  "errors": {},
+  "data_coverage_pct": 66.7,
+  "proxy_data_flags": {},
+  "score_confidence_interval": [
+    2.79,
+    3.91
+  ]
 }

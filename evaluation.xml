@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  genesis-bio-mcp evaluation suite
+  10 multi-hop questions requiring chaining 2+ tools per question.
+  All answers verified against examples/ reports or stable biological databases.
+  Run with: python scripts/evaluation.py -t stdio -c uv -a "run genesis-bio-mcp" evaluation.xml
+-->
+<evaluation>
+
+  <qa_pair>
+    <question>The receptor tyrosine kinase targeted in HER2-positive breast cancer is commonly called 'HER2' clinically but has a different canonical HGNC symbol. First use gene resolution to find its canonical symbol, then retrieve its UniProt Swiss-Prot accession. What is the UniProt accession?</question>
+    <answer>P04626</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>The alias 'COX2' is widely used to describe the enzyme inhibited by NSAIDs such as celecoxib, but it is not the approved HGNC symbol. Use the gene resolver to determine the canonical HGNC symbol for 'COX2'. What is it?</question>
+    <answer>PTGS2</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>TP53 is described as the guardian of the genome and is manually curated in UniProt Swiss-Prot. Is the human TP53 protein entry reviewed (Swiss-Prot) or unreviewed (TrEMBL)? Answer True if reviewed, False if unreviewed.</question>
+    <answer>True</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>TP53 is a transcription factor that localizes to multiple compartments. Retrieve the UniProt protein annotation for TP53 and identify the first subcellular location listed. What is it?</question>
+    <answer>Cytoplasm</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>BRAF inhibitors such as vemurafenib achieve sub-nanomolar potency. According to ChEMBL, what is the best pChEMBL value (−log10 of molar IC50) reported for compounds tested against BRAF? Express your answer to one decimal place.</question>
+    <answer>9.5</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>EGFR-targeted therapies are standard of care in non-small cell lung carcinoma. According to Open Targets, does the EGFR–non-small cell lung carcinoma association have a known_drug_score above 0.9? Answer True or False.</question>
+    <answer>True</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>PCSK9 inhibitors were the first approved antibody therapies for hypercholesterolemia. Using ChEMBL data, does PCSK9 have at least one compound with a pChEMBL value above 9.0 (corresponding to IC50 below 1 nM)? Answer True or False.</question>
+    <answer>True</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>FTO is one of the most replicated common variant loci for obesity and body mass index from GWAS. According to DepMap CRISPR essentiality data, is FTO classified as a pan-essential gene (broadly required for cell viability across cancer lines)? Answer True or False.</question>
+    <answer>False</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>KRAS was historically considered undruggable until covalent KRAS G12C inhibitors were developed. According to ChEMBL bioactivity data, does KRAS have any reported compounds with a pChEMBL value above 7.0 (corresponding to IC50 below 100 nM)? Answer True or False.</question>
+    <answer>True</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>ERBB2 (HER2) has extensive clinical drug development in breast cancer. Use Open Targets to retrieve the known_drug_score for the ERBB2–breast cancer association. Is the known_drug_score above 0.9? Answer True or False.</question>
+    <answer>True</answer>
+  </qa_pair>
+
+</evaluation>
