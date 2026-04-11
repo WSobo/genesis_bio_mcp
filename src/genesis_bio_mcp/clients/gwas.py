@@ -35,9 +35,15 @@ class GwasClient:
         if ncbi_gene_id:
             associations = await self._fetch_by_gene_id(ncbi_gene_id)
 
-        # Fallback: SNP path (study links need a follow-up request)
+        # Fallback: SNP path — cap at 5s so a slow GWAS response doesn't block the
+        # pipeline; return whatever the association fetch already has if this times out.
         if not associations:
-            associations = await self._fetch_by_gene_symbol(symbol)
+            try:
+                associations = await asyncio.wait_for(
+                    self._fetch_by_gene_symbol(symbol), timeout=5.0
+                )
+            except TimeoutError:
+                logger.warning("GWAS SNP path timed out for %s, returning gap", symbol)
 
         if not associations:
             return None
