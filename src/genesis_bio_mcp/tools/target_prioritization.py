@@ -37,6 +37,33 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Scoring constants
+#
+# These are the two tunable parameters most likely to need adjustment as
+# ground-truth target assessments accumulate. Both are intentionally modest
+# to avoid over-fitting to any single target class.
+#
+# LINEAGE_MATCH_FACTOR (1.2):
+#   Multiplicative bonus applied to the DepMap dependency contribution when
+#   the query indication matches a top dependent lineage. Rescues lineage-
+#   restricted oncogenes (e.g. BRAF in melanoma) from being penalized for
+#   low pan-cancer dependency. Capped so the DepMap axis never exceeds its
+#   2.0 max. Range to consider: 1.1–1.5. Above ~1.5 starts to over-reward
+#   targets with any incidental lineage overlap.
+#
+# PUBCHEM_MIN_COMPOUNDS (5):
+#   Minimum PubChem active compound count required to contribute a chemical
+#   matter score. Below this threshold (and with no ChEMBL potency data),
+#   the target is reported as "no usable chemical matter." The threshold
+#   filters out single-assay hits and data entry noise. Range to consider:
+#   3–10. Below 3 risks counting artifacts; above 10 may be too conservative
+#   for early-stage targets.
+# ---------------------------------------------------------------------------
+
+LINEAGE_MATCH_FACTOR = 1.2
+PUBCHEM_MIN_COMPOUNDS = 5
+
 
 async def prioritize_target(
     gene_symbol: str,
@@ -115,7 +142,13 @@ async def prioritize_target(
     _check("chembl", chembl_compounds, chembl_err)
 
     priority_score = _compute_score(
-        disease_assoc, cancer_dep, gwas_ev, compounds, protein, chembl_compounds
+        disease_assoc,
+        cancer_dep,
+        gwas_ev,
+        compounds,
+        protein,
+        chembl_compounds,
+        indication=indication,
     )
     priority_tier = _tier(priority_score)
 
@@ -258,6 +291,7 @@ def _compute_score(
     compounds: Compounds | None,
     protein: ProteinInfo | None,
     chembl_compounds: ChEMBLCompounds | None = None,
+    indication: str = "",
 ) -> float:
     score = 0.0
 
@@ -266,11 +300,22 @@ def _compute_score(
         score += disease_assoc.overall_score * 3.0
 
     # DepMap cancer dependency (max 2.0)
-    # Apply 0.7x confidence discount when using OT somatic mutation proxy instead of real CRISPR data
+    # Apply 0.7x confidence discount when using OT somatic mutation proxy instead of real CRISPR data.
+    # Apply 1.2x lineage bonus when the query indication matches a top dependent lineage
+    # (e.g. BRAF 9% overall dependency is concentrated in melanoma — penalizing it equally to a
+    # pan-cancer 9% target misrepresents the biology for a melanoma query).
     if cancer_dep and not cancer_dep.pan_essential:
         is_real_depmap = "DepMap Chronos" in cancer_dep.data_source
         confidence = 1.0 if is_real_depmap else 0.7
-        score += cancer_dep.fraction_dependent_lines * 2.0 * confidence
+        lineage_match = indication and any(
+            indication.lower() in lin.lower() or lin.lower() in indication.lower()
+            for lin in (cancer_dep.top_dependent_lineages or [])
+        )
+        lineage_factor = LINEAGE_MATCH_FACTOR if lineage_match else 1.0
+        dep_contribution = min(
+            cancer_dep.fraction_dependent_lines * 2.0 * confidence * lineage_factor, 2.0
+        )
+        score += dep_contribution
     elif cancer_dep and cancer_dep.pan_essential:
         # Pan-essential genes have narrow therapeutic windows — cap contribution
         score += 0.5
@@ -296,8 +341,9 @@ def _compute_score(
             score += 0.5  # IC50 ≤ 10 µM — hit quality
         else:
             score += 0.25  # active but weak
-    elif compounds:
+    elif compounds and compounds.total_active_compounds >= PUBCHEM_MIN_COMPOUNDS:
         score += min(compounds.total_active_compounds, 100) / 100 * 1.5
+    # PubChem count < PUBCHEM_MIN_COMPOUNDS with no ChEMBL potency data → no usable chemical matter
 
     # Protein quality (max 1.5)
     if protein:
@@ -375,10 +421,17 @@ def _build_summary(
             f"ChEMBL reports {chembl_compounds.total_active_compounds} compounds with potency data "
             f"against {symbol}; best IC50 ≈ {ic50_str} ({potency_label}, pChEMBL={bp:.1f})."
         )
-    elif compounds:
+    elif compounds and compounds.total_active_compounds >= PUBCHEM_MIN_COMPOUNDS:
         parts.append(
             f"PubChem reports {compounds.total_active_compounds} active compounds against {symbol}, "
             f"indicating {'strong' if compounds.total_active_compounds > 50 else 'emerging'} druggability."
+        )
+    elif compounds:
+        n = compounds.total_active_compounds
+        parts.append(
+            f"No usable chemical matter found for {symbol} "
+            f"(ChEMBL: no potency data; PubChem: {n} hit{'s' if n != 1 else ''} — "
+            f"below tractability threshold of {PUBCHEM_MIN_COMPOUNDS} active compounds)."
         )
 
     return (

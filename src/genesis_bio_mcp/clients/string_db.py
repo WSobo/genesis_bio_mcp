@@ -125,13 +125,19 @@ def _parse_interactions(
             if sid == string_id or name.upper() == symbol_upper:
                 continue  # skip the query gene itself
 
-            score = float(edge.get("score", 0)) / 1000.0  # STRING returns 0-1000
+            # STRING API returns scores on 0–1000 scale in older versions and 0–1 in newer.
+            # Detect scale by value: anything > 1.0 must be the 0–1000 range.
+            raw = float(edge.get("score", 0))
+            score = raw / 1000.0 if raw > 1.0 else raw
 
             evidence: list[str] = []
             for key, label in _EVIDENCE_LABELS.items():
                 val = edge.get(key, 0)
-                if isinstance(val, (int, float)) and float(val) > 150:
-                    evidence.append(label)
+                if isinstance(val, (int, float)):
+                    ev_raw = float(val)
+                    ev_norm = ev_raw / 1000.0 if ev_raw > 1.0 else ev_raw
+                    if ev_norm > 0.15:
+                        evidence.append(label)
 
             if name not in interactors or interactors[name].score < score:
                 interactors[name] = Interactor(

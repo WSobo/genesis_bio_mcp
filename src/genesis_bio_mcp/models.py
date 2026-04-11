@@ -651,14 +651,27 @@ class DrugHistory(BaseModel):
             lines += [
                 "",
                 "### Known Drugs (DGIdb)",
-                "| Drug | Type | Phase | Approved |",
-                "|---|---|---|---|",
+                "| Drug | Type | Phase | Approved | Sources |",
+                "|---|---|---|---|---|",
             ]
-            for d in sorted(self.known_drugs, key=lambda x: x.phase or 0, reverse=True)[:12]:
+
+            # Sort: approved first, then direct interaction types, then phase desc
+            def _drug_sort_key(d: DrugInteraction) -> tuple:
+                from genesis_bio_mcp.clients.dgidb import _DIRECT_TYPES
+
+                return (
+                    not d.approved,
+                    d.interaction_type is None or d.interaction_type.lower() not in _DIRECT_TYPES,
+                    -(d.phase or 0),
+                    d.drug_name.lower(),
+                )
+
+            for d in sorted(self.known_drugs, key=_drug_sort_key)[:12]:
                 itype = d.interaction_type or "—"
                 phase = f"Phase {d.phase}" if d.phase else "—"
                 approved = "Yes" if d.approved else "No"
-                lines.append(f"| {d.drug_name} | {itype} | {phase} | {approved} |")
+                sources = ", ".join(d.sources[:3]) if d.sources else "—"
+                lines.append(f"| {d.drug_name} | {itype} | {phase} | {approved} | {sources} |")
 
         if self.trial_counts_by_phase:
             lines += ["", "### Clinical Trial Counts by Phase"]

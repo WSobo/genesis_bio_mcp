@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 _DGIDB_URL = "https://dgidb.org/api/graphql"
 
+# Interaction types that represent direct target engagement (inhibition, activation, binding).
+# Other types (substrate, inducer, suppressor, etc.) are kept but sorted to the bottom.
+_DIRECT_TYPES = {"inhibitor", "antagonist", "blocker", "agonist", "modulator", "binder"}
+
 _QUERY = """
 query GeneInteractions($gene: String!) {
   genes(names: [$gene]) {
@@ -115,5 +119,13 @@ def _parse_interactions(body: dict) -> list[DrugInteraction]:
                     sources=sorted(set(seen[key].sources + sources)),
                 )
 
-    # Sort: approved first, then alphabetical
-    return sorted(seen.values(), key=lambda d: (not d.approved, d.drug_name.lower()))
+    # Sort: approved first, then direct interaction types, then alphabetical.
+    # This surfaces confirmed inhibitors/modulators before substrate/inducer noise.
+    return sorted(
+        seen.values(),
+        key=lambda d: (
+            not d.approved,
+            d.interaction_type is None or d.interaction_type.lower() not in _DIRECT_TYPES,
+            d.drug_name.lower(),
+        ),
+    )

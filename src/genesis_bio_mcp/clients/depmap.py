@@ -414,12 +414,15 @@ class DepMapClient:
         n_dependent = sum(1 for cl in cell_lines if cl.is_dependent)
         fraction_dependent = n_dependent / len(cell_lines)
 
-        lineage_groups: dict[str, list[float]] = {}
-        for cl in cell_lines:
-            lineage_groups.setdefault(cl.lineage, []).append(cl.ceres_score)
-        lineage_means = {k: sum(v) / len(v) for k, v in lineage_groups.items()}
-        top_lineages = sorted(lineage_means, key=lambda k: lineage_means[k])[:5]
-        top_lines = sorted(cell_lines, key=lambda cl: cl.ceres_score)[:10]
+        # Use disease names (not broad therapeutic areas) for top_dependent_lineages so
+        # the output says "melanoma, thyroid carcinoma" rather than "Oncology, Neoplasms".
+        disease_order = sorted(cell_lines, key=lambda cl: cl.ceres_score)
+        seen_names: dict[str, float] = {}
+        for cl in disease_order:
+            if cl.cell_line not in seen_names:
+                seen_names[cl.cell_line] = cl.ceres_score
+        top_lineages = list(seen_names.keys())[:5]
+        top_lines = disease_order[:10]
 
         return CancerDependency(
             gene_symbol=gene_symbol,
