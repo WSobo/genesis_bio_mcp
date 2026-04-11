@@ -6,11 +6,11 @@ import asyncio
 import json
 import logging
 import time
-import unicodedata
 from pathlib import Path
 
 import httpx
 
+from genesis_bio_mcp.config.trait_synonyms import filter_by_trait
 from genesis_bio_mcp.models import GwasEvidence, GwasHit
 
 logger = logging.getLogger(__name__)
@@ -18,11 +18,6 @@ logger = logging.getLogger(__name__)
 _BASE_URL = "https://www.ebi.ac.uk/gwas/rest/api"
 _CACHE_PATH = Path("data/gwas_cache.json")
 _CACHE_TTL_SECS = 86400  # 24 hours
-
-
-def _normalize(text: str) -> str:
-    """Normalize Unicode to ASCII-comparable form (handles curly apostrophes etc.)."""
-    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii").lower()
 
 
 def _load_gwas_cache() -> dict[str, dict]:
@@ -66,7 +61,7 @@ def _process_for_trait(raw: list[GwasHit], symbol: str, trait: str) -> GwasEvide
             seen.add(key)
             unique.append(h)
 
-    filtered = _filter_by_trait(unique, trait)
+    filtered = filter_by_trait(unique, trait)
     if not filtered:
         return None
 
@@ -325,56 +320,3 @@ def _parse_association(assoc: dict) -> GwasHit | None:
     except Exception as exc:
         logger.debug("Failed to parse GWAS association: %s", exc)
         return None
-
-
-_TRAIT_SYNONYMS: dict[str, list[str]] = {
-    "hypercholesterolemia": ["cholesterol", "ldl", "low-density lipoprotein", "lipid"],
-    "hypercholesterolaemia": ["cholesterol", "ldl", "low-density lipoprotein", "lipid"],
-    "obesity": [
-        "obesity",
-        "body mass index",
-        "bmi",
-        "adiposity",
-        "adipose",
-        "overweight",
-        "waist",
-        "body weight",
-        "body fat",
-        "fat mass",
-    ],
-    "rheumatoid arthritis": ["rheumatoid arthritis", "arthritis"],
-    "inflammation": ["inflammation", "inflammatory", "c-reactive protein", "crp"],
-    "cardiovascular disease": [
-        "cardiovascular",
-        "coronary artery",
-        "myocardial infarction",
-        "heart disease",
-    ],
-    "type 2 diabetes": [
-        "type 2 diabetes",
-        "t2d",
-        "diabetes mellitus",
-        "glycated haemoglobin",
-        "hba1c",
-    ],
-    "alzheimer disease": ["alzheimer", "dementia", "cognitive decline"],
-    "non-small cell lung carcinoma": [
-        "lung cancer",
-        "lung carcinoma",
-        "non-small cell lung",
-    ],
-    "squamous cell carcinoma": ["squamous cell", "carcinoma"],
-    "pain": ["pain"],
-}
-
-
-def _filter_by_trait(hits: list[GwasHit], trait: str) -> list[GwasHit]:
-    trait_norm = _normalize(trait)
-    synonyms = _TRAIT_SYNONYMS.get(trait_norm, [])
-    match_terms = [trait_norm] + [_normalize(s) for s in synonyms]
-
-    def _matches(hit_trait: str) -> bool:
-        ht = _normalize(hit_trait)
-        return any(term in ht for term in match_terms)
-
-    return [h for h in hits if _matches(h.trait)]
