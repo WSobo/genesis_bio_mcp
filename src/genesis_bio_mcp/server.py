@@ -7,6 +7,7 @@ Exposes 12 tools for biomedical database queries:
   - get_cancer_dependency    DepMap: CRISPR essentiality across cancer lines
   - get_gwas_evidence        GWAS Catalog: genetic associations for a trait
   - get_compounds            PubChem: active small molecules against a target
+  - get_chembl_compounds     ChEMBL: quantitative IC50/Ki/Kd potency data
   - get_protein_structure    AlphaFold + RCSB PDB: structural data
   - get_protein_interactome  STRING: binding partners and selectivity risks
   - get_drug_history         DGIdb + ClinicalTrials.gov: known drugs and trials
@@ -21,6 +22,7 @@ All tools return Markdown strings for direct LLM consumption.
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
 from contextlib import asynccontextmanager
 
@@ -107,6 +109,23 @@ async def _resolve_symbol(gene_name: str) -> tuple[str, str | None]:
         return gene_name.strip().upper(), None
 
 
+def _fmt(result: object, response_format: str, error_msg: str) -> str:
+    """Format a Pydantic model as Markdown or JSON, or return an error representation.
+
+    Args:
+        result: Pydantic model with .to_markdown() and .model_dump_json(), or None.
+        response_format: "markdown" (default) or "json".
+        error_msg: Human-readable error used when result is None.
+    """
+    if result is None:
+        if response_format == "json":
+            return _json.dumps({"error": error_msg})
+        return f"**Error:** {error_msg}"
+    if response_format == "json":
+        return result.model_dump_json(indent=2)  # type: ignore[attr-defined]
+    return result.to_markdown()  # type: ignore[attr-defined]
+
+
 # ---------------------------------------------------------------------------
 # Tool definitions — all return Markdown strings for LLM readability
 # ---------------------------------------------------------------------------
@@ -117,7 +136,7 @@ async def _resolve_symbol(gene_name: str) -> tuple[str, str | None]:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def resolve_gene(gene_name: str) -> str:
+async def resolve_gene(gene_name: str, response_format: str = "markdown") -> str:
     """Resolve a gene name or alias to canonical identifiers across databases.
 
     Use this tool FIRST when the input is a gene alias, synonym, or informal name.
@@ -126,12 +145,13 @@ async def resolve_gene(gene_name: str) -> str:
     Args:
         gene_name: Gene symbol, alias, or synonym. Case-insensitive.
                    Examples: 'BRAF', 'braf', 'B-RAF', 'BRAF1', 'p44erk1'
+        response_format: "markdown" (default, human-readable) or "json" (GeneResolution model).
 
     Returns:
         Markdown with canonical symbol, NCBI Gene ID, UniProt accession, and synonyms.
     """
     result = await _resolve_gene(gene_name, uniprot_client=mcp.state.uniprot)
-    return result.to_markdown()
+    return _fmt(result, response_format, f"Could not resolve gene '{gene_name}'")
 
 
 @mcp.tool(
@@ -139,7 +159,7 @@ async def resolve_gene(gene_name: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_protein_info(gene_symbol: str) -> str:
+async def get_protein_info(gene_symbol: str, response_format: str = "markdown") -> str:
     """Retrieve protein-level annotation for a human gene from UniProt Swiss-Prot.
 
     Use this tool to understand a protein's biological function, subcellular location,
@@ -149,6 +169,7 @@ async def get_protein_info(gene_symbol: str) -> str:
     Args:
         gene_symbol: Approved HGNC gene symbol (uppercase).
                      Examples: 'BRAF', 'EGFR', 'TP53', 'PCSK9'
+        response_format: "markdown" (default) or "json" (ProteinInfo model).
 
     Returns:
         Markdown with function summary, pathways, disease associations, PDB IDs,
@@ -156,9 +177,11 @@ async def get_protein_info(gene_symbol: str) -> str:
     """
     gene_symbol, _ = await _resolve_symbol(gene_symbol)
     result = await mcp.state.uniprot.get_protein(gene_symbol)
-    if result is None:
-        return f"**Error:** No UniProt Swiss-Prot entry found for gene '{gene_symbol}' in Homo sapiens."
-    return result.to_markdown()
+    return _fmt(
+        result,
+        response_format,
+        f"No UniProt Swiss-Prot entry found for gene '{gene_symbol}' in Homo sapiens.",
+    )
 
 
 @mcp.tool(
@@ -166,7 +189,9 @@ async def get_protein_info(gene_symbol: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_target_disease_association(gene_symbol: str, disease_name: str) -> str:
+async def get_target_disease_association(
+    gene_symbol: str, disease_name: str, response_format: str = "markdown"
+) -> str:
     """Query Open Targets for the evidence-based association score between a gene and disease.
 
     Use this tool to assess genetic, clinical, and literature evidence linking a drug
@@ -178,6 +203,7 @@ async def get_target_disease_association(gene_symbol: str, disease_name: str) ->
         disease_name: Free-text disease or indication name. Open Targets maps this
                       to the closest EFO ontology term automatically.
                       Examples: 'melanoma', 'non-small cell lung cancer', 'Alzheimer disease'
+        response_format: "markdown" (default) or "json" (TargetDiseaseAssociation model).
 
     Returns:
         Markdown with overall_score and per-datatype evidence scores
@@ -185,9 +211,11 @@ async def get_target_disease_association(gene_symbol: str, disease_name: str) ->
     """
     gene_symbol, _ = await _resolve_symbol(gene_symbol)
     result = await mcp.state.open_targets.get_association(gene_symbol, disease_name)
-    if result is None:
-        return f"**Error:** No Open Targets association found for '{gene_symbol}' and '{disease_name}'."
-    return result.to_markdown()
+    return _fmt(
+        result,
+        response_format,
+        f"No Open Targets association found for '{gene_symbol}' and '{disease_name}'.",
+    )
 
 
 @mcp.tool(
@@ -195,7 +223,7 @@ async def get_target_disease_association(gene_symbol: str, disease_name: str) ->
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_cancer_dependency(gene_symbol: str) -> str:
+async def get_cancer_dependency(gene_symbol: str, response_format: str = "markdown") -> str:
     """Retrieve CRISPR essentiality scores for a gene across cancer cell lines from DepMap.
 
     Uses real DepMap Chronos Combined data when available (loaded at server startup),
@@ -205,6 +233,7 @@ async def get_cancer_dependency(gene_symbol: str) -> str:
 
     Args:
         gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'MYC', 'CDK4', 'EGFR'
+        response_format: "markdown" (default) or "json" (CancerDependency model).
 
     Returns:
         Markdown with fraction of dependent lines, pan-essential flag, top lineages,
@@ -212,12 +241,11 @@ async def get_cancer_dependency(gene_symbol: str) -> str:
     """
     gene_symbol, _ = await _resolve_symbol(gene_symbol)
     result = await mcp.state.depmap.get_essentiality(gene_symbol)
-    if result is None:
-        return (
-            f"**Error:** DepMap essentiality data unavailable for '{gene_symbol}'. "
-            f"Check manually at https://depmap.org/portal/gene/{gene_symbol}"
-        )
-    return result.to_markdown()
+    return _fmt(
+        result,
+        response_format,
+        f"DepMap essentiality data unavailable for '{gene_symbol}'.",
+    )
 
 
 @mcp.tool(
@@ -225,7 +253,7 @@ async def get_cancer_dependency(gene_symbol: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_gwas_evidence(gene_symbol: str, trait: str) -> str:
+async def get_gwas_evidence(gene_symbol: str, trait: str, response_format: str = "markdown") -> str:
     """Retrieve GWAS Catalog associations linking a gene locus to a disease trait.
 
     Use this tool to find genome-wide significant SNP associations (p < 5e-8) near
@@ -236,15 +264,18 @@ async def get_gwas_evidence(gene_symbol: str, trait: str) -> str:
         gene_symbol: HGNC gene symbol. Examples: 'FTO', 'APOE', 'BRCA1', 'PCSK9'
         trait: Trait or disease name for filtering. Case-insensitive substring match.
                Examples: 'type 2 diabetes', 'body mass index', 'breast cancer', 'melanoma'
+        response_format: "markdown" (default) or "json" (GwasEvidence model).
 
     Returns:
         Markdown with GWAS hit count, strongest p-value, and top associations table.
     """
     gene_symbol, ncbi_gene_id = await _resolve_symbol(gene_symbol)
     result = await mcp.state.gwas.get_evidence(gene_symbol, trait, ncbi_gene_id=ncbi_gene_id)
-    if result is None:
-        return f"**Error:** No GWAS Catalog associations found for gene '{gene_symbol}' and trait '{trait}'."
-    return result.to_markdown()
+    return _fmt(
+        result,
+        response_format,
+        f"No GWAS Catalog associations found for gene '{gene_symbol}' and trait '{trait}'.",
+    )
 
 
 @mcp.tool(
@@ -252,7 +283,7 @@ async def get_gwas_evidence(gene_symbol: str, trait: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_compounds(gene_symbol: str) -> str:
+async def get_compounds(gene_symbol: str, response_format: str = "markdown") -> str:
     """Retrieve small molecules with bioactivity against a gene target from PubChem.
 
     Use this tool to assess target druggability — whether active chemical matter exists.
@@ -261,15 +292,16 @@ async def get_compounds(gene_symbol: str) -> str:
 
     Args:
         gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'CDK2', 'HDAC1'
+        response_format: "markdown" (default) or "json" (Compounds model).
 
     Returns:
         Markdown with total active compound count and top compounds by potency (IC50/EC50 in nM).
     """
     gene_symbol, _ = await _resolve_symbol(gene_symbol)
     result = await mcp.state.pubchem.get_compounds(gene_symbol)
-    if result is None:
-        return f"**Error:** No PubChem bioactivity data found for gene '{gene_symbol}'."
-    return result.to_markdown()
+    return _fmt(
+        result, response_format, f"No PubChem bioactivity data found for gene '{gene_symbol}'."
+    )
 
 
 @mcp.tool(
@@ -277,7 +309,36 @@ async def get_compounds(gene_symbol: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_protein_structure(gene_symbol: str) -> str:
+async def get_chembl_compounds(gene_symbol: str, response_format: str = "markdown") -> str:
+    """Retrieve quantitative potency data (IC50/Ki/Kd) from ChEMBL for a gene target.
+
+    Use this tool when you need potency-based compound data rather than just activity
+    counts. ChEMBL's pChEMBL values (−log10 of molar IC50/Ki/Kd) allow direct
+    compound ranking: pChEMBL ≥ 9 = clinical-grade (≤1 nM), ≥ 7 = lead quality,
+    ≥ 5 = hit quality. Complements get_compounds (PubChem) which reports activity
+    count but lacks standardized potency metrics.
+
+    Args:
+        gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'CDK2', 'BTK'
+        response_format: "markdown" (default) or "json" (ChEMBLCompounds model).
+
+    Returns:
+        Markdown with ChEMBL target ID, best pChEMBL value, compound count, and
+        a ranked table of top compounds with assay types and potency values.
+    """
+    gene_symbol, _ = await _resolve_symbol(gene_symbol)
+    result = await mcp.state.chembl.get_compounds(gene_symbol)
+    return _fmt(
+        result, response_format, f"No ChEMBL bioactivity data found for gene '{gene_symbol}'."
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_protein_structure(gene_symbol: str, response_format: str = "markdown") -> str:
     """Retrieve structural data for a protein from AlphaFold and RCSB PDB.
 
     Use this tool to assess structural feasibility for drug design. Reports AlphaFold
@@ -286,6 +347,7 @@ async def get_protein_structure(gene_symbol: str) -> str:
 
     Args:
         gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'CDK2', 'KRAS'
+        response_format: "markdown" (default) or "json" (ProteinStructure model).
 
     Returns:
         Markdown with AlphaFold pLDDT score, PDB structure count and resolution,
@@ -295,9 +357,11 @@ async def get_protein_structure(gene_symbol: str) -> str:
     protein = await mcp.state.uniprot.get_protein(gene_symbol)
     accession = protein.uniprot_accession if protein else None
     result = await mcp.state.alphafold.get_structure(gene_symbol, uniprot_accession=accession)
-    if result is None:
-        return f"**Error:** No structural data found for '{gene_symbol}'. Ensure the gene symbol is correct."
-    return result.to_markdown()
+    return _fmt(
+        result,
+        response_format,
+        f"No structural data found for '{gene_symbol}'. Ensure the gene symbol is correct.",
+    )
 
 
 @mcp.tool(
@@ -305,7 +369,7 @@ async def get_protein_structure(gene_symbol: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_protein_interactome(gene_symbol: str) -> str:
+async def get_protein_interactome(gene_symbol: str, response_format: str = "markdown") -> str:
     """Retrieve protein interaction partners from STRING to assess selectivity risks.
 
     Use this tool to understand which proteins interact with your target — binding
@@ -314,6 +378,7 @@ async def get_protein_interactome(gene_symbol: str) -> str:
 
     Args:
         gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'CDK2', 'JAK2'
+        response_format: "markdown" (default) or "json" (ProteinInteractome model).
 
     Returns:
         Markdown with top 20 interaction partners sorted by STRING confidence score,
@@ -321,9 +386,9 @@ async def get_protein_interactome(gene_symbol: str) -> str:
     """
     gene_symbol, _ = await _resolve_symbol(gene_symbol)
     result = await mcp.state.string_db.get_interactome(gene_symbol)
-    if result is None or result.total_partners == 0:
-        return f"**Error:** No STRING interaction data found for '{gene_symbol}'."
-    return result.to_markdown()
+    if result is not None and result.total_partners == 0:
+        result = None
+    return _fmt(result, response_format, f"No STRING interaction data found for '{gene_symbol}'.")
 
 
 @mcp.tool(
@@ -331,7 +396,7 @@ async def get_protein_interactome(gene_symbol: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_drug_history(gene_symbol: str) -> str:
+async def get_drug_history(gene_symbol: str, response_format: str = "markdown") -> str:
     """Retrieve the drug development history for a gene target.
 
     Use this tool to understand the clinical precedent for targeting a gene:
@@ -341,6 +406,7 @@ async def get_drug_history(gene_symbol: str) -> str:
 
     Args:
         gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'PCSK9', 'KRAS'
+        response_format: "markdown" (default) or "json" (DrugHistory model).
 
     Returns:
         Markdown with known drugs (type, phase, approval status), trial counts by
@@ -352,14 +418,15 @@ async def get_drug_history(gene_symbol: str) -> str:
         mcp.state.clinical_trials.get_trials(gene_symbol),
     )
     ct_trials, ct_counts = ct_result
-    approved_count = sum(1 for d in drugs if d.approved)
     result = DrugHistory(
         gene_symbol=gene_symbol,
         known_drugs=drugs,
-        approved_drug_count=approved_count,
+        approved_drug_count=sum(1 for d in drugs if d.approved),
         trial_counts_by_phase=ct_counts,
         recent_trials=ct_trials[:10],
     )
+    if response_format == "json":
+        return result.model_dump_json(indent=2)
     if not drugs and not ct_trials:
         return f"**No drug history found for '{gene_symbol}'.** This may be a first-in-class opportunity."
     return result.to_markdown()
@@ -370,7 +437,7 @@ async def get_drug_history(gene_symbol: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
-async def get_pathway_context(gene_symbol: str) -> str:
+async def get_pathway_context(gene_symbol: str, response_format: str = "markdown") -> str:
     """Retrieve biological pathway membership for a gene from Reactome.
 
     Use this tool to understand where a target sits in cellular biology:
@@ -380,6 +447,7 @@ async def get_pathway_context(gene_symbol: str) -> str:
 
     Args:
         gene_symbol: HGNC gene symbol. Examples: 'BRAF', 'EGFR', 'MTOR', 'STAT3'
+        response_format: "markdown" (default) or "json" (PathwayContext model).
 
     Returns:
         Markdown with top enriched Reactome pathways, enrichment p-values,
@@ -387,9 +455,9 @@ async def get_pathway_context(gene_symbol: str) -> str:
     """
     gene_symbol, _ = await _resolve_symbol(gene_symbol)
     result = await mcp.state.reactome.get_pathway_context(gene_symbol)
-    if result is None or not result.pathways:
-        return f"**Error:** No Reactome pathway data found for '{gene_symbol}'."
-    return result.to_markdown()
+    if result is not None and not result.pathways:
+        result = None
+    return _fmt(result, response_format, f"No Reactome pathway data found for '{gene_symbol}'.")
 
 
 @mcp.tool(
@@ -397,7 +465,9 @@ async def get_pathway_context(gene_symbol: str) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True
     )
 )
-async def prioritize_target(gene_symbol: str, indication: str, extended: bool = False) -> str:
+async def prioritize_target(
+    gene_symbol: str, indication: str, extended: bool = False, response_format: str = "markdown"
+) -> str:
     """Generate a comprehensive drug discovery target assessment report.
 
     Use this tool when you need a full evidence synthesis for target prioritization.
@@ -415,6 +485,7 @@ async def prioritize_target(gene_symbol: str, indication: str, extended: bool = 
                     Examples: 'melanoma', 'non-small cell lung cancer', 'colorectal cancer'
         extended: If True, also retrieves structural, interactome, drug history, and
                   pathway data. Default False for faster standard reports.
+        response_format: "markdown" (default) or "json" (TargetPrioritizationReport model).
 
     Returns:
         Markdown report with priority_score (0–10), priority_tier (High/Medium/Low),
@@ -436,7 +507,7 @@ async def prioritize_target(gene_symbol: str, indication: str, extended: bool = 
         clinical_trials=mcp.state.clinical_trials if extended else None,
         reactome=mcp.state.reactome if extended else None,
     )
-    return result.to_markdown()
+    return _fmt(result, response_format, "")
 
 
 @mcp.tool(
@@ -444,7 +515,9 @@ async def prioritize_target(gene_symbol: str, indication: str, extended: bool = 
         readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True
     )
 )
-async def compare_targets(gene_symbols: list[str], indication: str) -> str:
+async def compare_targets(
+    gene_symbols: list[str], indication: str, response_format: str = "markdown"
+) -> str:
     """Compare 2–5 drug targets side by side for a given therapeutic indication.
 
     Runs a full prioritize_target assessment for each gene in parallel and returns
@@ -455,6 +528,7 @@ async def compare_targets(gene_symbols: list[str], indication: str) -> str:
         gene_symbols: List of 2–5 HGNC gene symbols. Example: ['BRAF', 'EGFR', 'KRAS']
         indication: Therapeutic indication shared across all targets.
                     Example: 'melanoma', 'non-small cell lung cancer'
+        response_format: "markdown" (default) or "json" (ComparisonReport model).
 
     Returns:
         Markdown table ranking all genes by priority score, with per-gene evidence summaries.
@@ -523,7 +597,7 @@ async def compare_targets(gene_symbols: list[str], indication: str) -> str:
         )
 
     comparison = ComparisonReport(indication=indication, rows=rows)
-    return comparison.to_markdown()
+    return _fmt(comparison, response_format, "")
 
 
 @mcp.tool(

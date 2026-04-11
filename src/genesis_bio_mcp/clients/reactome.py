@@ -71,26 +71,39 @@ _KEYWORD_CATEGORIES = [
 class ReactomeClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
+        # Session-scoped cache: Reactome pathway enrichment results are deterministic
+        # for a given gene within a session (the analysis API issues a new token per
+        # call, so caching avoids both the network round-trip and redundant token issuance).
+        self._cache: dict[str, PathwayContext | None] = {}
 
     async def get_pathway_context(
         self, gene_symbol: str, max_pathways: int = 10
     ) -> PathwayContext | None:
         """Submit gene to Reactome analysis and return top enriched pathways."""
+        symbol = gene_symbol.strip().upper()
+        if symbol in self._cache:
+            logger.debug("Reactome cache hit: %s", symbol)
+            return self._cache[symbol]
+
         async with _SEMAPHORE:
-            token = await self._run_analysis(gene_symbol)
+            token = await self._run_analysis(symbol)
             if token is None:
+                self._cache[symbol] = None
                 return None
 
             pathways = await self._fetch_pathways(token, max_pathways)
             if not pathways:
+                self._cache[symbol] = None
                 return None
 
             top_name = pathways[0].display_name if pathways else None
-            return PathwayContext(
-                gene_symbol=gene_symbol,
+            result = PathwayContext(
+                gene_symbol=symbol,
                 pathways=pathways,
                 top_pathway_name=top_name,
             )
+            self._cache[symbol] = result
+            return result
 
     async def _run_analysis(self, gene_symbol: str) -> str | None:
         """POST gene identifier to Reactome analysis service, return token."""

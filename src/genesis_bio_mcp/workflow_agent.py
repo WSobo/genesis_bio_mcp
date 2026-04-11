@@ -166,6 +166,12 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"No drug history found for '{gene_symbol}'. This may be a first-in-class opportunity."
         return result.to_markdown()
 
+    async def _get_chembl_compounds_fn(gene_symbol: str) -> str:
+        result = await state.chembl.get_compounds(gene_symbol)
+        if result is None:
+            return f"No ChEMBL bioactivity data found for '{gene_symbol}'."
+        return result.to_markdown()
+
     async def _get_pathway_context_fn(gene_symbol: str) -> str:
         result = await state.reactome.get_pathway_context(gene_symbol)
         if result is None or not result.pathways:
@@ -377,6 +383,26 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="druggability",
             use_when="Use to assess whether active chemical matter exists for a target. Count >50 indicates well-explored chemical space.",
             fn=_get_compounds_fn,
+        ),
+        "get_chembl_compounds": ToolSpec(
+            name="get_chembl_compounds",
+            description=(
+                "Retrieve quantitative potency data (IC50/Ki/Kd) from ChEMBL for a gene target. "
+                "Returns assay counts, pChEMBL values, and top active compounds with binding data."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_symbol": {
+                        "type": "string",
+                        "description": "HGNC gene symbol. Example: 'BRAF'",
+                    }
+                },
+                "required": ["gene_symbol"],
+            },
+            tool_category="druggability",
+            use_when="Use for deeper chemical biology detail beyond PubChem: pChEMBL potency values, assay types, and binding selectivity data.",
+            fn=_get_chembl_compounds_fn,
         ),
         "get_protein_structure": ToolSpec(
             name="get_protein_structure",

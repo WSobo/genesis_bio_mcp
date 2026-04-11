@@ -20,6 +20,9 @@ _RCSB_ENTRY_URL = "https://data.rcsb.org/rest/v1/core/entry/{pdb_id}"
 class AlphaFoldClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
+        # Session-scoped cache keyed by (gene_symbol, uniprot_accession).
+        # Structure data is stable within a session; PDB deposits don't change mid-run.
+        self._cache: dict[tuple[str, str | None], ProteinStructure | None] = {}
 
     async def get_structure(
         self, gene_symbol: str, uniprot_accession: str | None = None
@@ -30,6 +33,11 @@ class AlphaFoldClient:
             logger.warning("AlphaFold: no UniProt accession provided for %s", gene_symbol)
             return None
 
+        cache_key = (gene_symbol.upper(), accession)
+        if cache_key in self._cache:
+            logger.debug("AlphaFold cache hit: %s", gene_symbol)
+            return self._cache[cache_key]
+
         alphafold_plddt, alphafold_url, alphafold_version = await self._fetch_alphafold(accession)
         pdb_structures, total_pdb = await self._fetch_pdb_structures(accession)
 
@@ -39,7 +47,7 @@ class AlphaFoldClient:
             default=None,
         )
 
-        return ProteinStructure(
+        result = ProteinStructure(
             gene_symbol=gene_symbol,
             uniprot_accession=accession,
             alphafold_plddt=alphafold_plddt,
@@ -50,6 +58,8 @@ class AlphaFoldClient:
             has_ligand_bound=has_ligand,
             best_resolution=best_res,
         )
+        self._cache[cache_key] = result
+        return result
 
     async def _fetch_alphafold(
         self, uniprot_id: str

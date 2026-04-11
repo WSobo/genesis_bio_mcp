@@ -21,16 +21,21 @@ _FIELDS = (
 class UniProtClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
+        # Session-scoped cache: UniProt Swiss-Prot entries are stable within a run.
+        self._cache: dict[str, ProteinInfo | None] = {}
 
     async def get_protein(self, gene_symbol: str) -> ProteinInfo | None:
         """Return Swiss-Prot annotation for a human gene symbol, or None if not found."""
         symbol = gene_symbol.strip().upper()
+        if symbol in self._cache:
+            logger.debug("UniProt cache hit: %s", symbol)
+            return self._cache[symbol]
         data = await self._search(symbol, reviewed_only=True)
         if data is None:
             data = await self._search(symbol, reviewed_only=False)
-        if data is None:
-            return None
-        return _parse_entry(data, symbol)
+        result = _parse_entry(data, symbol) if data is not None else None
+        self._cache[symbol] = result
+        return result
 
     async def search_by_synonym(self, synonym: str) -> dict | None:
         """Search UniProt by gene synonym/alias and return the raw first result."""
