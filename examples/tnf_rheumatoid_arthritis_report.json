@@ -110,38 +110,7 @@
     "cell_lines": [],
     "data_source": "DepMap Chronos Combined (5/1208 cell lines dependent)"
   },
-  "gwas_evidence": {
-    "gene_symbol": "TNF",
-    "trait_query": "rheumatoid arthritis",
-    "total_associations": 2,
-    "associations": [
-      {
-        "study_accession": "",
-        "trait": "Hypothyroidism or rheumatoid arthritis (pleiotropy)",
-        "mapped_gene": "",
-        "risk_allele": "rs17200628-?",
-        "p_value": 9e-25,
-        "beta_or_or": null,
-        "sample_size": null,
-        "population": "22,350 European ancestry rheumatoid arthritis cases, 51,194 European ancestry hypothyroidism cases, ",
-        "pubmed_id": null,
-        "efo_uri": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Inflammatory bowel disease x sex interaction (2df)",
-        "mapped_gene": "",
-        "risk_allele": "rs2844498-A",
-        "p_value": 2e-07,
-        "beta_or_or": null,
-        "sample_size": null,
-        "population": "34,579 European ancestry cases, 39,125 European ancestry controls",
-        "pubmed_id": null,
-        "efo_uri": null
-      }
-    ],
-    "strongest_p_value": 9e-25
-  },
+  "gwas_evidence": null,
   "compounds": {
     "gene_symbol": "TNF",
     "total_active_compounds": 1,
@@ -177,20 +146,25 @@
   "protein_interactome": null,
   "drug_history": null,
   "pathway_context": null,
-  "priority_score": 7.84,
-  "priority_tier": "High",
-  "evidence_summary": "TNF shows strong Open Targets association with rheumatoid arthritis (score: 0.64, n=3 evidence items). Open Targets reports strong known-drug evidence for TNF (score: 1.00), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 0% of cancer lines. GWAS Catalog links 2 variants near TNF to 'rheumatoid arthritis'-related traits (strongest p=9.00e-25). ChEMBL reports 1 compounds with potency data against TNF; best IC50 \u2248 34.7 \u00b5M (hit-quality, pChEMBL=4.5).",
-  "data_gaps": [],
+  "priority_score": 6.5,
+  "priority_tier": "Medium",
+  "evidence_summary": "TNF shows strong Open Targets association with rheumatoid arthritis (score: 0.64, n=3 evidence items). Open Targets reports strong known-drug evidence for TNF (score: 1.00), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 0% of cancer lines. ChEMBL reports 1 compounds with potency data against TNF; best IC50 \u2248 34.7 \u00b5M (hit-quality, pChEMBL=4.5).",
+  "data_gaps": [
+    "gwas"
+  ],
   "errors": {},
-  "data_coverage_pct": 100.0,
+  "data_coverage_pct": 83.3,
   "proxy_data_flags": {},
-  "score_confidence_interval": null,
+  "score_confidence_interval": [
+    5.96,
+    7.04
+  ],
   "api_latency_s": {
-    "uniprot": 0.2,
-    "open_targets": 0.76,
-    "depmap": 0.61,
-    "gwas": 7.9,
-    "pubchem": 2.21,
-    "chembl": 0.63
+    "uniprot": 0.17,
+    "open_targets": 0.59,
+    "depmap": 0.58,
+    "gwas": 15.01,
+    "pubchem": 4.22,
+    "chembl": 1.58
   }
 }

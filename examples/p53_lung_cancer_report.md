@@ -31,10 +31,10 @@ TP53 shows modest Open Targets association with lung cancer (score: 0.41, n=5 ev
 ## API Latency
 | API | Latency (s) |
 |---|---|
-| pubchem | 1.95 ← slowest |
-| chembl | 1.26 |
-| open_targets | 0.65 |
-| depmap | 0.47 |
+| pubchem | 1.63 ← slowest |
+| chembl | 1.25 |
+| open_targets | 0.60 |
+| depmap | 0.33 |
 | uniprot | 0.00 |
 | gwas | 0.00 |
 

@@ -168,62 +168,7 @@
     "cell_lines": [],
     "data_source": "DepMap Chronos Combined (62/1208 cell lines dependent)"
   },
-  "gwas_evidence": {
-    "gene_symbol": "PCSK9",
-    "trait_query": "hypercholesterolemia",
-    "total_associations": 4,
-    "associations": [
-      {
-        "study_accession": "",
-        "trait": "Low density lipoprotein cholesterol levels",
-        "mapped_gene": "NR",
-        "risk_allele": "rs12136600-?",
-        "p_value": 4e-20,
-        "beta_or_or": 0.07746,
-        "sample_size": null,
-        "population": "72,866 Japanese ancestry individuals",
-        "pubmed_id": null,
-        "efo_uri": null
-      },
-      {
-        "study_accession": "",
-        "trait": "LDL cholesterol levels",
-        "mapped_gene": "",
-        "risk_allele": "rs67171713-C",
-        "p_value": 1e-15,
-        "beta_or_or": 0.194,
-        "sample_size": null,
-        "population": "38,000 South Asian ancestry individuals",
-        "pubmed_id": null,
-        "efo_uri": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Low density lipoprotein cholesterol levels",
-        "mapped_gene": "NR",
-        "risk_allele": "rs11806638-?",
-        "p_value": 2e-13,
-        "beta_or_or": 3.59404,
-        "sample_size": null,
-        "population": "9,720 African American individuals, 17,373 Hispanic/Latino individuals, 2,316 Asian ancestry individ",
-        "pubmed_id": null,
-        "efo_uri": null
-      },
-      {
-        "study_accession": "",
-        "trait": "Total cholesterol levels",
-        "mapped_gene": "NR",
-        "risk_allele": "rs11806638-?",
-        "p_value": 1e-09,
-        "beta_or_or": 3.266727,
-        "sample_size": null,
-        "population": "10,137 African American individuals, 17,802 Hispanic/Latino individuals, 2,387 Asian ancestry indivi",
-        "pubmed_id": null,
-        "efo_uri": null
-      }
-    ],
-    "strongest_p_value": 4e-20
-  },
+  "gwas_evidence": null,
   "compounds": null,
   "chembl_compounds": {
     "gene_symbol": "PCSK9",
@@ -377,25 +322,26 @@
   "protein_interactome": null,
   "drug_history": null,
   "pathway_context": null,
-  "priority_score": 9.05,
+  "priority_score": 7.05,
   "priority_tier": "High",
-  "evidence_summary": "PCSK9 shows strong Open Targets association with hypercholesterolemia (score: 0.83, n=4 evidence items). Open Targets reports strong known-drug evidence for PCSK9 (score: 0.98), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 5% of cancer lines. GWAS Catalog links 4 variants near PCSK9 to 'hypercholesterolemia'-related traits (strongest p=4.00e-20). ChEMBL reports 76 compounds with potency data against PCSK9; best IC50 \u2248 0.2 nM (clinical-grade, pChEMBL=9.8).",
+  "evidence_summary": "PCSK9 shows strong Open Targets association with hypercholesterolemia (score: 0.83, n=4 evidence items). Open Targets reports strong known-drug evidence for PCSK9 (score: 0.98), suggesting existing approved or clinical-stage therapeutics \u2014 likely biologics if small-molecule data is sparse. DepMap CRISPR data show dependency in 5% of cancer lines. ChEMBL reports 76 compounds with potency data against PCSK9; best IC50 \u2248 0.2 nM (clinical-grade, pChEMBL=9.8).",
   "data_gaps": [
+    "gwas",
     "pubchem"
   ],
   "errors": {},
-  "data_coverage_pct": 83.3,
+  "data_coverage_pct": 66.7,
   "proxy_data_flags": {},
   "score_confidence_interval": [
-    8.29,
-    9.81
+    5.88,
+    8.22
   ],
   "api_latency_s": {
     "uniprot": 0.18,
-    "open_targets": 0.73,
-    "depmap": 0.53,
-    "gwas": 15.02,
-    "pubchem": 1.94,
-    "chembl": 2.84
+    "open_targets": 0.54,
+    "depmap": 0.33,
+    "gwas": 2.32,
+    "pubchem": 1.93,
+    "chembl": 1.12
   }
 }

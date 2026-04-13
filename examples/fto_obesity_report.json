@@ -126,7 +126,26 @@
     "cell_lines": [],
     "data_source": "DepMap Chronos Combined (4/1208 cell lines dependent)"
   },
-  "gwas_evidence": null,
+  "gwas_evidence": {
+    "gene_symbol": "FTO",
+    "trait_query": "obesity",
+    "total_associations": 1,
+    "associations": [
+      {
+        "study_accession": "",
+        "trait": "Obesity",
+        "mapped_gene": "",
+        "risk_allele": "rs568974867-C",
+        "p_value": 6e-07,
+        "beta_or_or": 1.2,
+        "sample_size": null,
+        "population": "7,813 Korean ancestry male cases, 11,782 Korean ancestry male controls",
+        "pubmed_id": null,
+        "efo_uri": null
+      }
+    ],
+    "strongest_p_value": 6e-07
+  },
   "compounds": {
     "gene_symbol": "FTO",
     "total_active_compounds": 1,
@@ -295,25 +314,20 @@
   "protein_interactome": null,
   "drug_history": null,
   "pathway_context": null,
-  "priority_score": 4.31,
+  "priority_score": 4.97,
   "priority_tier": "Medium",
-  "evidence_summary": "FTO shows strong Open Targets association with obesity (score: 0.60, n=4 evidence items). DepMap CRISPR data show dependency in 0% of cancer lines. ChEMBL reports 92 compounds with potency data against FTO; best IC50 \u2248 60.3 nM (lead-quality, pChEMBL=7.2).",
-  "data_gaps": [
-    "gwas"
-  ],
+  "evidence_summary": "FTO shows strong Open Targets association with obesity (score: 0.60, n=4 evidence items). DepMap CRISPR data show dependency in 0% of cancer lines. GWAS Catalog links 1 variants near FTO to 'obesity'-related traits (strongest p=6.00e-07). ChEMBL reports 92 compounds with potency data against FTO; best IC50 \u2248 60.3 nM (lead-quality, pChEMBL=7.2).",
+  "data_gaps": [],
   "errors": {},
-  "data_coverage_pct": 83.3,
+  "data_coverage_pct": 100.0,
   "proxy_data_flags": {},
-  "score_confidence_interval": [
-    3.95,
-    4.67
-  ],
+  "score_confidence_interval": null,
   "api_latency_s": {
-    "uniprot": 0.16,
-    "open_targets": 0.69,
-    "depmap": 0.54,
-    "gwas": 6.46,
-    "pubchem": 1.15,
-    "chembl": 1.63
+    "uniprot": 0.17,
+    "open_targets": 0.56,
+    "depmap": 0.43,
+    "gwas": 15.02,
+    "pubchem": 1.81,
+    "chembl": 0.83
   }
 }

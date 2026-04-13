@@ -31,12 +31,12 @@ EGFR shows strong Open Targets association with non-small cell lung carcinoma (s
 ## API Latency
 | API | Latency (s) |
 |---|---|
-| chembl | 2.35 ← slowest |
-| pubchem | 1.93 |
-| gwas | 1.07 |
-| open_targets | 0.54 |
-| depmap | 0.37 |
-| uniprot | 0.20 |
+| pubchem | 1.94 ← slowest |
+| chembl | 1.40 |
+| gwas | 1.35 |
+| open_targets | 0.63 |
+| depmap | 0.54 |
+| uniprot | 0.19 |
 
 ---
 _Resolved: EGFR | NCBI Gene: 1956 | UniProt: P00533_

@@ -31,12 +31,12 @@ CD274 shows modest Open Targets association with melanoma (score: 0.40, n=2 evid
 ## API Latency
 | API | Latency (s) |
 |---|---|
-| gwas | 5.98 ← slowest |
-| pubchem | 1.67 |
-| chembl | 0.82 |
-| open_targets | 0.51 |
-| depmap | 0.35 |
-| uniprot | 0.17 |
+| pubchem | 1.70 ← slowest |
+| gwas | 1.66 |
+| chembl | 1.04 |
+| open_targets | 0.53 |
+| depmap | 0.46 |
+| uniprot | 0.16 |
 
 ---
 _Resolved: CD274 | NCBI Gene: 29126 | UniProt: Q9NZQ7_
