@@ -35,6 +35,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 
+from genesis_bio_mcp import __version__
 from genesis_bio_mcp.clients.alphafold import AlphaFoldClient
 from genesis_bio_mcp.clients.chembl import ChEMBLClient
 from genesis_bio_mcp.clients.clinical_trials import ClinicalTrialsClient
@@ -62,7 +63,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 _HEADERS = {
-    "User-Agent": "genesis-bio-mcp/0.1 (research; github.com/WSobo/genesis-bio-mcp)",
+    "User-Agent": f"genesis-bio-mcp/{__version__} (research; github.com/WSobo/genesis-bio-mcp)",
     "Accept": "application/json",
 }
 

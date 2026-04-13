@@ -7,6 +7,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [Unreleased] — v0.2.0
+
+### Added
+- `get_pathway_members` tool — enumerate all HGNC gene symbols in a named Reactome pathway by display name or stable ID; enables systematic pathway-based screening in `run_biology_workflow`
+- `test_string_returns_empty_interactors_on_network_failure` — covers STRING resolve-success/network-failure edge case (51 tests total)
+
+### Fixed
+- Reactome cache poisoning — transient network failures no longer block subsequent retries for the same gene within a session
+- Reactome inline pathway parsing — switched from two-step POST→GET to using the inline `pathways` array in the `/identifiers/` response; adds trailing newline to identifier body per API contract
+- `run_biology_workflow` auth error — `AsyncAnthropic()` init is now wrapped in try/except with a plain-language message directing users to set `ANTHROPIC_API_KEY` in the MCP server's env
+- MCP server startup now logs a warning if `ANTHROPIC_API_KEY` is absent, surfacing the error before the first `run_biology_workflow` call
+
+### Changed
+- Removed unused `polars` runtime dependency
+- Removed stale `[project.optional-dependencies]` dev-dep block; `[dependency-groups]` is now the sole authoritative source
+- Version bumped to `0.2.0`; `User-Agent` header is now dynamically read from `__version__` rather than hardcoded
+
+---
+
 ## [0.1.0] - 2026-04-11 — Initial Alpha Release
 
 ### Summary

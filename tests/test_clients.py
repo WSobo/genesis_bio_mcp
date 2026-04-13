@@ -424,6 +424,22 @@ async def test_string_returns_none_when_unresolvable(http_client):
     assert result is None
 
 
+@respx.mock
+async def test_string_returns_empty_interactors_on_network_failure(http_client):
+    """Resolve succeeds but network fetch fails — returns ProteinInteractome with empty list."""
+    respx.get(url__regex=r"string-db\.org/api/json/get_string_ids").mock(
+        return_value=httpx.Response(200, json=_MOCK_STRING_RESOLVE)
+    )
+    respx.get(url__regex=r"string-db\.org/api/json/network").mock(return_value=httpx.Response(500))
+    client = StringDbClient(http_client)
+    result = await client.get_interactome("BRAF")
+
+    assert result is not None
+    assert result.gene_symbol == "BRAF"
+    assert result.top_interactors == []
+    assert result.total_partners == 0
+
+
 # ---------------------------------------------------------------------------
 # DGIdb client tests
 # ---------------------------------------------------------------------------
