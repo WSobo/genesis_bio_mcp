@@ -65,38 +65,52 @@ class MyModel(BaseModel):
 
 ### 3. Tool (`src/genesis_bio_mcp/server.py`)
 
-- Register with `@mcp.tool()`
-- The function **must return a markdown string** — never a dict, never raw JSON
-- Write the docstring for an AI agent: explain *when* to call this tool and *what* the inputs mean
-- Inject the client from `server.state`
+- Register with `@mcp.tool(annotations=ToolAnnotations(...))` — all four hint fields required
+- Input model: inherit `_GeneInput` for single-gene tools; use full `ConfigDict` for multi-field inputs
+- Always resolve aliases: `symbol, _ = await _resolve_symbol(params.gene_symbol)`
+- Output via `_fmt(result, params.response_format, error_msg)` — never format manually
+- Write the docstring for an AI agent: explain *when* to call this tool and *what* the output contains
+- Add the client to `server.state` in `lifespan()` and update the tool count in the module docstring
 
 ```python
-@mcp.tool()
-async def get_my_data(gene_symbol: str) -> str:
+class GetMyDataInput(_GeneInput):
+    """Input for get_my_data."""
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_my_data(params: GetMyDataInput) -> str:
     """Fetch data from MyApi for a gene symbol.
 
-    Use this when you need X. Input must be a canonical HGNC gene symbol (e.g. BRAF, EGFR).
-    Returns markdown with Y and Z fields.
-    """
-    result = await request.app.state.my_api.get_data(gene_symbol)
-    if result is None:
-        return f"## MyData — {gene_symbol}\n\nNo data found."
-    return result.to_markdown()
-```
+    Use this when you need X. Returns markdown with Y and Z fields.
 
-- Add the client to the `lifespan` context manager in `server.py`
+    Args:
+        params (GetMyDataInput): gene_symbol, response_format.
+    """
+    symbol, _ = await _resolve_symbol(params.gene_symbol)
+    result = await mcp.state.my_api.get_data(symbol)
+    return _fmt(result, params.response_format, f"No MyApi data found for '{symbol}'.")
+```
 
 ### 4. Tests (`tests/test_clients.py`)
 
 - Use `respx` to mock HTTP at the transport layer — never make real network calls in unit tests
 - Test the happy path, a 404/empty response, and an error response
 - Verify the returned model has the expected fields
+- Env var mocking: `monkeypatch.setenv` / `monkeypatch.delenv(raising=False)` — never mutate `os.environ`
+- Add `_MOCK_*` response dicts as module-level constants at the top of the test block
 
 ```python
+_MOCK_MY_API_RESPONSE = {"gene": "BRAF", "value": 42}
+
+
 @respx.mock
 async def test_my_api_get_data(http_client):
-    respx.get("https://myapi.example.com/data").mock(
-        return_value=httpx.Response(200, json={"result": "value"})
+    respx.get(url__regex=r"myapi\.example\.com/data").mock(
+        return_value=httpx.Response(200, json=_MOCK_MY_API_RESPONSE)
     )
     client = MyApiClient(http_client)
     result = await client.get_data("BRAF")
@@ -124,7 +138,15 @@ _SEMAPHORE = asyncio.Semaphore(settings.my_api_semaphore_limit)
 
 Users can override via `GENESIS_MY_API_SEMAPHORE_LIMIT=5` or a `.env` file.
 
-### 6. Checklist before opening a PR
+### 6. Workflow agent (`src/genesis_bio_mcp/workflow_agent.py`)
+
+Every new tool must also be reachable from `run_biology_workflow`:
+
+- Add `async def _get_<name>_fn(...)` inside `build_tool_registry()`
+- Add a `ToolSpec(...)` entry: `tool_category`, `use_when` (one embedding-searchable sentence), `input_schema`, `fn`
+- In `tests/test_workflow_agent.py`: add client attr name to `_mock_state()`, add client method to the inner loop, add tool name to `expected_tools`, bump the `"N tools"` assertion count
+
+### 7. Checklist before opening a PR
 
 - [ ] `uv run ruff format . && uv run ruff check --fix .` — no errors
 - [ ] `uv run pytest tests/ -v` — all passing
@@ -132,6 +154,7 @@ Users can override via `GENESIS_MY_API_SEMAPHORE_LIMIT=5` or a `.env` file.
 - [ ] API rate limit and auth notes added to README API reference table
 - [ ] If new client has semaphore/timeout: added field to `config/settings.py`
 - [ ] `CHANGELOG.md` updated under `## [Unreleased]`
+- [ ] `workflow_agent.py` tool registry updated and `test_workflow_agent.py` passing
 
 ## Commit style
 
