@@ -5,6 +5,7 @@ import pytest
 import respx
 
 from genesis_bio_mcp.clients.alphafold import AlphaFoldClient
+from genesis_bio_mcp.clients.biogrid import BioGRIDClient
 from genesis_bio_mcp.clients.clinical_trials import ClinicalTrialsClient
 from genesis_bio_mcp.clients.depmap import DepMapClient
 from genesis_bio_mcp.clients.dgidb import DGIdbClient
@@ -438,6 +439,92 @@ async def test_string_returns_empty_interactors_on_network_failure(http_client):
     assert result.gene_symbol == "BRAF"
     assert result.top_interactors == []
     assert result.total_partners == 0
+
+
+# ---------------------------------------------------------------------------
+# BioGRID client tests
+# ---------------------------------------------------------------------------
+
+_MOCK_BIOGRID_RESPONSE = {
+    "12345": {
+        "OFFICIAL_SYMBOL_A": "BRAF",
+        "OFFICIAL_SYMBOL_B": "RAF1",
+        "EXPERIMENTAL_SYSTEM": "Two-hybrid",
+        "EXPERIMENTAL_SYSTEM_TYPE": "physical",
+        "PUBMED_ID": "12345678",
+        "THROUGHPUT": "Low Throughput",
+    },
+    "12346": {
+        "OFFICIAL_SYMBOL_A": "BRAF",
+        "OFFICIAL_SYMBOL_B": "MAP2K1",
+        "EXPERIMENTAL_SYSTEM": "Co-immunoprecipitation",
+        "EXPERIMENTAL_SYSTEM_TYPE": "physical",
+        "PUBMED_ID": "23456789",
+        "THROUGHPUT": "Low Throughput",
+    },
+    "12347": {
+        "OFFICIAL_SYMBOL_A": "RAF1",
+        "OFFICIAL_SYMBOL_B": "BRAF",
+        "EXPERIMENTAL_SYSTEM": "Two-hybrid",
+        "EXPERIMENTAL_SYSTEM_TYPE": "physical",
+        "PUBMED_ID": "34567890",
+        "THROUGHPUT": "Low Throughput",
+    },
+}
+
+
+@respx.mock
+async def test_biogrid_get_interactions_happy_path(http_client, monkeypatch):
+    monkeypatch.setenv("BIOGRID_ACCESS_KEY", "test-key")
+    respx.get(url__regex=r"webservice\.thebiogrid\.org/interactions").mock(
+        return_value=httpx.Response(200, json=_MOCK_BIOGRID_RESPONSE)
+    )
+    client = BioGRIDClient(http_client)
+    result = await client.get_interactions("BRAF")
+
+    assert result is not None
+    assert result.gene_symbol == "BRAF"
+    assert result.total_interactions == 3
+    assert result.unique_partners >= 2
+    partners = {ix.interactor_a for ix in result.interactions} | {
+        ix.interactor_b for ix in result.interactions
+    }
+    assert "RAF1" in partners
+    assert "MAP2K1" in partners
+
+
+@respx.mock
+async def test_biogrid_returns_none_without_api_key(http_client, monkeypatch):
+    monkeypatch.delenv("BIOGRID_ACCESS_KEY", raising=False)
+    client = BioGRIDClient(http_client)
+    result = await client.get_interactions("BRAF")
+    assert result is None
+
+
+@respx.mock
+async def test_biogrid_returns_empty_on_403(http_client, monkeypatch):
+    monkeypatch.setenv("BIOGRID_ACCESS_KEY", "bad-key")
+    respx.get(url__regex=r"webservice\.thebiogrid\.org/interactions").mock(
+        return_value=httpx.Response(403, json={"error": "Forbidden"})
+    )
+    client = BioGRIDClient(http_client)
+    result = await client.get_interactions("BRAF")
+    assert result is None
+
+
+@respx.mock
+async def test_biogrid_empty_results(http_client, monkeypatch):
+    monkeypatch.setenv("BIOGRID_ACCESS_KEY", "test-key")
+    respx.get(url__regex=r"webservice\.thebiogrid\.org/interactions").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    client = BioGRIDClient(http_client)
+    result = await client.get_interactions("UNKNOWNGENE")
+
+    assert result is not None
+    assert result.total_interactions == 0
+    assert result.unique_partners == 0
+    assert result.interactions == []
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `Settings` class (`config/settings.py`) via `pydantic-settings` — all runtime config now configurable via `GENESIS_*` environment variables or a `.env` file without code changes
 - `docs/deployment.md` — full deployment guide covering env vars, Claude Desktop config, Docker setup, and production checklist
 - `CONTRIBUTING.md` augmented with settings integration pattern for new clients
+- **BioGRID client** — `get_biogrid_interactions` tool returning curated literature PPI records with experimental method metadata (two-hybrid, co-IP, etc.) and PubMed citations; requires `BIOGRID_ACCESS_KEY` env var (free registration at webservice.thebiogrid.org)
+- `BioGRIDInteraction` and `BioGRIDInteractome` Pydantic models with `to_markdown()`
 - `test_string_returns_empty_interactors_on_network_failure` — covers STRING resolve-success/network-failure edge case
 
 ### Fixed
@@ -23,11 +25,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - MCP server startup now logs a warning if `ANTHROPIC_API_KEY` is absent, surfacing the error before the first `run_biology_workflow` call
 
 ### Changed
+- Server now exposes **15 tools**
 - All hardcoded timeouts, cache paths, TTLs, semaphore limits, and the Claude model ID are now read from `Settings` at startup; defaults are unchanged
 - Removed unused `polars` runtime dependency
 - Removed stale `[project.optional-dependencies]` dev-dep block; `[dependency-groups]` is now the sole authoritative source
 - Version bumped to `0.2.0`; `User-Agent` header is now dynamically read from `__version__` rather than hardcoded
 - `README.md` updated with `env` block example for Claude Desktop and link to deployment guide
+- `CLAUDE.md` expanded with concrete client/model/tool/test/workflow-agent patterns; dead docs/ references fixed
+- `CONTRIBUTING.md` updated with current tool registration example, Step 5 (workflow agent), and updated PR checklist
 
 ---
 

@@ -10,6 +10,7 @@ Exposes 15 tools for biomedical database queries:
   - get_chembl_compounds          ChEMBL: quantitative IC50/Ki/Kd potency data
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_protein_interactome       STRING: binding partners and selectivity risks
+  - get_biogrid_interactions      BioGRID: curated literature PPI network
   - get_drug_history              DGIdb + ClinicalTrials.gov: known drugs and trials
   - get_pathway_context           Reactome: pathway membership and enrichment for a gene
   - get_pathway_members           Reactome: enumerate all genes in a named pathway
@@ -37,6 +38,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from genesis_bio_mcp import __version__
 from genesis_bio_mcp.clients.alphafold import AlphaFoldClient
+from genesis_bio_mcp.clients.biogrid import BioGRIDClient
 from genesis_bio_mcp.clients.chembl import ChEMBLClient
 from genesis_bio_mcp.clients.clinical_trials import ClinicalTrialsClient
 from genesis_bio_mcp.clients.depmap import DepMapClient, load_depmap_cache
@@ -94,6 +96,7 @@ async def lifespan(server: FastMCP):
         server.state.chembl = ChEMBLClient(client)
         server.state.alphafold = AlphaFoldClient(client)
         server.state.string_db = StringDbClient(client)
+        server.state.biogrid = BioGRIDClient(client)
         server.state.dgidb = DGIdbClient(client)
         server.state.clinical_trials = ClinicalTrialsClient(client)
         server.state.reactome = ReactomeClient(client)
@@ -190,6 +193,10 @@ class GetProteinStructureInput(_GeneInput):
 
 class GetProteinInteractomeInput(_GeneInput):
     """Input for get_protein_interactome."""
+
+
+class GetBioGRIDInteractionsInput(_GeneInput):
+    """Input for get_biogrid_interactions."""
 
 
 class GetDrugHistoryInput(_GeneInput):
@@ -585,6 +592,46 @@ async def get_protein_interactome(params: GetProteinInteractomeInput) -> str:
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
     )
 )
+async def get_biogrid_interactions(params: GetBioGRIDInteractionsInput) -> str:
+    """Retrieve curated protein–protein interactions from BioGRID.
+
+    Use this tool to get literature-curated PPI data from BioGRID, which provides
+    manually curated interaction records with experimental method metadata (two-hybrid,
+    co-IP, proximity ligation, etc.) and PubMed citations.  Complements STRING (which
+    scores confidence across multiple evidence types) with individual experiment-level
+    records.
+
+    Requires the BIOGRID_ACCESS_KEY environment variable.  Register for a free key at
+    https://webservice.thebiogrid.org/
+
+    Args:
+        params (GetBioGRIDInteractionsInput): gene_symbol, response_format.
+
+    Returns:
+        Markdown table of top interaction partners ranked by evidence count, with
+        experimental method and interaction type annotations.  Returns an error
+        message if the API key is not set.
+    """
+    symbol, _ = await _resolve_symbol(params.gene_symbol)
+    if not __import__("os").environ.get("BIOGRID_ACCESS_KEY"):
+        return (
+            "**BioGRID data unavailable:** `BIOGRID_ACCESS_KEY` is not set.\n\n"
+            "Register for a free key at https://webservice.thebiogrid.org/ and add it to the "
+            "server environment as `BIOGRID_ACCESS_KEY=<your-key>`."
+        )
+    result = await mcp.state.biogrid.get_interactions(symbol)
+    return _fmt(
+        result,
+        params.response_format,
+        f"No BioGRID interaction data found for '{symbol}'.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
 async def get_drug_history(params: GetDrugHistoryInput) -> str:
     """Retrieve the drug development history for a gene target.
 
@@ -878,7 +925,7 @@ async def tool_registry_resource() -> str:
 
     Returns:
         Markdown document grouped by tool category with descriptions and
-        ``use_when`` fields for all 13 registered tools.
+        ``use_when`` fields for all 15 registered tools.
     """
     registry = build_tool_registry(mcp.state)
     return format_registry_docs(registry)

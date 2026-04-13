@@ -150,6 +150,19 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"No STRING interaction data found for '{gene_symbol}'."
         return result.to_markdown()
 
+    async def _get_biogrid_interactions_fn(gene_symbol: str) -> str:
+        import os
+
+        if not os.environ.get("BIOGRID_ACCESS_KEY"):
+            return (
+                "BioGRID data unavailable: BIOGRID_ACCESS_KEY is not set. "
+                "Register at https://webservice.thebiogrid.org/ and set the env var."
+            )
+        result = await state.biogrid.get_interactions(gene_symbol)
+        if result is None:
+            return f"No BioGRID interaction data found for '{gene_symbol}'."
+        return result.to_markdown()
+
     async def _get_drug_history_fn(gene_symbol: str) -> str:
         drugs, ct_result = await asyncio.gather(
             state.dgidb.get_drug_interactions(gene_symbol),
@@ -453,6 +466,30 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="structure",
             use_when="Use to identify selectivity risks — proteins closely related to the target that a compound might also bind.",
             fn=_get_protein_interactome_fn,
+        ),
+        "get_biogrid_interactions": ToolSpec(
+            name="get_biogrid_interactions",
+            description=(
+                "Retrieve curated protein–protein interactions from BioGRID with experimental method "
+                "metadata (two-hybrid, co-IP, proximity ligation) and PubMed citations. "
+                "Requires BIOGRID_ACCESS_KEY environment variable."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_symbol": {
+                        "type": "string",
+                        "description": "HGNC gene symbol. Example: 'BRAF'",
+                    }
+                },
+                "required": ["gene_symbol"],
+            },
+            tool_category="structure",
+            use_when=(
+                "Use for literature-curated PPI data with individual experiment records. "
+                "Complements STRING when you need experimental method details or citation evidence."
+            ),
+            fn=_get_biogrid_interactions_fn,
         ),
         "get_drug_history": ToolSpec(
             name="get_drug_history",

@@ -36,6 +36,7 @@ def _mock_state() -> MagicMock:
         "dgidb",
         "clinical_trials",
         "reactome",
+        "biogrid",
     ):
         client = MagicMock()
         for method in (
@@ -46,6 +47,7 @@ def _mock_state() -> MagicMock:
             "get_compounds",
             "get_structure",
             "get_interactome",
+            "get_interactions",
             "get_drug_interactions",
             "get_trials",
             "get_pathway_context",
@@ -99,7 +101,7 @@ def _make_response(stop_reason: str, content: list) -> MagicMock:
 
 
 def test_build_tool_registry_has_all_tools():
-    """Registry must contain all 13 expected tools and each ToolSpec must be valid."""
+    """Registry must contain all 15 expected tools and each ToolSpec must be valid."""
     state = _mock_state()
     registry = build_tool_registry(state)
 
@@ -113,6 +115,7 @@ def test_build_tool_registry_has_all_tools():
         "get_chembl_compounds",
         "get_protein_structure",
         "get_protein_interactome",
+        "get_biogrid_interactions",
         "get_drug_history",
         "get_pathway_context",
         "get_pathway_members",
@@ -429,7 +432,7 @@ def test_format_registry_docs_structure():
 
     # Header present
     assert "genesis-bio-mcp Tool Registry" in docs
-    assert "14 tools" in docs
+    assert "15 tools" in docs
 
     # Every tool name must appear
     for name in registry:

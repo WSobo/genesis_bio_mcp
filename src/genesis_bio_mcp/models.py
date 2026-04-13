@@ -583,6 +583,71 @@ class ProteinInteractome(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# BioGRID protein–protein interactions
+# ---------------------------------------------------------------------------
+
+
+class BioGRIDInteraction(BaseModel):
+    """A single protein–protein interaction from BioGRID."""
+
+    interactor_a: str = Field(description="Official gene symbol of interactor A")
+    interactor_b: str = Field(description="Official gene symbol of interactor B")
+    experimental_system: str | None = Field(
+        None, description="Experimental method, e.g. 'Two-hybrid', 'Co-IP'"
+    )
+    experimental_system_type: str | None = Field(
+        None, description="Broad type: 'physical' | 'genetic'"
+    )
+    pubmed_id: str | None = Field(None, description="PubMed ID of the source publication")
+    throughput: str | None = Field(
+        None, description="Low Throughput | High Throughput | Low/High Throughput"
+    )
+
+
+class BioGRIDInteractome(BaseModel):
+    """BioGRID interaction network for a query gene."""
+
+    gene_symbol: str = Field(description="Query gene symbol")
+    total_interactions: int = Field(description="Total interactions returned by BioGRID")
+    unique_partners: int = Field(description="Number of unique interaction partners")
+    interactions: list[BioGRIDInteraction] = Field(
+        default_factory=list, description="Individual interaction records (up to 50)"
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## BioGRID Interactome: {self.gene_symbol}",
+            f"**{self.total_interactions} interactions** | **{self.unique_partners} unique partners**",
+        ]
+        if self.interactions:
+            partner_counts: dict[str, int] = {}
+            for ix in self.interactions:
+                partner = (
+                    ix.interactor_b if ix.interactor_a == self.gene_symbol else ix.interactor_a
+                )
+                partner_counts[partner] = partner_counts.get(partner, 0) + 1
+
+            lines += [
+                "",
+                "| Partner | Evidence Count | Method (example) | Type |",
+                "|---|---|---|---|",
+            ]
+            for partner, count in sorted(partner_counts.items(), key=lambda x: -x[1])[:20]:
+                example = next(
+                    (
+                        ix
+                        for ix in self.interactions
+                        if ix.interactor_a == partner or ix.interactor_b == partner
+                    ),
+                    None,
+                )
+                method = example.experimental_system or "—" if example else "—"
+                etype = example.experimental_system_type or "—" if example else "—"
+                lines.append(f"| **{partner}** | {count} | {method} | {etype} |")
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Drug history (DGIdb + ClinicalTrials.gov)
 # ---------------------------------------------------------------------------
 
