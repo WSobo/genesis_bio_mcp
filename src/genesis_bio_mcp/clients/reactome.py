@@ -12,9 +12,7 @@ from genesis_bio_mcp.models import Pathway, PathwayContext
 logger = logging.getLogger(__name__)
 
 _REACTOME_ANALYSIS_URL = "https://reactome.org/AnalysisService/identifiers/"
-_REACTOME_PATHWAYS_URL = (
-    "https://reactome.org/AnalysisService/download/{token}/pathways/TOTAL/result.json"
-)
+_REACTOME_CONTENT_URL = "https://reactome.org/ContentService"
 
 _SEMAPHORE = asyncio.Semaphore(3)
 
@@ -71,10 +69,10 @@ _KEYWORD_CATEGORIES = [
 class ReactomeClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
-        # Session-scoped cache: Reactome pathway enrichment results are deterministic
-        # for a given gene within a session (the analysis API issues a new token per
-        # call, so caching avoids both the network round-trip and redundant token issuance).
-        self._cache: dict[str, PathwayContext | None] = {}
+        # Session-scoped cache: only successful results are cached.
+        # Failures (network errors, empty results) are NOT cached so that transient
+        # errors don't permanently poison the cache for the remainder of the session.
+        self._cache: dict[str, PathwayContext] = {}
 
     async def get_pathway_context(
         self, gene_symbol: str, max_pathways: int = 10
@@ -86,14 +84,9 @@ class ReactomeClient:
             return self._cache[symbol]
 
         async with _SEMAPHORE:
-            token = await self._run_analysis(symbol)
-            if token is None:
-                self._cache[symbol] = None
-                return None
-
-            pathways = await self._fetch_pathways(token, max_pathways)
+            pathways = await self._run_analysis(symbol, max_pathways)
             if not pathways:
-                self._cache[symbol] = None
+                # Do NOT cache failures — transient errors must be retryable
                 return None
 
             top_name = pathways[0].display_name if pathways else None
@@ -105,15 +98,23 @@ class ReactomeClient:
             self._cache[symbol] = result
             return result
 
-    async def _run_analysis(self, gene_symbol: str) -> str | None:
-        """POST gene identifier to Reactome analysis service, return token."""
+    async def _run_analysis(self, gene_symbol: str, max_pathways: int) -> list[Pathway]:
+        """POST gene identifier to Reactome AnalysisService; parse inline pathways.
+
+        The AnalysisService POST /identifiers/ response includes pathways inline —
+        no separate download step is needed. Using the inline result avoids a second
+        round-trip and the separate /download/ endpoint (which has had availability
+        issues historically).
+        """
         try:
             resp = await self._client.post(
                 _REACTOME_ANALYSIS_URL,
-                content=gene_symbol,
+                # Reactome expects identifiers as newline-separated plain text.
+                # A trailing newline ensures the identifier is parsed correctly.
+                content=f"{gene_symbol}\n",
                 params={
                     "interactors": "false",
-                    "pageSize": 20,
+                    "pageSize": max_pathways,
                     "page": 1,
                     "sortBy": "ENTITIES_PVALUE",
                     "order": "ASC",
@@ -121,56 +122,142 @@ class ReactomeClient:
                     "pValue": 1,
                     "includeDisease": "true",
                     "min": 1,
-                    "species": "Homo sapiens",
                 },
                 headers={"Content-Type": "text/plain"},
-                timeout=25.0,
+                timeout=30.0,
             )
             resp.raise_for_status()
             data = resp.json()
-            return data.get("summary", {}).get("token")
         except Exception as exc:
             logger.warning("Reactome analysis failed for %s: %s", gene_symbol, exc)
-            return None
+            return []
 
-    async def _fetch_pathways(self, token: str, max_pathways: int) -> list[Pathway]:
-        """Fetch pathway results for a completed Reactome analysis token."""
+        pathways_data: list[dict] = data.get("pathways", []) or []
+        if not pathways_data:
+            token = data.get("summary", {}).get("token")
+            logger.debug(
+                "Reactome inline pathways empty for %s (token=%s); total found=%s",
+                gene_symbol,
+                token,
+                data.get("pathwaysFound"),
+            )
+            return []
+
+        return _parse_pathways(pathways_data[:max_pathways])
+
+    async def get_pathway_members(self, pathway_name_or_id: str, max_genes: int = 50) -> list[str]:
+        """Return HGNC gene symbols for all members of a named Reactome pathway.
+
+        Searches ContentService for the pathway by name or stable ID, then fetches
+        all ReferenceGeneProduct participants.
+
+        Args:
+            pathway_name_or_id: Pathway display name (e.g. "MAPK signaling") or
+                Reactome stable ID (e.g. "R-HSA-5673001").
+            max_genes: Maximum number of gene symbols to return (default 50).
+
+        Returns:
+            Sorted list of unique HGNC gene symbols, or an empty list if the
+            pathway cannot be found or has no gene participants.
+        """
+        async with _SEMAPHORE:
+            stid = pathway_name_or_id.strip()
+
+            # If it looks like a stable ID (R-HSA-...) skip the search step
+            if not stid.startswith("R-"):
+                stid = await self._search_pathway_stid(stid)
+                if stid is None:
+                    return []
+
+            return await self._fetch_pathway_genes(stid, max_genes)
+
+    async def _search_pathway_stid(self, name: str) -> str | None:
+        """Search Reactome ContentService for a pathway by name; return its stId."""
         try:
             resp = await self._client.get(
-                _REACTOME_PATHWAYS_URL.format(token=token),
+                f"{_REACTOME_CONTENT_URL}/data/search/query",
+                params={
+                    "query": name,
+                    "types": "Pathway",
+                    "species": "Homo sapiens",
+                    "cluster": "true",
+                    "rows": 5,
+                },
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            logger.warning("Reactome pathway search failed for '%s': %s", name, exc)
+            return None
+
+        results = data.get("results", [])
+        for group in results:
+            entries = group.get("entries", [])
+            if entries:
+                return entries[0].get("stId")
+        return None
+
+    async def _fetch_pathway_genes(self, stid: str, max_genes: int) -> list[str]:
+        """Fetch ReferenceGeneProduct participants for a Reactome pathway stId."""
+        try:
+            resp = await self._client.get(
+                f"{_REACTOME_CONTENT_URL}/data/participants/{stid}",
+                params={"type": "ReferenceGeneProduct"},
                 timeout=20.0,
             )
             resp.raise_for_status()
             data = resp.json()
-            pathways_data = data.get("pathways", []) or []
         except Exception as exc:
-            logger.warning("Reactome pathway fetch failed for token %s: %s", token, exc)
+            logger.warning("Reactome participant fetch failed for %s: %s", stid, exc)
             return []
 
-        pathways: list[Pathway] = []
-        for p in pathways_data[:max_pathways]:
-            p_value = p.get("entities", {}).get("pValue")
-            gene_count = p.get("entities", {}).get("total")
-            name = p.get("name", "")
-            reactome_id = p.get("stId", "")
-            category = _infer_category(name)
+        genes: set[str] = set()
+        for entry in data:
+            # Each entry is a PhysicalEntity; its refEntities carry the gene names
+            ref_entities = entry.get("refEntities", [])
+            for ref in ref_entities:
+                gene_names = ref.get("geneName", [])
+                if isinstance(gene_names, list):
+                    genes.update(g.upper() for g in gene_names if g)
+                elif isinstance(gene_names, str) and gene_names:
+                    genes.add(gene_names.upper())
 
-            try:
-                p_float = float(p_value) if p_value is not None else None
-            except (ValueError, TypeError):
-                p_float = None
+            # Fallback: identifier field on the entry itself
+            if not genes:
+                identifier = entry.get("identifier", "")
+                if identifier:
+                    genes.add(identifier.upper())
 
-            pathways.append(
-                Pathway(
-                    reactome_id=reactome_id,
-                    display_name=name,
-                    p_value=p_float,
-                    gene_count=int(gene_count) if gene_count is not None else None,
-                    category=category,
-                )
+        return sorted(genes)[:max_genes]
+
+
+def _parse_pathways(pathways_data: list[dict]) -> list[Pathway]:
+    """Parse raw Reactome pathway dicts into Pathway models."""
+    pathways: list[Pathway] = []
+    for p in pathways_data:
+        p_value = p.get("entities", {}).get("pValue")
+        gene_count = p.get("entities", {}).get("total")
+        name = p.get("name", "")
+        reactome_id = p.get("stId", "")
+        category = _infer_category(name)
+
+        try:
+            p_float = float(p_value) if p_value is not None else None
+        except (ValueError, TypeError):
+            p_float = None
+
+        pathways.append(
+            Pathway(
+                reactome_id=reactome_id,
+                display_name=name,
+                p_value=p_float,
+                gene_count=int(gene_count) if gene_count is not None else None,
+                category=category,
             )
+        )
 
-        return pathways
+    return pathways
 
 
 def _infer_category(pathway_name: str) -> str | None:

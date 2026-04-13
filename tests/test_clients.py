@@ -576,14 +576,9 @@ _MOCK_REACTOME_TOKEN_RESPONSE = {
 
 @respx.mock
 async def test_reactome_get_pathway_context(http_client):
-    # POST to analysis service returns token + inline pathways
+    # POST to analysis service returns inline pathways — no separate download needed
     respx.post(url__regex=r"reactome\.org/AnalysisService/identifiers").mock(
         return_value=httpx.Response(200, json=_MOCK_REACTOME_TOKEN_RESPONSE)
-    )
-    respx.get(url__regex=r"reactome\.org/AnalysisService/download").mock(
-        return_value=httpx.Response(
-            200, json={"pathways": _MOCK_REACTOME_TOKEN_RESPONSE["pathways"]}
-        )
     )
     client = ReactomeClient(http_client)
     result = await client.get_pathway_context("BRAF")
@@ -604,6 +599,88 @@ async def test_reactome_returns_none_on_failure(http_client):
     client = ReactomeClient(http_client)
     result = await client.get_pathway_context("BRAF")
     assert result is None
+
+
+@respx.mock
+async def test_reactome_failure_not_cached(http_client):
+    """A transient network error must not poison the cache for subsequent calls."""
+    route = respx.post(url__regex=r"reactome\.org/AnalysisService/identifiers")
+    # First call fails
+    route.mock(return_value=httpx.Response(500))
+    client = ReactomeClient(http_client)
+    result1 = await client.get_pathway_context("BRAF")
+    assert result1 is None
+
+    # Second call succeeds — must not be blocked by a cached None
+    route.mock(return_value=httpx.Response(200, json=_MOCK_REACTOME_TOKEN_RESPONSE))
+    result2 = await client.get_pathway_context("BRAF")
+    assert result2 is not None
+    assert result2.gene_symbol == "BRAF"
+
+
+_MOCK_REACTOME_SEARCH_RESPONSE = {
+    "results": [
+        {
+            "entries": [
+                {"stId": "R-HSA-5673001", "name": "RAF/MAP kinase cascade"},
+            ]
+        }
+    ]
+}
+
+_MOCK_REACTOME_PARTICIPANTS_RESPONSE = [
+    {
+        "refEntities": [
+            {"geneName": ["BRAF"], "className": "ReferenceGeneProduct"},
+            {"geneName": ["RAF1"], "className": "ReferenceGeneProduct"},
+        ]
+    },
+    {
+        "refEntities": [
+            {"geneName": ["MAP2K1", "MEK1"], "className": "ReferenceGeneProduct"},
+        ]
+    },
+]
+
+
+@respx.mock
+async def test_reactome_get_pathway_members_by_name(http_client):
+    respx.get(url__regex=r"reactome\.org/ContentService/data/search/query").mock(
+        return_value=httpx.Response(200, json=_MOCK_REACTOME_SEARCH_RESPONSE)
+    )
+    respx.get(url__regex=r"reactome\.org/ContentService/data/participants").mock(
+        return_value=httpx.Response(200, json=_MOCK_REACTOME_PARTICIPANTS_RESPONSE)
+    )
+    client = ReactomeClient(http_client)
+    genes = await client.get_pathway_members("RAF/MAP kinase cascade")
+
+    assert "BRAF" in genes
+    assert "RAF1" in genes
+    # MAP2K1 should appear (first geneName entry wins)
+    assert "MAP2K1" in genes
+
+
+@respx.mock
+async def test_reactome_get_pathway_members_by_stid(http_client):
+    """Stable ID input skips the search step entirely."""
+    respx.get(url__regex=r"reactome\.org/ContentService/data/participants").mock(
+        return_value=httpx.Response(200, json=_MOCK_REACTOME_PARTICIPANTS_RESPONSE)
+    )
+    client = ReactomeClient(http_client)
+    genes = await client.get_pathway_members("R-HSA-5673001")
+
+    assert "BRAF" in genes
+    assert "RAF1" in genes
+
+
+@respx.mock
+async def test_reactome_get_pathway_members_not_found(http_client):
+    respx.get(url__regex=r"reactome\.org/ContentService/data/search/query").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+    client = ReactomeClient(http_client)
+    genes = await client.get_pathway_members("nonexistent pathway xyz")
+    assert genes == []
 
 
 # ---------------------------------------------------------------------------

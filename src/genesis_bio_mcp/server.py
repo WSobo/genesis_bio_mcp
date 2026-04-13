@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 14 tools for biomedical database queries:
+Exposes 15 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_target_disease_association Open Targets: target–disease association score
@@ -11,7 +11,8 @@ Exposes 14 tools for biomedical database queries:
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_protein_interactome       STRING: binding partners and selectivity risks
   - get_drug_history              DGIdb + ClinicalTrials.gov: known drugs and trials
-  - get_pathway_context           Reactome: pathway membership and enrichment
+  - get_pathway_context           Reactome: pathway membership and enrichment for a gene
+  - get_pathway_members           Reactome: enumerate all genes in a named pathway
   - prioritize_target             Orchestration: full target assessment report
   - compare_targets               Compare 2–5 targets side by side for an indication
   - run_biology_workflow          AI agent: dynamic tool selection for multi-step questions
@@ -24,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import logging
+import os
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Literal
@@ -68,6 +70,13 @@ _HEADERS = {
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """Manage a shared httpx.AsyncClient and pre-load the DepMap gene cache."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        logger.warning(
+            "ANTHROPIC_API_KEY is not set. run_biology_workflow will fail. "
+            "Set it in claude_desktop_config.json under 'env' or export it before "
+            "starting the MCP server."
+        )
+
     async with httpx.AsyncClient(headers=_HEADERS, timeout=30.0, follow_redirects=True) as client:
         # Fetch DepMap gene_dep_summary once at startup for instant lookups
         gene_dep_cache = await load_depmap_cache(client)
@@ -185,6 +194,27 @@ class GetDrugHistoryInput(_GeneInput):
 
 class GetPathwayContextInput(_GeneInput):
     """Input for get_pathway_context."""
+
+
+class GetPathwayMembersInput(BaseModel):
+    """Input for get_pathway_members."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    pathway_name_or_id: str = Field(
+        ...,
+        description=(
+            "Reactome pathway display name (e.g. 'MAPK signaling', 'RAF/MAP kinase cascade') "
+            "or stable ID (e.g. 'R-HSA-5673001')."
+        ),
+        min_length=1,
+        max_length=200,
+    )
+    max_genes: int = Field(
+        default=50,
+        description="Maximum number of gene symbols to return (default 50).",
+        ge=1,
+        le=500,
+    )
 
 
 class ResolveGeneInput(BaseModel):
@@ -613,6 +643,49 @@ async def get_pathway_context(params: GetPathwayContextInput) -> str:
     if result is not None and not result.pathways:
         result = None
     return _fmt(result, params.response_format, f"No Reactome pathway data found for '{symbol}'.")
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_pathway_members(params: GetPathwayMembersInput) -> str:
+    """Enumerate all gene members of a named Reactome pathway.
+
+    Use this tool when you need the full gene list for a pathway family to enable
+    systematic screening — e.g. "find all MAPK kinases" or "list genes in the
+    PI3K/AKT pathway". Returns HGNC gene symbols that can then be passed to
+    get_drug_history, get_cancer_dependency, or prioritize_target for each member.
+
+    Accepts either a pathway display name (fuzzy search) or a Reactome stable ID
+    (e.g. R-HSA-5673001) for exact lookup.
+
+    Args:
+        params (GetPathwayMembersInput): pathway_name_or_id, max_genes.
+
+    Returns:
+        Markdown list of HGNC gene symbols for all ReferenceGeneProduct participants
+        in the pathway, or an error message if the pathway cannot be found.
+    """
+    genes = await mcp.state.reactome.get_pathway_members(
+        params.pathway_name_or_id, params.max_genes
+    )
+    if not genes:
+        return (
+            f"**No pathway members found for '{params.pathway_name_or_id}'.**\n\n"
+            "Try a more specific name (e.g. 'RAF/MAP kinase cascade') or use a "
+            "Reactome stable ID (e.g. R-HSA-5673001)."
+        )
+    lines = [
+        f"## Pathway members: {params.pathway_name_or_id}",
+        f"**{len(genes)} gene(s)** found in Reactome.\n",
+        "| # | Gene |",
+        "|---|------|",
+    ]
+    for i, gene in enumerate(genes, 1):
+        lines.append(f"| {i} | {gene} |")
+    return "\n".join(lines)
 
 
 @mcp.tool(

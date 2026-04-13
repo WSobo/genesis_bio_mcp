@@ -31,7 +31,7 @@ Answer the user's biology question by calling the available tools in a logical o
 
 Workflow guidance:
 1. Start with resolve_gene if the gene name might be an alias or informal name.
-2. Use pathway/annotation tools (get_pathway_context, get_protein_info) for broad biology questions.
+2. Use pathway/annotation tools (get_pathway_context, get_protein_info) for broad biology questions. Use get_pathway_members to enumerate all genes in a pathway for systematic screening.
 3. Use evidence tools (get_target_disease_association, get_cancer_dependency, get_gwas_evidence) for disease links.
 4. Use druggability tools (get_compounds, get_drug_history) to assess chemical tractability and competition.
 5. Call prioritize_target for a full evidence synthesis and composite score on a specific target–indication pair.
@@ -177,6 +177,15 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
         if result is None or not result.pathways:
             return f"No Reactome pathway data found for '{gene_symbol}'."
         return result.to_markdown()
+
+    async def _get_pathway_members_fn(pathway_name_or_id: str, max_genes: int = 50) -> str:
+        genes = await state.reactome.get_pathway_members(pathway_name_or_id, max_genes)
+        if not genes:
+            return (
+                f"No pathway members found for '{pathway_name_or_id}'. "
+                "Try a more specific name or a Reactome stable ID (e.g. R-HSA-5673001)."
+            )
+        return f"Pathway members for '{pathway_name_or_id}': {', '.join(genes)}"
 
     async def _prioritize_target_fn(
         gene_symbol: str, indication: str, extended: bool = False
@@ -484,6 +493,38 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             use_when="Use to understand pathway biology, resistance mechanisms, or to find other genes in the same pathway.",
             fn=_get_pathway_context_fn,
         ),
+        "get_pathway_members": ToolSpec(
+            name="get_pathway_members",
+            description=(
+                "Enumerate all HGNC gene symbols that are members of a named Reactome pathway. "
+                "Accepts a pathway display name or stable ID (R-HSA-XXXXXXX). "
+                "Returns a list of gene symbols for systematic screening across a gene family."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "pathway_name_or_id": {
+                        "type": "string",
+                        "description": (
+                            "Reactome pathway name (e.g. 'MAPK signaling', 'RAF/MAP kinase cascade') "
+                            "or stable ID (e.g. 'R-HSA-5673001')."
+                        ),
+                    },
+                    "max_genes": {
+                        "type": "integer",
+                        "description": "Maximum genes to return (default 50).",
+                        "default": 50,
+                    },
+                },
+                "required": ["pathway_name_or_id"],
+            },
+            tool_category="pathways",
+            use_when=(
+                "Use to enumerate all genes in a named pathway for systematic screening "
+                "across a gene family, e.g. 'find all MAPK kinases' or 'list PI3K/AKT members'."
+            ),
+            fn=_get_pathway_members_fn,
+        ),
         "prioritize_target": ToolSpec(
             name="prioritize_target",
             description=(
@@ -562,7 +603,18 @@ async def run_agent_loop(
     Returns:
         Synthesized Markdown answer.
     """
-    client = anthropic.AsyncAnthropic()
+    try:
+        client = anthropic.AsyncAnthropic()
+    except anthropic.AuthenticationError as exc:
+        return (
+            "**run_biology_workflow requires ANTHROPIC_API_KEY.**\n\n"
+            "The `ANTHROPIC_API_KEY` environment variable is not set in the MCP server's "
+            "environment. Set it in `claude_desktop_config.json` (under `env`) or export it "
+            "in the shell before starting the MCP server.\n\n"
+            f"Detail: {exc}"
+        )
+    except Exception as exc:
+        return f"**run_biology_workflow failed to initialize Anthropic client:** {exc}"
 
     tools_for_claude = [
         {

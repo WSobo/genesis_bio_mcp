@@ -115,6 +115,7 @@ def test_build_tool_registry_has_all_tools():
         "get_protein_interactome",
         "get_drug_history",
         "get_pathway_context",
+        "get_pathway_members",
         "prioritize_target",
         "compare_targets",
     }
@@ -428,7 +429,7 @@ def test_format_registry_docs_structure():
 
     # Header present
     assert "genesis-bio-mcp Tool Registry" in docs
-    assert "13 tools" in docs
+    assert "14 tools" in docs
 
     # Every tool name must appear
     for name in registry:
