@@ -7,7 +7,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
-## [Unreleased] — v0.2.0
+## [Unreleased] — v0.1.5
 
 ### Added
 - `get_pathway_members` tool — enumerate all HGNC gene symbols in a named Reactome pathway by display name or stable ID; enables systematic pathway-based screening in `run_biology_workflow`
@@ -29,7 +29,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - All hardcoded timeouts, cache paths, TTLs, semaphore limits, and the Claude model ID are now read from `Settings` at startup; defaults are unchanged
 - Removed unused `polars` runtime dependency
 - Removed stale `[project.optional-dependencies]` dev-dep block; `[dependency-groups]` is now the sole authoritative source
-- Version bumped to `0.2.0`; `User-Agent` header is now dynamically read from `__version__` rather than hardcoded
+- Version bumped to `0.1.5`; `User-Agent` header is now dynamically read from `__version__` rather than hardcoded
 - `README.md` updated with `env` block example for Claude Desktop and link to deployment guide
 - `CLAUDE.md` expanded with concrete client/model/tool/test/workflow-agent patterns; dead docs/ references fixed
 - `CONTRIBUTING.md` updated with current tool registration example, Step 5 (workflow agent), and updated PR checklist
