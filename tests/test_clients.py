@@ -11,6 +11,7 @@ from genesis_bio_mcp.clients.depmap import DepMapClient
 from genesis_bio_mcp.clients.dgidb import DGIdbClient
 from genesis_bio_mcp.clients.gnomad import GnomADClient
 from genesis_bio_mcp.clients.gwas import GwasClient
+from genesis_bio_mcp.clients.interpro import InterProClient
 from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
 from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.reactome import ReactomeClient
@@ -1267,3 +1268,152 @@ def test_gnomad_to_markdown_constrained():
     assert "LOEUF" in md
     assert "Highly constrained" in md
     assert "Engineering note" in md
+
+
+# ---------------------------------------------------------------------------
+# InterPro client tests
+# ---------------------------------------------------------------------------
+
+_MOCK_INTERPRO_RESPONSE = {
+    "count": 2,
+    "next": None,
+    "previous": None,
+    "results": [
+        {
+            "metadata": {
+                "accession": "IPR000719",
+                "name": "Protein kinase domain",
+                "source_database": "interpro",
+                "type": "domain",
+                "member_databases": {
+                    "pfam": {"PF00069": "Protein kinase domain"},
+                    "smart": {"SM00220": "S_TKc"},
+                },
+                "go_terms": [
+                    {
+                        "identifier": "GO:0004672",
+                        "name": "protein kinase activity",
+                        "category": {"code": "F", "name": "molecular_function"},
+                    },
+                ],
+            },
+            "proteins": [
+                {
+                    "accession": "p15056",
+                    "protein_length": 766,
+                    "source_database": "reviewed",
+                    "organism": "9606",
+                    "entry_protein_locations": [
+                        {
+                            "fragments": [{"start": 457, "end": 717, "dc-status": "CONTINUOUS"}],
+                            "representative": True,
+                            "model": "IPR000719",
+                            "score": 0,
+                        }
+                    ],
+                }
+            ],
+        },
+        {
+            "metadata": {
+                "accession": "IPR003116",
+                "name": "Raf-like Ras-binding",
+                "source_database": "interpro",
+                "type": "domain",
+                "member_databases": {"pfam": {"PF02196": "RBD"}},
+                "go_terms": [],
+            },
+            "proteins": [
+                {
+                    "accession": "p15056",
+                    "protein_length": 766,
+                    "source_database": "reviewed",
+                    "organism": "9606",
+                    "entry_protein_locations": [
+                        {
+                            "fragments": [{"start": 155, "end": 227, "dc-status": "CONTINUOUS"}],
+                            "representative": True,
+                            "model": "IPR003116",
+                            "score": 0,
+                        }
+                    ],
+                }
+            ],
+        },
+    ],
+}
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_interpro_get_domains_happy_path(http_client):
+    """Should parse InterPro response and return DomainAnnotations sorted by position."""
+    respx.get(url__regex=r"ebi\.ac\.uk/interpro/api/entry/InterPro/protein").mock(
+        return_value=httpx.Response(200, json=_MOCK_INTERPRO_RESPONSE)
+    )
+    client = InterProClient(http_client)
+    result = await client.get_domains("BRAF", "P15056")
+
+    assert result is not None
+    assert result.total_entries == 2
+    assert len(result.domains) == 2
+    # Should be sorted by start position: RBD (155) before kinase (457)
+    assert result.domains[0].interpro_accession == "IPR003116"
+    assert result.domains[1].interpro_accession == "IPR000719"
+    assert result.domains[1].positions == [(457, 717)]
+    assert "PF00069" in result.domains[1].member_databases.get("pfam", [])
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_interpro_returns_empty_on_404(http_client):
+    """Returns DomainAnnotations with 0 entries on 404."""
+    respx.get(url__regex=r"ebi\.ac\.uk/interpro/api/entry/InterPro/protein").mock(
+        return_value=httpx.Response(404)
+    )
+    client = InterProClient(http_client)
+    result = await client.get_domains("FAKEGENE", "X00000")
+
+    assert result is not None
+    assert result.total_entries == 0
+    assert result.domains == []
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_interpro_returns_none_on_error(http_client):
+    """Returns None on network error."""
+    respx.get(url__regex=r"ebi\.ac\.uk/interpro/api/entry/InterPro/protein").mock(
+        side_effect=httpx.ConnectError("timeout")
+    )
+    client = InterProClient(http_client)
+    result = await client.get_domains("BRAF", "P15056")
+
+    assert result is None
+
+
+def test_interpro_to_markdown():
+    """DomainAnnotations.to_markdown includes domain names and positions."""
+    from genesis_bio_mcp.models import DomainAnnotation, DomainAnnotations
+
+    result = DomainAnnotations(
+        gene_symbol="BRAF",
+        uniprot_accession="P15056",
+        total_entries=1,
+        domains=[
+            DomainAnnotation(
+                interpro_accession="IPR000719",
+                name="Protein kinase domain",
+                entry_type="domain",
+                positions=[(457, 717)],
+                member_databases={"pfam": ["PF00069"]},
+                go_terms=["GO:0004672 protein kinase activity"],
+            )
+        ],
+    )
+    md = result.to_markdown()
+    assert "BRAF" in md
+    assert "IPR000719" in md
+    assert "457" in md
+    assert "717" in md
+    assert "PF00069" in md

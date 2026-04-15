@@ -1107,6 +1107,86 @@ class ComparisonReport(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# InterPro — domain annotation
+# ---------------------------------------------------------------------------
+
+
+class DomainAnnotation(BaseModel):
+    """A single InterPro domain entry for a protein."""
+
+    interpro_accession: str = Field(description="InterPro accession, e.g. 'IPR000719'")
+    name: str = Field(description="Domain name, e.g. 'Protein kinase domain'")
+    entry_type: str = Field(
+        description="Entry type: domain | family | homologous_superfamily | repeat | site"
+    )
+    positions: list[tuple[int, int]] = Field(
+        default_factory=list,
+        description="List of (start, end) residue positions for this domain",
+    )
+    member_databases: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Member database cross-references, e.g. {'pfam': ['PF00069'], 'smart': ['SM00220']}",
+    )
+    go_terms: list[str] = Field(
+        default_factory=list,
+        description="Associated GO term annotations, e.g. 'GO:0004672 protein kinase activity'",
+    )
+
+
+class DomainAnnotations(BaseModel):
+    """InterPro domain annotations for a protein."""
+
+    gene_symbol: str = Field(description="HGNC gene symbol")
+    uniprot_accession: str = Field(description="UniProt accession used to query InterPro")
+    total_entries: int = Field(description="Total InterPro entries for this protein")
+    domains: list[DomainAnnotation] = Field(
+        default_factory=list,
+        description="Domain annotations sorted by start position",
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## InterPro Domain Annotations — {self.gene_symbol}",
+            f"**UniProt:** {self.uniprot_accession} | **{self.total_entries} InterPro entries**",
+        ]
+        if not self.domains:
+            lines.append("\n_No InterPro domain annotations found for this protein._")
+            return "\n".join(lines)
+
+        lines += [
+            "",
+            "| Domain | Type | Positions | Pfam/SMART | GO Terms |",
+            "|---|---|---|---|---|",
+        ]
+        for d in self.domains:
+            pos_str = "; ".join(f"{s}–{e}" for s, e in d.positions[:3])
+            pfam = (
+                ", ".join(
+                    acc
+                    for db in ("pfam", "smart", "profile")
+                    for acc in d.member_databases.get(db, [])[:2]
+                )
+                or "—"
+            )
+            go = "; ".join(t.split(" ", 1)[1] for t in d.go_terms[:2]) if d.go_terms else "—"
+            name_short = d.name[:45]
+            lines.append(
+                f"| **{d.interpro_accession}** {name_short} | {d.entry_type} | {pos_str} | {pfam} | {go} |"
+            )
+
+        # Engineering note: list conserved domain regions to avoid
+        domain_entries = [d for d in self.domains if d.entry_type == "domain"]
+        if domain_entries:
+            lines.append("")
+            lines.append("**Engineering context (domains to work around):**")
+            for d in domain_entries[:5]:
+                pos_str = "; ".join(f"aa {s}–{e}" for s, e in d.positions[:2])
+                lines.append(f"- **{d.name}** ({pos_str})")
+
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # gnomAD — evolutionary constraint
 # ---------------------------------------------------------------------------
 

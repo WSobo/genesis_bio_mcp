@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 17 tools for biomedical database queries:
+Exposes 18 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_target_disease_association Open Targets: target–disease association score
@@ -13,6 +13,7 @@ Exposes 17 tools for biomedical database queries:
   - get_biogrid_interactions      BioGRID: curated literature PPI network
   - get_antibody_structures       SAbDab: antibody/nanobody structures for an antigen
   - get_variant_constraints       gnomAD: gene-level LoF and missense constraint metrics
+  - get_domain_annotation         InterPro: domain boundaries, Pfam/SMART, GO terms
   - get_drug_history              DGIdb + ClinicalTrials.gov: known drugs and trials
   - get_pathway_context           Reactome: pathway membership and enrichment for a gene
   - get_pathway_members           Reactome: enumerate all genes in a named pathway
@@ -47,6 +48,7 @@ from genesis_bio_mcp.clients.depmap import DepMapClient, load_depmap_cache
 from genesis_bio_mcp.clients.dgidb import DGIdbClient
 from genesis_bio_mcp.clients.gnomad import GnomADClient
 from genesis_bio_mcp.clients.gwas import GwasClient
+from genesis_bio_mcp.clients.interpro import InterProClient
 from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
 from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.reactome import ReactomeClient
@@ -97,6 +99,7 @@ async def lifespan(server: FastMCP):
         server.state.depmap = DepMapClient(client, gene_dep_cache)
         server.state.gwas = GwasClient(client, efo_resolver=EFOResolver(client))
         server.state.gnomad = GnomADClient(client)
+        server.state.interpro = InterProClient(client)
         server.state.pubchem = PubChemClient(client)
         server.state.chembl = ChEMBLClient(client)
         server.state.alphafold = AlphaFoldClient(client)
@@ -207,6 +210,10 @@ class GetBioGRIDInteractionsInput(_GeneInput):
 
 class GetVariantConstraintsInput(_GeneInput):
     """Input for get_variant_constraints."""
+
+
+class GetDomainAnnotationInput(_GeneInput):
+    """Input for get_domain_annotation."""
 
 
 class GetAntibodyStructuresInput(BaseModel):
@@ -726,6 +733,39 @@ async def get_variant_constraints(params: GetVariantConstraintsInput) -> str:
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.gnomad.get_constraint(symbol)
     return _fmt(result, params.response_format, f"No gnomAD constraint data found for '{symbol}'.")
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_domain_annotation(params: GetDomainAnnotationInput) -> str:
+    """Retrieve InterPro domain annotations for a protein.
+
+    Use this tool to understand which domains a protein contains before planning
+    any engineering campaign — mutating within a conserved domain core often
+    disrupts function.  Returns all InterPro-integrated domain entries (Pfam,
+    SMART, CDD, etc.) with residue positions, member database cross-references,
+    and GO term annotations.
+
+    This is complementary to get_protein_structure (3D context) and
+    get_variant_constraints (mutation tolerance): domain boundaries define *where*
+    engineering is possible; constraint data defines *how much* tolerance exists.
+
+    Args:
+        params (GetDomainAnnotationInput): gene_symbol, response_format.
+
+    Returns:
+        Markdown table of domains sorted by position, with InterPro accession,
+        type, residue range, Pfam/SMART cross-references, and GO terms.
+    """
+    symbol, _ = await _resolve_symbol(params.gene_symbol)
+    # Need the UniProt accession to query InterPro
+    protein = await mcp.state.uniprot.get_protein(symbol)
+    accession = protein.uniprot_accession if protein else symbol
+    result = await mcp.state.interpro.get_domains(symbol, accession)
+    return _fmt(result, params.response_format, f"No InterPro domain data found for '{symbol}'.")
 
 
 @mcp.tool(

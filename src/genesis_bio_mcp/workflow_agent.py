@@ -179,6 +179,14 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"No gnomAD constraint data found for '{gene_symbol}'."
         return result.to_markdown()
 
+    async def _get_domain_annotation_fn(gene_symbol: str) -> str:
+        protein = await state.uniprot.get_protein(gene_symbol)
+        accession = protein.uniprot_accession if protein else gene_symbol
+        result = await state.interpro.get_domains(gene_symbol, accession)
+        if result is None:
+            return f"No InterPro domain data found for '{gene_symbol}'."
+        return result.to_markdown()
+
     async def _get_drug_history_fn(gene_symbol: str) -> str:
         drugs, ct_result = await asyncio.gather(
             state.dgidb.get_drug_interactions(gene_symbol),
@@ -539,6 +547,30 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
                 "CDR engineering, or assessing how well-characterized an antigen is as an antibody target."
             ),
             fn=_get_antibody_structures_fn,
+        ),
+        "get_domain_annotation": ToolSpec(
+            name="get_domain_annotation",
+            description=(
+                "Retrieve InterPro domain annotations for a protein: domain names, residue positions, "
+                "Pfam/SMART/CDD cross-references, and GO terms. Shows which domains the protein contains "
+                "and their exact boundaries."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_symbol": {
+                        "type": "string",
+                        "description": "HGNC gene symbol. Example: 'BRAF'",
+                    }
+                },
+                "required": ["gene_symbol"],
+            },
+            tool_category="protein_engineering",
+            use_when=(
+                "Use when planning protein engineering to understand domain boundaries — "
+                "avoid mutagenesis within conserved domain cores. Complements get_variant_constraints."
+            ),
+            fn=_get_domain_annotation_fn,
         ),
         "get_variant_constraints": ToolSpec(
             name="get_variant_constraints",
