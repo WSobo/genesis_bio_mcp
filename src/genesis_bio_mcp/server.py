@@ -1433,7 +1433,7 @@ async def tool_registry_resource() -> str:
 
     Returns:
         Markdown document grouped by tool category with descriptions and
-        ``use_when`` fields for all 20 registered tools.
+        ``use_when`` fields for all 24 registered tools.
     """
     registry = build_tool_registry(mcp.state)
     return format_registry_docs(registry)
