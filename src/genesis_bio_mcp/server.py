@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 23 tools for biomedical database queries:
+Exposes 24 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -14,6 +14,7 @@ Exposes 23 tools for biomedical database queries:
   - get_biogrid_interactions      BioGRID: curated literature PPI network
   - get_antibody_structures       SAbDab: antibody/nanobody structures for an antigen
   - get_epitope_data              IEDB: known B-cell epitopes for an antigen
+  - get_mhc_binding                IEDB NextGen: MHC-I/II binding prediction (T-cell epitopes)
   - get_variant_constraints       gnomAD: gene-level LoF and missense constraint metrics
   - get_variant_effects           MyVariant + gnomAD + MaveDB: mutation-level pathogenicity
   - get_domain_annotation         InterPro: domain boundaries, Pfam/SMART, GO terms
@@ -53,6 +54,7 @@ from genesis_bio_mcp.clients.dgidb import DGIdbClient
 from genesis_bio_mcp.clients.gnomad import GnomADClient
 from genesis_bio_mcp.clients.gwas import GwasClient
 from genesis_bio_mcp.clients.iedb import IEDBClient
+from genesis_bio_mcp.clients.iedb_tools import IEDBToolsClient
 from genesis_bio_mcp.clients.interpro import InterProClient
 from genesis_bio_mcp.clients.mavedb import MaveDBClient
 from genesis_bio_mcp.clients.myvariant import MyVariantClient
@@ -122,6 +124,7 @@ async def lifespan(server: FastMCP):
         server.state.biogrid = BioGRIDClient(client)
         server.state.sabdab = SAbDabClient(client)
         server.state.iedb = IEDBClient(client)
+        server.state.iedb_tools = IEDBToolsClient(client)
         server.state.mavedb = MaveDBClient(client)
         server.state.myvariant = MyVariantClient(client)
         server.state.variant_effects = VariantEffectsClient(
@@ -281,6 +284,49 @@ class GetDomainAnnotationInput(_GeneInput):
 
 class GetDMSScoresInput(_GeneInput):
     """Input for get_dms_scores."""
+
+
+class GetMHCBindingInput(BaseModel):
+    """Input for get_mhc_binding."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    sequence: str = Field(
+        ...,
+        description=(
+            "Protein sequence, peptide, or multi-FASTA. Whole proteins are "
+            "auto-windowed by the IEDB service into the requested peptide lengths. "
+            "Examples: 'SLYNTVATL' (single 9mer), 'MAALSG...KLTQEHI' (protein region)."
+        ),
+        min_length=5,
+        max_length=5000,
+    )
+    hla_alleles: list[str] | None = Field(
+        default=None,
+        description=(
+            "HLA allele list, e.g. ['HLA-A*02:01', 'HLA-B*07:02']. If omitted, "
+            "defaults to the 5-allele IEDB class-I reference panel (~85% global "
+            "coverage) or class-II DRB1 panel (~60%) depending on mhc_class."
+        ),
+    )
+    mhc_class: Literal["I", "II"] = Field(
+        default="I",
+        description="'I' for MHC Class I (CD8 / cytotoxic T cells) or 'II' for Class II (CD4 / helper).",
+    )
+    peptide_lengths: list[int] | None = Field(
+        default=None,
+        description=(
+            "Peptide window lengths to test. Defaults: [9, 10] for class I, "
+            "[15] for class II. Provide a single int or [min, max]."
+        ),
+    )
+    method: str | None = Field(
+        default=None,
+        description=(
+            "Predictor method. Default 'netmhcpan_el' (class I) or 'netmhciipan_el' (II). "
+            "Other options: 'netmhcpan_ba' (binding affinity), 'mhcflurry', 'consensus'."
+        ),
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
 
 
 class GetEpitopeDataInput(BaseModel):
@@ -896,6 +942,60 @@ async def get_epitope_data(params: GetEpitopeDataInput) -> str:
         result,
         params.response_format,
         f"No B-cell epitope data found for '{params.antigen_query}' in IEDB.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_mhc_binding(params: GetMHCBindingInput) -> str:
+    """Predict MHC-I or MHC-II binding for peptides via IEDB NextGen Tools.
+
+    Submits a NetMHCpan (or user-chosen) prediction job to IEDB's async
+    NextGen Tools pipeline, polls for completion, and returns per-peptide,
+    per-allele predicted percentile ranks and binder classification.
+
+    Use this tool for T-cell epitope / immunogenicity assessment:
+      - Therapeutic antibody CDR3 → screen against human HLA panel to flag
+        potential immunogenicity risk.
+      - Vaccine antigen → identify candidate T-cell epitopes.
+      - Engineered construct → predict presentation before advancing to
+        assays.
+
+    Percentile-rank interpretation (IEDB convention):
+      * < 0.5%  strong binder, high confidence
+      * < 2%    weak binder, likely to bind
+      * ≥ 2%    non-binder
+
+    This call can take up to 60 seconds due to the IEDB async job queue.
+    Large requests (many peptides × many alleles) may time out with a note
+    in the output — narrow the input and retry.
+
+    Args:
+        params (GetMHCBindingInput): sequence, hla_alleles, mhc_class,
+            peptide_lengths, method, response_format.
+
+    Returns:
+        Markdown with binder counts, top-10 hits table sorted by percentile,
+        and per-allele strong-binder distribution.
+    """
+    try:
+        result = await mcp.state.iedb_tools.predict_mhc_binding(
+            sequence=params.sequence,
+            alleles=params.hla_alleles,
+            mhc_class=params.mhc_class,
+            peptide_lengths=params.peptide_lengths,
+            method=params.method,
+        )
+    except ValueError as exc:
+        return _fmt(None, params.response_format, str(exc))
+    return _fmt(
+        result,
+        params.response_format,
+        "IEDB NextGen Tools prediction failed — the service may be "
+        "temporarily unavailable. Retry shortly.",
     )
 
 

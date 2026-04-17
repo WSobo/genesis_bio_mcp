@@ -40,6 +40,10 @@ Workflow guidance:
 7. For antibody/nanobody design questions: call get_antibody_structures to find PDB-curated structural templates; use get_protein_structure for the antigen conformation.
 8. For protein engineering questions: call get_variant_constraints first to understand mutation tolerance (pLI/LOEUF); then use get_protein_structure for structural context.
 
+Protein Engineering Workflows:
+9.  For sequence-level engineering: start with get_protein_sequence (UniProt FASTA + biochem features + liability-motif scan + annotated disulfide bonds). Use it before any mutagenesis or antibody CDR analysis. For specific mutations, call get_variant_effects to retrieve ClinVar significance, AlphaMissense, REVEL/CADD/SIFT/PolyPhen, gnomAD frequency, and matching MaveDB DMS fitness scores in one step.
+10. For therapeutic immunogenicity / T-cell epitope assessment: call get_mhc_binding with the CDR3 or candidate peptide against the default HLA panel (MHC-I covers CD8; MHC-II covers CD4). Strong binders at percentile_rank < 0.5 flag T-cell immunogenicity risk; cross-reference with get_epitope_data (known B-cell epitopes) for the full B/T-cell landscape.
+
 Always synthesize the tool results into a coherent Markdown answer. \
 Cite specific numbers (scores, counts, p-values) from tool outputs.\
 """
@@ -211,6 +215,27 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"IEDB data temporarily unavailable for '{antigen_query}'."
         if result.total_assays == 0:
             return f"No B-cell epitope data found in IEDB for '{antigen_query}'."
+        return result.to_markdown()
+
+    async def _get_mhc_binding_fn(
+        sequence: str,
+        hla_alleles: list[str] | None = None,
+        mhc_class: str = "I",
+        peptide_lengths: list[int] | None = None,
+        method: str | None = None,
+    ) -> str:
+        try:
+            result = await state.iedb_tools.predict_mhc_binding(
+                sequence=sequence,
+                alleles=hla_alleles,
+                mhc_class=mhc_class,  # type: ignore[arg-type]
+                peptide_lengths=peptide_lengths,
+                method=method,
+            )
+        except ValueError as exc:
+            return f"Invalid MHC binding request: {exc}"
+        if result is None:
+            return "IEDB NextGen Tools did not return a result — service may be temporarily unavailable."
         return result.to_markdown()
 
     async def _get_antibody_structures_fn(antigen_query: str, max_results: int = 20) -> str:
@@ -641,6 +666,64 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
                 "epitope data (PDB) exists to guide CDR engineering."
             ),
             fn=_get_epitope_data_fn,
+        ),
+        "get_mhc_binding": ToolSpec(
+            name="get_mhc_binding",
+            description=(
+                "Predict MHC-I or MHC-II binding for peptides via IEDB NextGen Tools "
+                "(NetMHCpan 4.1 EL by default). Returns per-allele percentile rank "
+                "and IEDB-convention binder classification (strong <0.5%, weak <2%). "
+                "Whole proteins are auto-windowed into peptides. Synchronous call "
+                "with up to 60s latency due to async IEDB job queue."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "sequence": {
+                        "type": "string",
+                        "description": (
+                            "Peptide, multi-FASTA, or whole-protein string to window. "
+                            "Example: 'SLYNTVATL' (HIV gag 9mer) or a CDR3 sequence."
+                        ),
+                    },
+                    "hla_alleles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Optional HLA allele list (e.g. ['HLA-A*02:01','HLA-B*07:02']). "
+                            "Defaults to the IEDB 5-allele class-I or class-II reference panel."
+                        ),
+                    },
+                    "mhc_class": {
+                        "type": "string",
+                        "description": "'I' for class I (CD8 / cytotoxic) or 'II' for class II (CD4 / helper). Default 'I'.",
+                        "enum": ["I", "II"],
+                    },
+                    "peptide_lengths": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": (
+                            "Peptide window lengths. Default [9,10] for class I, [15] for class II."
+                        ),
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": (
+                            "Predictor method. Default 'netmhcpan_el' / 'netmhciipan_el'. "
+                            "Other: 'netmhcpan_ba', 'mhcflurry', 'consensus'."
+                        ),
+                    },
+                },
+                "required": ["sequence"],
+            },
+            tool_category="protein_engineering",
+            use_when=(
+                "Use to predict T-cell epitope / immunogenicity risk for a peptide or CDR "
+                "sequence against a human HLA panel, or to identify candidate T-cell epitopes "
+                "in a protein antigen. Strong binders at percentile < 0.5 indicate likely "
+                "HLA presentation and therefore T-cell recognition risk."
+            ),
+            fn=_get_mhc_binding_fn,
         ),
         "get_antibody_structures": ToolSpec(
             name="get_antibody_structures",

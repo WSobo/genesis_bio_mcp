@@ -324,6 +324,99 @@ class MaveDBVariantScore(BaseModel):
     epsilon: float | None = Field(default=None, description="Optional error estimate on the score")
 
 
+class MHCBindingHit(BaseModel):
+    """One (peptide, HLA allele) predicted-binding row from IEDB NextGen Tools."""
+
+    peptide: str = Field(description="Peptide amino-acid sequence")
+    allele: str = Field(description="HLA allele, e.g. 'HLA-A*02:01'")
+    peptide_length: int | None = Field(default=None, description="Peptide length in residues")
+    percentile_rank: float | None = Field(
+        default=None,
+        description=(
+            "Predicted percentile rank vs random-peptide background (0-100); "
+            "<0.5 = strong binder, <2 = weak binder per IEDB convention"
+        ),
+    )
+    score: float | None = Field(
+        default=None, description="Raw predictor score (method-specific scale)"
+    )
+    core_peptide: str | None = Field(
+        default=None, description="9-residue binding core sequence (NetMHCpan output)"
+    )
+    binder_class: str = Field(
+        description="IEDB-convention class: 'strong' | 'weak' | 'non_binder'",
+    )
+
+
+class MHCBindingResults(BaseModel):
+    """Complete MHC binding prediction report from IEDB NextGen Tools."""
+
+    input_sequence: str = Field(description="Raw sequence or FASTA submitted")
+    mhc_class: str = Field(description="'I' or 'II'")
+    method: str = Field(description="Predictor method (e.g. 'netmhcpan_el')")
+    alleles_tested: list[str] = Field(description="HLA alleles queried")
+    peptide_length_range: tuple[int, int] = Field(description="Min/max peptide window lengths used")
+    hits: list[MHCBindingHit] = Field(
+        default_factory=list, description="Predicted (peptide, allele) rows"
+    )
+    strong_binder_count: int = Field(
+        default=0, description="Number of hits with percentile rank < 0.5"
+    )
+    weak_binder_count: int = Field(
+        default=0, description="Number of hits with 0.5 ≤ percentile rank < 2.0"
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Free-text caveats (timeout, partial results, etc.)",
+    )
+
+    def to_markdown(self) -> str:
+        n_alleles = len(self.alleles_tested)
+        lines = [
+            f"## MHC-{self.mhc_class} Binding Predictions ({self.method})",
+            f"**Input:** {self.input_sequence[:60]}"
+            + ("…" if len(self.input_sequence) > 60 else ""),
+            f"**Alleles tested:** {n_alleles} ({', '.join(self.alleles_tested[:6])})",
+            f"**Peptide lengths:** {self.peptide_length_range[0]}–{self.peptide_length_range[1]} aa",
+            "",
+            f"**{self.strong_binder_count}** strong binders (%tile < 0.5), "
+            f"**{self.weak_binder_count}** weak binders (0.5 ≤ %tile < 2.0), "
+            f"across **{len(self.hits)}** total (peptide × allele) rows.",
+        ]
+        if self.hits:
+            lines += [
+                "",
+                "### Top hits",
+                "| Peptide | Allele | Length | %tile rank | Score | Class |",
+                "|---|---|---|---|---|---|",
+            ]
+            for h in self.hits[:10]:
+                pct = f"{h.percentile_rank:.3f}" if h.percentile_rank is not None else "—"
+                score = f"{h.score:.3f}" if h.score is not None else "—"
+                length = str(h.peptide_length) if h.peptide_length is not None else "—"
+                lines.append(
+                    f"| `{h.peptide}` | {h.allele} | {length} | {pct} | {score} | {h.binder_class} |"
+                )
+            if len(self.hits) > 10:
+                lines.append(
+                    f"\n_...and {len(self.hits) - 10} more rows (sorted by %tile rank asc)_"
+                )
+        if self.strong_binder_count > 0:
+            per_allele: dict[str, int] = {}
+            for h in self.hits:
+                if h.binder_class == "strong":
+                    per_allele[h.allele] = per_allele.get(h.allele, 0) + 1
+            if per_allele:
+                lines += [
+                    "",
+                    "**Strong binders per allele:** "
+                    + ", ".join(f"{a}={n}" for a, n in sorted(per_allele.items())),
+                ]
+        if self.notes:
+            lines += ["", "_Notes:_ " + "; ".join(self.notes)]
+        return "\n".join(lines)
+
+
 class VariantEffects(BaseModel):
     """Fanned-out variant effect report for a gene + protein change."""
 

@@ -2212,3 +2212,187 @@ async def test_variant_effects_aggregator_invalid_mutation(http_client):
     # parse_protein_change raises ValueError on garbage input
     with pytest.raises(ValueError):
         await client.get_effects("TP53", "not a mutation")
+
+
+# ---------------------------------------------------------------------------
+# IEDB NextGen Tools (MHC binding) tests
+# ---------------------------------------------------------------------------
+
+MOCK_IEDB_SUBMIT = {
+    "result_id": "abc-123",
+    "results_uri": "https://api-nextgen-tools.iedb.org/api/v1/results/abc-123",
+    "pipeline_id": "pipe-xyz",
+}
+
+MOCK_IEDB_RESULT_DONE = {
+    "id": "abc-123",
+    "type": "result",
+    "status": "done",
+    "data": {
+        "results": [
+            {
+                "type": "peptide_table",
+                "table_columns": [
+                    {"name": "sequence_number"},
+                    {"name": "peptide"},
+                    {"name": "start"},
+                    {"name": "end"},
+                    {"name": "length"},
+                    {"name": "allele"},
+                    {"name": "peptide_index"},
+                    {"name": "median_percentile"},
+                    {"name": "netmhcpan_el_core"},
+                    {"name": "netmhcpan_el_icore"},
+                    {"name": "netmhcpan_el_score"},
+                    {"name": "netmhcpan_el_percentile"},
+                ],
+                "table_data": [
+                    [
+                        1,
+                        "SLYNTVATL",
+                        1,
+                        9,
+                        9,
+                        "HLA-A*02:01",
+                        1,
+                        0.06,
+                        "SLYNTVATL",
+                        "SLYNTVATL",
+                        0.828,
+                        0.06,
+                    ],
+                    [
+                        1,
+                        "SLYNTVATL",
+                        1,
+                        9,
+                        9,
+                        "HLA-A*03:01",
+                        1,
+                        35.0,
+                        "SLYNTVATL",
+                        "SLYNTVATL",
+                        0.002,
+                        35.0,
+                    ],
+                    [
+                        1,
+                        "LYNTVATLY",
+                        2,
+                        10,
+                        9,
+                        "HLA-A*02:01",
+                        2,
+                        1.5,
+                        "LYNTVATLY",
+                        "LYNTVATLY",
+                        0.45,
+                        1.5,
+                    ],
+                ],
+            },
+            {"type": "netmhcpan_allele_distance", "table_data": []},
+        ],
+        "errors": [],
+        "warnings": [],
+    },
+}
+
+MOCK_IEDB_RESULT_PENDING = {"id": "abc-123", "type": "result", "status": "pending", "data": {}}
+
+
+@respx.mock
+async def test_iedb_tools_predict_happy_path(http_client):
+    from genesis_bio_mcp.clients.iedb_tools import IEDBToolsClient
+
+    respx.post("https://api-nextgen-tools.iedb.org/api/v1/pipeline").mock(
+        return_value=httpx.Response(200, json=MOCK_IEDB_SUBMIT)
+    )
+    respx.get("https://api-nextgen-tools.iedb.org/api/v1/results/abc-123").mock(
+        return_value=httpx.Response(200, json=MOCK_IEDB_RESULT_DONE)
+    )
+    client = IEDBToolsClient(http_client)
+    result = await client.predict_mhc_binding(
+        sequence="SLYNTVATL", alleles=["HLA-A*02:01"], mhc_class="I"
+    )
+    assert result is not None
+    assert result.strong_binder_count == 1
+    assert result.weak_binder_count == 1
+    assert len(result.hits) == 3
+    # Hits sorted by percentile asc; strongest first
+    assert result.hits[0].peptide == "SLYNTVATL"
+    assert result.hits[0].allele == "HLA-A*02:01"
+    assert result.hits[0].binder_class == "strong"
+
+
+@respx.mock
+async def test_iedb_tools_predict_no_strong_binders(http_client):
+    from genesis_bio_mcp.clients.iedb_tools import IEDBToolsClient
+
+    # Result with only non-binders
+    payload = {
+        "id": "abc-123",
+        "status": "done",
+        "data": {
+            "results": [
+                {
+                    "type": "peptide_table",
+                    "table_columns": [
+                        {"name": "peptide"},
+                        {"name": "allele"},
+                        {"name": "length"},
+                        {"name": "netmhcpan_el_percentile"},
+                    ],
+                    "table_data": [["AAAAAAAAA", "HLA-A*02:01", 9, 45.0]],
+                }
+            ]
+        },
+    }
+    respx.post("https://api-nextgen-tools.iedb.org/api/v1/pipeline").mock(
+        return_value=httpx.Response(200, json=MOCK_IEDB_SUBMIT)
+    )
+    respx.get("https://api-nextgen-tools.iedb.org/api/v1/results/abc-123").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    client = IEDBToolsClient(http_client)
+    result = await client.predict_mhc_binding(sequence="AAAAAAAAA")
+    assert result is not None
+    assert result.strong_binder_count == 0
+    assert result.weak_binder_count == 0
+    assert len(result.hits) == 1
+    assert result.hits[0].binder_class == "non_binder"
+
+
+@respx.mock
+async def test_iedb_tools_predict_submit_error(http_client):
+    from genesis_bio_mcp.clients.iedb_tools import IEDBToolsClient
+
+    respx.post("https://api-nextgen-tools.iedb.org/api/v1/pipeline").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+    client = IEDBToolsClient(http_client)
+    result = await client.predict_mhc_binding(sequence="SLYNTVATL")
+    assert result is None
+
+
+async def test_iedb_tools_rejects_oversize_request(http_client):
+    from genesis_bio_mcp.clients.iedb_tools import IEDBToolsClient
+
+    client = IEDBToolsClient(http_client)
+    # 1000-residue protein × 5 alleles × 2 lengths = ~10000 peptide-allele pairs
+    with pytest.raises(ValueError, match="exceeds limit"):
+        await client.predict_mhc_binding(sequence="A" * 1000)
+
+
+def test_iedb_tools_estimate_peptide_count_unit():
+    """Internal windowing helper — 20aa protein with [9,10] yields 12+11=23."""
+    from genesis_bio_mcp.clients.iedb_tools import _estimate_peptide_count
+
+    assert _estimate_peptide_count(">q\n" + "A" * 20, [9, 10]) == (20 - 9 + 1) + (20 - 10 + 1)
+
+
+def test_iedb_tools_ensure_fasta_passthrough():
+    from genesis_bio_mcp.clients.iedb_tools import _ensure_fasta
+
+    assert _ensure_fasta(">existing\nSEQ").startswith(">existing")
+    assert _ensure_fasta("SEQ") == ">query\nSEQ"

@@ -42,6 +42,7 @@ def _mock_state() -> MagicMock:
         "gnomad",
         "interpro",
         "iedb",
+        "iedb_tools",
         "mavedb",
         "myvariant",
         "variant_effects",
@@ -66,6 +67,7 @@ def _mock_state() -> MagicMock:
             "get_epitopes",
             "get_dms_scores",
             "get_effects",
+            "predict_mhc_binding",
         ):
             mock_result = MagicMock()
             mock_result.to_markdown.return_value = f"## Mock {attr}.{method}\n\nData here."
@@ -134,6 +136,7 @@ def test_build_tool_registry_has_all_tools():
         "get_biogrid_interactions",
         "get_epitope_data",
         "get_antibody_structures",
+        "get_mhc_binding",
         "get_variant_constraints",
         "get_variant_effects",
         "get_domain_annotation",
