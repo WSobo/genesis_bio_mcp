@@ -89,6 +89,58 @@ class MyVariantClient:
             return None
         return _parse_annotation(hgvs, data)
 
+    async def query_by_protein_change(
+        self, gene_symbol: str, position: int, alt_aa: str
+    ) -> VariantAnnotation | None:
+        """Query MyVariant by gene symbol + protein position + alt amino acid.
+
+        Used when no gnomAD variant_id is available (e.g., somatic cancer
+        hotspots absent from the population reference). Returns the first
+        matching hit from MyVariant's /query endpoint, or None on miss/error.
+
+        Args:
+            gene_symbol: HGNC symbol (e.g. ``"BRAF"``).
+            position: 1-indexed protein position (e.g. ``600``).
+            alt_aa: Alt amino acid one-letter code (e.g. ``"E"``).
+        """
+        cache_key = f"_pq:{gene_symbol.upper()}:{position}:{alt_aa.upper()}"
+        if cache_key in self._cache:
+            logger.debug("MyVariant protein-query cache hit: %s", cache_key)
+            return self._cache[cache_key]
+        # ClinVar.gene.symbol is the most reliable gene anchor across dbNSFP
+        # transcripts; aa.pos + aa.alt restrict to the exact missense change.
+        q = (
+            f"clinvar.gene.symbol:{gene_symbol.upper()} "
+            f"AND dbnsfp.aa.pos:{position} "
+            f"AND dbnsfp.aa.alt:{alt_aa.upper()}"
+        )
+        async with _SEMAPHORE:
+            try:
+                resp = await self._client.get(
+                    f"{_BASE_URL}/query",
+                    params={"q": q, "assembly": "hg38", "fields": _FIELDS, "size": 1},
+                    timeout=20.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:
+                logger.warning(
+                    "MyVariant protein-query failed for %s p.%d?>%s: %s",
+                    gene_symbol,
+                    position,
+                    alt_aa,
+                    exc,
+                )
+                return None
+        hits = data.get("hits", []) if isinstance(data, dict) else []
+        if not hits:
+            return None
+        hit = hits[0]
+        hgvs = hit.get("_id") or f"{gene_symbol}:p.{position}{alt_aa}"
+        result = _parse_annotation(hgvs, hit)
+        self._cache[cache_key] = result
+        return result
+
 
 # ---------------------------------------------------------------------------
 # Parsers

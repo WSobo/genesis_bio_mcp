@@ -73,25 +73,34 @@ class VariantEffectsClient:
         notes: list[str] = []
 
         # Step 1: resolve variant_id via gnomAD (single HTTP call that loads
-        # all the gene's variants, then in-memory filter)
+        # all the gene's variants, then in-memory filter). Somatic cancer
+        # hotspots (BRAF V600E, KRAS G12C/D, EGFR L858R, ...) are *expected*
+        # to be absent from gnomAD — the population reference is germline
+        # only. Downstream ClinVar/AlphaMissense lookups must NOT be gated
+        # on this; we fall back to a protein-change query in step 2.
         variant_id = await self._gnomad.find_variant_id_by_protein_change(symbol, hgvs_p)
         if variant_id is None:
             notes.append(
-                f"{symbol} {one_letter} was not found in gnomAD v4 — likely absent from the "
-                "population reference. AlphaMissense/ClinVar/CADD queries skipped."
+                f"{symbol} {one_letter} was not found in gnomAD v4 — population frequency "
+                "unavailable (typical for somatic cancer variants)."
             )
 
-        # Step 2: fan out — MyVariant.info (annotation) and MaveDB (DMS) in parallel.
-        annotation_task = (
-            self._myvariant.get_annotation(_variant_id_to_hgvs_genomic(variant_id))
-            if variant_id
-            else _noop()
-        )
+        # Step 2: fan out — MyVariant.info (annotation) and MaveDB (DMS) in
+        # parallel. When gnomAD has no variant_id, fall back to MyVariant's
+        # /query endpoint keyed on gene + protein position + alt AA so
+        # ClinVar/AlphaMissense/CADD are still retrieved.
+        if variant_id:
+            annotation_task = self._myvariant.get_annotation(
+                _variant_id_to_hgvs_genomic(variant_id)
+            )
+        else:
+            _, pos, new = parse_protein_change(mutation)
+            annotation_task = self._myvariant.query_by_protein_change(symbol, pos, new)
         dms_task = self._collect_dms_scores(symbol, hgvs_p)
 
         annotation, dms_scores = await asyncio.gather(annotation_task, dms_task)
 
-        if variant_id and annotation is None:
+        if annotation is None:
             notes.append(
                 "MyVariant.info returned no record for this variant — it may be too rare to be "
                 "indexed with downstream annotations yet."
@@ -134,7 +143,3 @@ def _variant_id_to_hgvs_genomic(variant_id: str) -> str:
     """
     chrom, pos, ref, alt = variant_id.split("-")
     return f"chr{chrom}:g.{pos}{ref}>{alt}"
-
-
-async def _noop() -> None:
-    return None

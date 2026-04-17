@@ -2204,11 +2204,50 @@ async def test_variant_effects_aggregator_happy_path(http_client):
 
 
 @respx.mock
-async def test_variant_effects_aggregator_not_in_gnomad(http_client):
+async def test_variant_effects_aggregator_not_in_gnomad_falls_back_to_myvariant(http_client):
+    """Somatic hotspots (BRAF V600E, etc.) are absent from gnomAD by design;
+    ClinVar/AlphaMissense must still be returned via MyVariant /query."""
     from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
 
     respx.post("https://gnomad.broadinstitute.org/api").mock(
         return_value=httpx.Response(200, json={"data": {"gene": {"variants": []}}})
+    )
+    # MyVariant /query returns the ClinVar+AlphaMissense payload as a hit
+    respx.get(url__regex=r"https://myvariant\.info/v1/query.*").mock(
+        return_value=httpx.Response(
+            200,
+            json={"hits": [{"_id": "chr17:g.7675088C>T", **MOCK_MYVARIANT_TP53_R175H}]},
+        )
+    )
+    respx.post("https://api.mavedb.org/api/v1/score-sets/search").mock(
+        return_value=httpx.Response(200, json={"scoreSets": []})
+    )
+    client = VariantEffectsClient(
+        gnomad=GnomADClient(http_client),
+        myvariant=MyVariantClient(http_client),
+        mavedb=MaveDBClient(http_client),
+    )
+    result = await client.get_effects("TP53", "R175H")
+
+    assert result.gnomad_variant_id is None
+    # gnomAD-miss note is present, but ClinVar/AlphaMissense are populated
+    assert any("not found in gnomAD" in n for n in result.notes)
+    assert result.annotation is not None
+    assert result.annotation.clinvar.significance_summary == "Pathogenic"
+    assert result.annotation.in_silico.alphamissense_class == "likely_pathogenic"
+
+
+@respx.mock
+async def test_variant_effects_aggregator_not_in_gnomad_or_myvariant(http_client):
+    """When both gnomAD and MyVariant /query miss, annotation is None and
+    both notes are recorded."""
+    from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
+
+    respx.post("https://gnomad.broadinstitute.org/api").mock(
+        return_value=httpx.Response(200, json={"data": {"gene": {"variants": []}}})
+    )
+    respx.get(url__regex=r"https://myvariant\.info/v1/query.*").mock(
+        return_value=httpx.Response(200, json={"hits": [], "total": 0})
     )
     respx.post("https://api.mavedb.org/api/v1/score-sets/search").mock(
         return_value=httpx.Response(200, json={"scoreSets": []})
@@ -2223,6 +2262,7 @@ async def test_variant_effects_aggregator_not_in_gnomad(http_client):
     assert result.gnomad_variant_id is None
     assert result.annotation is None
     assert any("not found in gnomAD" in n for n in result.notes)
+    assert any("MyVariant.info returned no record" in n for n in result.notes)
 
 
 async def test_variant_effects_aggregator_invalid_mutation(http_client):
