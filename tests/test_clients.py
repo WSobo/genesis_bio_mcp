@@ -1232,6 +1232,48 @@ async def test_sabdab_get_antibody_structures_happy_path(http_client, tmp_path, 
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_sabdab_dedups_by_pdb_id(http_client, tmp_path, monkeypatch):
+    """SAbDab has one row per chain pair; the same PDB can appear twice when
+    both chains match the antigen. Output must dedup by PDB, keeping best res."""
+    monkeypatch.setattr(
+        "genesis_bio_mcp.clients.sabdab.settings.sabdab_cache_path",
+        tmp_path / "sabdab_cache.tsv",
+    )
+    monkeypatch.setattr(
+        "genesis_bio_mcp.clients.sabdab.settings.sabdab_cache_ttl_secs",
+        604800,
+    )
+
+    # Two rows for the same PDB 1abc — different chain pair, different res
+    duplicate_tsv = (
+        "pdb\tHchain\tLchain\tmodel\tantigen_chain\tantigen_type\tantigen_het_name\t"
+        "antigen_name\tshort_header\tdate\tcompound\torganism\theavy_species\tlight_species\t"
+        "antigen_species\tauthors\tresolution\tmethod\tr_free\tr_factor\tscfv\tengineered\t"
+        "heavy_subclass\tlight_subclass\tlight_ctype\taffinity\tdelta_g\taffinity_method\t"
+        "temperature\tpmid\n"
+        "1abc\tH\tL\t0\tA\tprotein\tNA\tepidermal growth factor receptor\tIMMUNE SYSTEM\t"
+        "01/01/20\tAnti-EGFR\tHomo sapiens\thomo sapiens\thomo sapiens\thomo sapiens\t"
+        "Smith\t2.5\tX-RAY\t0.21\t0.18\tFalse\tTrue\tIGHV3\tIGKV1\tKappa\tNone\tNone\tNone\tNone\t1\n"
+        "1abc\tB\tA\t0\tC\tprotein\tNA\tepidermal growth factor receptor\tIMMUNE SYSTEM\t"
+        "01/01/20\tAnti-EGFR\tHomo sapiens\thomo sapiens\thomo sapiens\thomo sapiens\t"
+        "Smith\t3.0\tX-RAY\t0.21\t0.18\tFalse\tTrue\tIGHV3\tIGKV1\tKappa\tNone\tNone\tNone\tNone\t1\n"
+    )
+    respx.get(url__regex=r"sabdab-sabpred.*summary").mock(
+        return_value=httpx.Response(200, content=duplicate_tsv.encode())
+    )
+
+    client = SAbDabClient(http_client)
+    result = await client.get_antibody_structures("egfr")
+
+    assert result is not None
+    assert result.total_structures == 1
+    assert result.structures[0].pdb == "1ABC"
+    # Best-resolution row (2.5 Å) wins, not the 3.0 Å duplicate
+    assert result.structures[0].resolution_ang == pytest.approx(2.5)
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_sabdab_empty_results(http_client, tmp_path, monkeypatch):
     """Returns AntibodyStructures with total_structures=0 when no match."""
     monkeypatch.setattr(

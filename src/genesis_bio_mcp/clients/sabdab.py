@@ -244,6 +244,20 @@ class SAbDabClient:
             if any(q in row.get(field, "").lower() for field in _SEARCH_FIELDS)
         ]
 
+        # Dedup by PDB ID — SAbDab has one row per chain pair, so the same
+        # crystal can appear twice when both chains match the antigen filter.
+        # Keep the best-resolution row per PDB.
+        if hits:
+            hits.sort(key=lambda r: _parse_resolution(r.get("resolution", "")) or 99.0)
+            seen_pdbs: set[str] = set()
+            deduped: list[dict[str, str]] = []
+            for row in hits:
+                pdb = row.get("pdb", "").strip().upper()
+                if pdb and pdb not in seen_pdbs:
+                    seen_pdbs.add(pdb)
+                    deduped.append(row)
+            hits = deduped
+
         if not hits:
             return AntibodyStructures(
                 query=query,
