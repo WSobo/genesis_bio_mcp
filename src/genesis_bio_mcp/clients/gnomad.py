@@ -54,11 +54,29 @@ query GeneConstraint($symbol: String!) {
 }
 """
 
+# Fetch all variants for a gene with enough metadata to pick the matching
+# protein change. gnomAD's `gene.variants` returns every variant catalogued
+# against the canonical transcript.
+_GENE_VARIANTS_QUERY = """
+query GeneVariants($symbol: String!) {
+  gene(gene_symbol: $symbol, reference_genome: GRCh38) {
+    variants(dataset: gnomad_r4) {
+      variant_id
+      hgvsp
+      consequence
+    }
+  }
+}
+"""
+
 
 class GnomADClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
         self._cache: dict[str, GnomADConstraint] = {}
+        # Per-gene variants cache. The payload is small (tens of thousands of
+        # IDs for a large gene) so one fetch per gene per session is fine.
+        self._variants_cache: dict[str, list[dict] | None] = {}
 
     async def get_constraint(self, gene_symbol: str) -> GnomADConstraint | None:
         """Return gnomAD constraint metrics for *gene_symbol*.
@@ -136,3 +154,56 @@ class GnomADClient:
             obs_lof=_i("obs_lof"),
             obs_mis=_i("obs_mis"),
         )
+
+    async def find_variant_id_by_protein_change(
+        self, gene_symbol: str, hgvs_protein: str
+    ) -> str | None:
+        """Look up the gnomAD variant_id (chrom-pos-ref-alt) for a protein change.
+
+        gnomAD does not expose a direct protein → variant endpoint; we load
+        the gene's full variant list once per session and filter on the
+        canonical ``hgvsp`` string.
+
+        Args:
+            gene_symbol: HGNC symbol, e.g. ``"TP53"``.
+            hgvs_protein: Canonical HGVS p. notation, e.g. ``"p.Arg175His"``.
+
+        Returns:
+            The variant_id string on success, or ``None`` if the gene /
+            variant is not indexed or the API is unreachable.
+        """
+        symbol = gene_symbol.strip().upper()
+        target = hgvs_protein.strip()
+        variants = await self._load_variants(symbol)
+        if not variants:
+            return None
+        for v in variants:
+            hgvsp = v.get("hgvsp")
+            if hgvsp and hgvsp.strip() == target:
+                return v.get("variant_id")
+        return None
+
+    async def _load_variants(self, symbol: str) -> list[dict] | None:
+        if symbol in self._variants_cache:
+            logger.debug("gnomAD variants cache hit: %s", symbol)
+            return self._variants_cache[symbol]
+        async with _SEMAPHORE:
+            try:
+                resp = await self._client.post(
+                    _GNOMAD_API,
+                    json={"query": _GENE_VARIANTS_QUERY, "variables": {"symbol": symbol}},
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:
+                logger.warning("gnomAD variants fetch failed for %s: %s", symbol, exc)
+                self._variants_cache[symbol] = None
+                return None
+        gene = (data.get("data") or {}).get("gene")
+        variants = (gene or {}).get("variants") if gene else None
+        if not isinstance(variants, list):
+            self._variants_cache[symbol] = None
+            return None
+        self._variants_cache[symbol] = variants
+        return variants

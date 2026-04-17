@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 22 tools for biomedical database queries:
+Exposes 23 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -15,6 +15,7 @@ Exposes 22 tools for biomedical database queries:
   - get_antibody_structures       SAbDab: antibody/nanobody structures for an antigen
   - get_epitope_data              IEDB: known B-cell epitopes for an antigen
   - get_variant_constraints       gnomAD: gene-level LoF and missense constraint metrics
+  - get_variant_effects           MyVariant + gnomAD + MaveDB: mutation-level pathogenicity
   - get_domain_annotation         InterPro: domain boundaries, Pfam/SMART, GO terms
   - get_dms_scores                MaveDB: deep mutational scanning score sets
   - get_drug_history              DGIdb + ClinicalTrials.gov: known drugs and trials
@@ -54,12 +55,14 @@ from genesis_bio_mcp.clients.gwas import GwasClient
 from genesis_bio_mcp.clients.iedb import IEDBClient
 from genesis_bio_mcp.clients.interpro import InterProClient
 from genesis_bio_mcp.clients.mavedb import MaveDBClient
+from genesis_bio_mcp.clients.myvariant import MyVariantClient
 from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
 from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.reactome import ReactomeClient
 from genesis_bio_mcp.clients.sabdab import SAbDabClient
 from genesis_bio_mcp.clients.string_db import StringDbClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
+from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
 from genesis_bio_mcp.config.efo_resolver import EFOResolver
 from genesis_bio_mcp.config.settings import settings
 from genesis_bio_mcp.models import (
@@ -67,6 +70,7 @@ from genesis_bio_mcp.models import (
     DrugHistory,
     ProteinSequence,
     TargetComparisonRow,
+    VariantEffects,
 )
 from genesis_bio_mcp.tools.biochem import compute_features, scan_liabilities
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
@@ -119,6 +123,12 @@ async def lifespan(server: FastMCP):
         server.state.sabdab = SAbDabClient(client)
         server.state.iedb = IEDBClient(client)
         server.state.mavedb = MaveDBClient(client)
+        server.state.myvariant = MyVariantClient(client)
+        server.state.variant_effects = VariantEffectsClient(
+            gnomad=server.state.gnomad,
+            myvariant=server.state.myvariant,
+            mavedb=server.state.mavedb,
+        )
         server.state.dgidb = DGIdbClient(client)
         server.state.clinical_trials = ClinicalTrialsClient(client)
         server.state.reactome = ReactomeClient(client)
@@ -249,6 +259,20 @@ class GetBioGRIDInteractionsInput(_GeneInput):
 
 class GetVariantConstraintsInput(_GeneInput):
     """Input for get_variant_constraints."""
+
+
+class GetVariantEffectsInput(_GeneInput):
+    """Input for get_variant_effects."""
+
+    mutation: str = Field(
+        ...,
+        description=(
+            "Protein change for the variant. Accepted forms: 'R175H', 'p.R175H', "
+            "'Arg175His', 'p.Arg175His'. Case-insensitive; whitespace stripped."
+        ),
+        min_length=3,
+        max_length=50,
+    )
 
 
 class GetDomainAnnotationInput(_GeneInput):
@@ -903,6 +927,47 @@ async def get_variant_constraints(params: GetVariantConstraintsInput) -> str:
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.gnomad.get_constraint(symbol)
     return _fmt(result, params.response_format, f"No gnomAD constraint data found for '{symbol}'.")
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_variant_effects(params: GetVariantEffectsInput) -> str:
+    """Fetch mutation-level pathogenicity and fitness for a specific missense variant.
+
+    Fans out to three sources in parallel:
+      - **gnomAD v4** resolves the protein change to a canonical variant_id and
+        returns population allele frequency.
+      - **MyVariant.info** returns ClinVar submissions (clinical significance,
+        review stars, conditions), AlphaMissense (am_pathogenicity + class),
+        REVEL, CADD, SIFT, and PolyPhen-2 predictions.
+      - **MaveDB** probes the top 3 DMS score sets for the gene for a
+        per-variant fitness score.
+
+    Use this tool when a specific residue change matters — e.g. assessing
+    whether an engineered mutation is likely to break function, checking the
+    clinical status of a candidate driver, or cross-referencing DMS fitness
+    against population evidence.
+
+    Args:
+        params (GetVariantEffectsInput): gene_symbol, mutation (e.g. 'R175H'
+            or 'p.Arg175His'), response_format.
+
+    Returns:
+        Markdown synthesis with ClinVar verdict, AlphaMissense class + score,
+        REVEL/CADD/SIFT/PolyPhen, gnomAD allele frequency, and MaveDB DMS
+        scores for this exact mutation.
+    """
+    symbol, _ = await _resolve_symbol(params.gene_symbol)
+    try:
+        result: VariantEffects = await mcp.state.variant_effects.get_effects(
+            symbol, params.mutation
+        )
+    except ValueError as exc:
+        return _fmt(None, params.response_format, str(exc))
+    return _fmt(result, params.response_format, "")
 
 
 @mcp.tool(

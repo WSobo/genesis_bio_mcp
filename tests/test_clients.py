@@ -14,6 +14,7 @@ from genesis_bio_mcp.clients.gwas import GwasClient
 from genesis_bio_mcp.clients.iedb import IEDBClient
 from genesis_bio_mcp.clients.interpro import InterProClient
 from genesis_bio_mcp.clients.mavedb import MaveDBClient
+from genesis_bio_mcp.clients.myvariant import MyVariantClient
 from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
 from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.reactome import ReactomeClient
@@ -1898,3 +1899,316 @@ def test_mavedb_to_markdown():
     assert "3,893" in md
     assert "urn:mavedb:00000097-a-1" in md
     assert "30209399" in md
+
+
+# ---------------------------------------------------------------------------
+# MyVariant.info client tests
+# ---------------------------------------------------------------------------
+
+MOCK_MYVARIANT_TP53_R175H = {
+    "_id": "chr17:g.7675088C>T",
+    "clinvar": {
+        "rsid": "rs28934578",
+        "variant_id": 12362,
+        "hgvs": {
+            "coding": ["NM_000546.6:c.524G>A"],
+            "genomic": ["NC_000017.11:g.7675088C>T"],
+            "protein": ["NP_000537.3:p.Arg175His", "P04637:p.Arg175His"],
+        },
+        "rcv": [
+            {
+                "accession": "RCV000013173",
+                "clinical_significance": "Pathogenic",
+                "review_status": "criteria provided, multiple submitters, no conflicts",
+                "origin": "germline",
+                "last_evaluated": "2024-06-12",
+                "conditions": {"name": "Li-Fraumeni syndrome 1"},
+            },
+            {
+                "accession": "RCV000204931",
+                "clinical_significance": "Pathogenic",
+                "review_status": "reviewed by expert panel",
+                "origin": "germline",
+                "last_evaluated": "2024-09-06",
+                "conditions": {"name": "Li-Fraumeni syndrome"},
+            },
+        ],
+    },
+    "dbnsfp": {
+        "alphamissense": {
+            "pred": ["P", "P", "P", "P"],
+            "rankscore": 0.924,
+            "score": [0.978, 0.984, 0.968, 0.985],
+        },
+        "revel": {"rankscore": 0.980, "score": [0.922, 0.922]},
+        "cadd": {"phred": 25.9, "raw_score": 4.598},
+        "sift": {"score": [0.08, 0.07]},
+        "polyphen2": {"score": [0.704]},
+    },
+    "gnomad_exome": {"af": {"af": 3.98e-6, "af_nfe": 8.80e-6, "af_afr": 0.0}},
+}
+
+
+@respx.mock
+async def test_myvariant_parses_clinvar_and_alphamissense(http_client):
+    respx.get("https://myvariant.info/v1/variant/chr17:g.7675088C>T").mock(
+        return_value=httpx.Response(200, json=MOCK_MYVARIANT_TP53_R175H)
+    )
+    client = MyVariantClient(http_client)
+    result = await client.get_annotation("chr17:g.7675088C>T")
+    assert result is not None
+    assert result.clinvar is not None
+    assert result.clinvar.rsid == "rs28934578"
+    assert len(result.clinvar.assertions) == 2
+    assert result.clinvar.significance_summary == "Pathogenic"
+    assert "Li-Fraumeni syndrome 1" in result.clinvar.assertions[0].conditions
+    assert result.in_silico is not None
+    assert result.in_silico.alphamissense_score == pytest.approx(0.97875, abs=0.001)
+    assert result.in_silico.alphamissense_class == "likely_pathogenic"
+    assert result.in_silico.revel_score == pytest.approx(0.922, abs=0.001)
+    assert result.in_silico.cadd_phred == 25.9
+    assert result.gnomad is not None
+    assert result.gnomad.overall_af == pytest.approx(3.98e-6)
+    assert "af_nfe" in result.gnomad.by_population
+
+
+@respx.mock
+async def test_myvariant_returns_none_on_404(http_client):
+    respx.get("https://myvariant.info/v1/variant/chr99:g.1A>T").mock(
+        return_value=httpx.Response(404, text="Not found")
+    )
+    client = MyVariantClient(http_client)
+    result = await client.get_annotation("chr99:g.1A>T")
+    assert result is None
+
+
+@respx.mock
+async def test_myvariant_returns_none_on_network_error(http_client):
+    respx.get("https://myvariant.info/v1/variant/chr17:g.7675088C>T").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+    client = MyVariantClient(http_client)
+    result = await client.get_annotation("chr17:g.7675088C>T")
+    assert result is None
+
+
+@respx.mock
+async def test_myvariant_handles_missing_fields(http_client):
+    respx.get("https://myvariant.info/v1/variant/chr1:g.1A>T").mock(
+        return_value=httpx.Response(200, json={"_id": "chr1:g.1A>T"})
+    )
+    client = MyVariantClient(http_client)
+    result = await client.get_annotation("chr1:g.1A>T")
+    # Empty payload → all fields None, no crash
+    assert result is not None
+    assert result.clinvar is None
+    assert result.in_silico is None
+    assert result.gnomad is None
+
+
+# ---------------------------------------------------------------------------
+# gnomAD find_variant_id_by_protein_change tests
+# ---------------------------------------------------------------------------
+
+MOCK_GNOMAD_TP53_VARIANTS = {
+    "data": {
+        "gene": {
+            "variants": [
+                {
+                    "variant_id": "17-7675088-C-T",
+                    "hgvsp": "p.Arg175His",
+                    "consequence": "missense_variant",
+                },
+                {
+                    "variant_id": "17-7675088-C-G",
+                    "hgvsp": "p.Arg175Pro",
+                    "consequence": "missense_variant",
+                },
+            ]
+        }
+    }
+}
+
+
+@respx.mock
+async def test_gnomad_find_variant_by_protein_change(http_client):
+    respx.post("https://gnomad.broadinstitute.org/api").mock(
+        return_value=httpx.Response(200, json=MOCK_GNOMAD_TP53_VARIANTS)
+    )
+    client = GnomADClient(http_client)
+    vid = await client.find_variant_id_by_protein_change("TP53", "p.Arg175His")
+    assert vid == "17-7675088-C-T"
+
+
+@respx.mock
+async def test_gnomad_find_variant_missing_returns_none(http_client):
+    respx.post("https://gnomad.broadinstitute.org/api").mock(
+        return_value=httpx.Response(200, json=MOCK_GNOMAD_TP53_VARIANTS)
+    )
+    client = GnomADClient(http_client)
+    # R175X isn't in the mock → None (cache prevents re-fetch)
+    vid = await client.find_variant_id_by_protein_change("TP53", "p.Arg175Cys")
+    assert vid is None
+
+
+@respx.mock
+async def test_gnomad_find_variant_network_error_returns_none(http_client):
+    respx.post("https://gnomad.broadinstitute.org/api").mock(side_effect=httpx.ConnectError("boom"))
+    client = GnomADClient(http_client)
+    vid = await client.find_variant_id_by_protein_change("TP53", "p.Arg175His")
+    assert vid is None
+
+
+# ---------------------------------------------------------------------------
+# MaveDB per-variant score tests
+# ---------------------------------------------------------------------------
+
+MOCK_MAVEDB_BRCA1_SCORES_CSV = (
+    "accession,hgvs_nt,hgvs_splice,hgvs_pro,score\n"
+    "urn:mavedb:000001#1,NA,NA,p.Arg175His,-2.5\n"
+    "urn:mavedb:000001#2,NA,NA,p.Arg175His,-2.3\n"
+    "urn:mavedb:000001#3,NA,NA,p.Arg175Cys,-2.8\n"
+    "urn:mavedb:000001#4,NA,NA,p.Lys10Ala,0.5\n"
+    "urn:mavedb:000001#5,NA,NA,p.Lys10Ala,NA\n"
+)
+
+
+@respx.mock
+async def test_mavedb_get_variant_score_match(http_client):
+    respx.get("https://api.mavedb.org/api/v1/score-sets/urn:mavedb:000001/scores").mock(
+        return_value=httpx.Response(200, text=MOCK_MAVEDB_BRCA1_SCORES_CSV)
+    )
+    client = MaveDBClient(http_client)
+    hits = await client.get_variant_score("urn:mavedb:000001", "p.Arg175His", "Test score set")
+    # Two replicates for R175H
+    assert len(hits) == 2
+    assert all(h.hgvs_pro == "p.Arg175His" for h in hits)
+    assert hits[0].score == pytest.approx(-2.5)
+    assert hits[0].title == "Test score set"
+
+
+@respx.mock
+async def test_mavedb_get_variant_score_no_match(http_client):
+    respx.get("https://api.mavedb.org/api/v1/score-sets/urn:mavedb:000001/scores").mock(
+        return_value=httpx.Response(200, text=MOCK_MAVEDB_BRCA1_SCORES_CSV)
+    )
+    client = MaveDBClient(http_client)
+    hits = await client.get_variant_score("urn:mavedb:000001", "p.Val999Ala")
+    assert hits == []
+
+
+@respx.mock
+async def test_mavedb_get_variant_score_network_error(http_client):
+    respx.get("https://api.mavedb.org/api/v1/score-sets/urn:mavedb:000001/scores").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+    client = MaveDBClient(http_client)
+    hits = await client.get_variant_score("urn:mavedb:000001", "p.Arg175His")
+    assert hits == []
+
+
+@respx.mock
+async def test_mavedb_get_variant_score_skips_NA(http_client):
+    # Row #5 has score="NA" — must be skipped, not parsed as 0
+    respx.get("https://api.mavedb.org/api/v1/score-sets/urn:mavedb:000001/scores").mock(
+        return_value=httpx.Response(200, text=MOCK_MAVEDB_BRCA1_SCORES_CSV)
+    )
+    client = MaveDBClient(http_client)
+    hits = await client.get_variant_score("urn:mavedb:000001", "p.Lys10Ala")
+    assert len(hits) == 1
+    assert hits[0].score == 0.5
+
+
+# ---------------------------------------------------------------------------
+# VariantEffectsClient aggregator tests
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_variant_effects_aggregator_happy_path(http_client):
+    from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
+
+    # gnomAD gene.variants query
+    respx.post("https://gnomad.broadinstitute.org/api").mock(
+        return_value=httpx.Response(200, json=MOCK_GNOMAD_TP53_VARIANTS)
+    )
+    # MyVariant
+    respx.get("https://myvariant.info/v1/variant/chr17:g.7675088C>T").mock(
+        return_value=httpx.Response(200, json=MOCK_MYVARIANT_TP53_R175H)
+    )
+    # MaveDB search + scores
+    respx.post("https://api.mavedb.org/api/v1/score-sets/search").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "scoreSets": [
+                    {
+                        "urn": "urn:mavedb:000001",
+                        "title": "TP53 DMS in NSCLC",
+                        "numVariants": 5000,
+                        "targetGenes": [{"name": "TP53"}],
+                        "publishedDate": "2023-01-01",
+                    }
+                ]
+            },
+        )
+    )
+    respx.get("https://api.mavedb.org/api/v1/score-sets/urn:mavedb:000001/scores").mock(
+        return_value=httpx.Response(200, text=MOCK_MAVEDB_BRCA1_SCORES_CSV)
+    )
+
+    client = VariantEffectsClient(
+        gnomad=GnomADClient(http_client),
+        myvariant=MyVariantClient(http_client),
+        mavedb=MaveDBClient(http_client),
+    )
+    result = await client.get_effects("TP53", "R175H")
+
+    assert result.gene_symbol == "TP53"
+    assert result.canonical_one_letter == "R175H"
+    assert result.canonical_hgvs_protein == "p.Arg175His"
+    assert result.gnomad_variant_id == "17-7675088-C-T"
+    assert result.annotation is not None
+    assert result.annotation.clinvar.significance_summary == "Pathogenic"
+    assert result.annotation.in_silico.alphamissense_class == "likely_pathogenic"
+    assert len(result.dms_scores) == 2  # two R175H rows in the mock CSV
+    assert result.notes == []
+    md = result.to_markdown()
+    assert "R175H" in md
+    assert "Pathogenic" in md
+    assert "AlphaMissense" in md
+
+
+@respx.mock
+async def test_variant_effects_aggregator_not_in_gnomad(http_client):
+    from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
+
+    respx.post("https://gnomad.broadinstitute.org/api").mock(
+        return_value=httpx.Response(200, json={"data": {"gene": {"variants": []}}})
+    )
+    respx.post("https://api.mavedb.org/api/v1/score-sets/search").mock(
+        return_value=httpx.Response(200, json={"scoreSets": []})
+    )
+    client = VariantEffectsClient(
+        gnomad=GnomADClient(http_client),
+        myvariant=MyVariantClient(http_client),
+        mavedb=MaveDBClient(http_client),
+    )
+    result = await client.get_effects("TP53", "R175H")
+
+    assert result.gnomad_variant_id is None
+    assert result.annotation is None
+    assert any("not found in gnomAD" in n for n in result.notes)
+
+
+async def test_variant_effects_aggregator_invalid_mutation(http_client):
+    from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
+
+    client = VariantEffectsClient(
+        gnomad=GnomADClient(http_client),
+        myvariant=MyVariantClient(http_client),
+        mavedb=MaveDBClient(http_client),
+    )
+    # parse_protein_change raises ValueError on garbage input
+    with pytest.raises(ValueError):
+        await client.get_effects("TP53", "not a mutation")

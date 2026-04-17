@@ -227,6 +227,13 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"No gnomAD constraint data found for '{gene_symbol}'."
         return result.to_markdown()
 
+    async def _get_variant_effects_fn(gene_symbol: str, mutation: str) -> str:
+        try:
+            result = await state.variant_effects.get_effects(gene_symbol, mutation)
+        except ValueError as exc:
+            return f"Could not parse mutation '{mutation}': {exc}"
+        return result.to_markdown()
+
     async def _get_domain_annotation_fn(gene_symbol: str) -> str:
         protein = await state.uniprot.get_protein(gene_symbol)
         accession = protein.uniprot_accession if protein else gene_symbol
@@ -715,6 +722,40 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
                 "the gene tolerates losing. High pLI or low LOEUF means avoid broad mutagenesis."
             ),
             fn=_get_variant_constraints_fn,
+        ),
+        "get_variant_effects": ToolSpec(
+            name="get_variant_effects",
+            description=(
+                "Retrieve mutation-level pathogenicity and fitness for a specific missense "
+                "variant. Fans out to gnomAD (allele frequency, variant-ID resolution), "
+                "MyVariant.info (ClinVar submissions, AlphaMissense, REVEL, CADD, SIFT, "
+                "PolyPhen-2), and MaveDB (per-variant DMS fitness scores) in parallel."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_symbol": {
+                        "type": "string",
+                        "description": "HGNC gene symbol. Example: 'TP53'",
+                    },
+                    "mutation": {
+                        "type": "string",
+                        "description": (
+                            "Protein change. Accepted forms: 'R175H', 'p.R175H', "
+                            "'Arg175His', 'p.Arg175His'. Example: 'R175H'"
+                        ),
+                    },
+                },
+                "required": ["gene_symbol", "mutation"],
+            },
+            tool_category="protein_engineering",
+            use_when=(
+                "Use to get the consolidated clinical and predicted-pathogenicity profile for a "
+                "specific mutation. Call when the user asks 'is X variant pathogenic' or wants "
+                "to check a candidate engineering mutation against ClinVar, AlphaMissense, and DMS "
+                "in one step."
+            ),
+            fn=_get_variant_effects_fn,
         ),
         "get_dms_scores": ToolSpec(
             name="get_dms_scores",

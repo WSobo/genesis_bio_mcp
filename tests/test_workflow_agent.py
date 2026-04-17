@@ -43,6 +43,8 @@ def _mock_state() -> MagicMock:
         "interpro",
         "iedb",
         "mavedb",
+        "myvariant",
+        "variant_effects",
     ):
         client = MagicMock()
         for method in (
@@ -63,6 +65,7 @@ def _mock_state() -> MagicMock:
             "get_domains",
             "get_epitopes",
             "get_dms_scores",
+            "get_effects",
         ):
             mock_result = MagicMock()
             mock_result.to_markdown.return_value = f"## Mock {attr}.{method}\n\nData here."
@@ -132,6 +135,7 @@ def test_build_tool_registry_has_all_tools():
         "get_epitope_data",
         "get_antibody_structures",
         "get_variant_constraints",
+        "get_variant_effects",
         "get_domain_annotation",
         "get_dms_scores",
         "get_drug_history",

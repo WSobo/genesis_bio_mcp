@@ -17,11 +17,13 @@ No API key required.
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import logging
 
 import httpx
 
-from genesis_bio_mcp.models import DMSResults, DMSScoreSet
+from genesis_bio_mcp.models import DMSResults, DMSScoreSet, MaveDBVariantScore
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,9 @@ class MaveDBClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
         self._cache: dict[str, DMSResults] = {}
+        # Per-score-set scores cache: the CSV can be hundreds of kB, so we
+        # cache it once per URN rather than re-downloading for every variant.
+        self._scores_cache: dict[str, list[dict[str, str]]] = {}
 
     async def get_dms_scores(self, gene_symbol: str) -> DMSResults | None:
         """Search MaveDB for DMS score sets associated with a gene.
@@ -140,3 +145,74 @@ class MaveDBClient:
             total_variants=total_variants,
             score_sets=score_sets,
         )
+
+    async def get_variant_score(
+        self,
+        urn: str,
+        hgvs_pro: str,
+        score_set_title: str | None = None,
+    ) -> list[MaveDBVariantScore]:
+        """Return per-variant DMS scores for one score-set matching *hgvs_pro*.
+
+        MaveDB's ``/score-sets/{urn}/scores`` endpoint returns the full CSV of
+        every replicate / condition row in the score set. We cache the CSV
+        on first access and filter in-memory.
+
+        Args:
+            urn: Score-set URN, e.g. ``"urn:mavedb:00000001-a-1"``.
+            hgvs_pro: HGVS protein notation to match, e.g. ``"p.Arg175His"``.
+            score_set_title: Optional title to attach to each returned score
+                (normally populated by the aggregator so the output table
+                doesn't force a separate lookup).
+
+        Returns:
+            List of :class:`MaveDBVariantScore`, one per matching row. Empty
+            list if the variant is not in this score set or the fetch fails.
+        """
+        rows = await self._load_scores(urn)
+        if not rows:
+            return []
+        matches: list[MaveDBVariantScore] = []
+        target = hgvs_pro.strip()
+        for row in rows:
+            if row.get("hgvs_pro", "").strip() != target:
+                continue
+            raw_score = row.get("score", "").strip()
+            if not raw_score or raw_score == "NA":
+                continue
+            try:
+                score = float(raw_score)
+            except ValueError:
+                continue
+            matches.append(
+                MaveDBVariantScore(
+                    urn=urn,
+                    title=score_set_title or urn,
+                    hgvs_pro=target,
+                    score=score,
+                    epsilon=None,
+                )
+            )
+        return matches
+
+    async def _load_scores(self, urn: str) -> list[dict[str, str]]:
+        if urn in self._scores_cache:
+            logger.debug("MaveDB scores cache hit: %s", urn)
+            return self._scores_cache[urn]
+        async with _SEMAPHORE:
+            url = f"{_MAVEDB_BASE}/score-sets/{urn}/scores"
+            try:
+                resp = await self._client.get(url, timeout=30.0)
+                resp.raise_for_status()
+                text = resp.text
+            except Exception as exc:
+                logger.warning("MaveDB scores fetch failed for %s: %s", urn, exc)
+                self._scores_cache[urn] = []
+                return []
+        try:
+            rows = [dict(row) for row in csv.DictReader(io.StringIO(text))]
+        except Exception as exc:
+            logger.warning("MaveDB scores CSV parse failed for %s: %s", urn, exc)
+            rows = []
+        self._scores_cache[urn] = rows
+        return rows

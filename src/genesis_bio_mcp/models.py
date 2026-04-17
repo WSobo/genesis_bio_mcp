@@ -226,6 +226,227 @@ class ProteinSequence(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Variant effects (MyVariant.info + MaveDB per-variant)
+# ---------------------------------------------------------------------------
+
+
+class ClinVarAssertion(BaseModel):
+    """One ClinVar RCV (reference-condition-variant) record."""
+
+    accession: str = Field(description="RCV accession, e.g. 'RCV000013173'")
+    significance: str = Field(
+        description="Clinical significance label, e.g. 'Pathogenic', 'Uncertain significance'"
+    )
+    review_status: str = Field(description="ClinVar review status, e.g. 'reviewed by expert panel'")
+    origin: str = Field(default="", description="Germline/somatic origin")
+    last_evaluated: str | None = Field(
+        default=None, description="YYYY-MM-DD string of the most recent evaluation"
+    )
+    conditions: list[str] = Field(
+        default_factory=list, description="Associated disease or condition names"
+    )
+
+
+class ClinVarRecord(BaseModel):
+    """Aggregated ClinVar information for a single variant."""
+
+    rsid: str | None = Field(default=None, description="dbSNP rs ID")
+    hgvs_protein: str | None = Field(default=None, description="Canonical HGVS p. notation")
+    hgvs_coding: str | None = Field(default=None, description="Canonical HGVS c. notation")
+    hgvs_genomic: str | None = Field(default=None, description="Canonical HGVS g. notation")
+    significance_summary: str = Field(
+        description="Worst-case clinical significance across all RCV records"
+    )
+    assertions: list[ClinVarAssertion] = Field(
+        default_factory=list, description="Per-condition RCV records"
+    )
+
+
+class PopulationFrequency(BaseModel):
+    """gnomAD exome allele-frequency snapshot."""
+
+    overall_af: float = Field(description="Overall gnomAD exome allele frequency")
+    by_population: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-population allele frequencies (af_afr, af_amr, af_eas, af_nfe, af_sas)",
+    )
+
+
+class InSilicoPredictions(BaseModel):
+    """In silico pathogenicity scores from dbNSFP / AlphaMissense."""
+
+    alphamissense_score: float | None = Field(
+        default=None,
+        description="AlphaMissense pathogenicity score (0–1; >0.564 = likely pathogenic)",
+    )
+    alphamissense_class: str | None = Field(
+        default=None,
+        description="AlphaMissense class: 'likely_pathogenic' | 'likely_benign' | 'ambiguous'",
+    )
+    revel_score: float | None = Field(
+        default=None,
+        description="REVEL ensemble score (0–1; >0.75 = likely pathogenic)",
+    )
+    cadd_phred: float | None = Field(
+        default=None,
+        description="CADD Phred-scaled pathogenicity (>20 = top 1% most deleterious genome-wide)",
+    )
+    sift_score: float | None = Field(
+        default=None,
+        description="SIFT score (0–1; <0.05 = deleterious)",
+    )
+    polyphen_score: float | None = Field(
+        default=None,
+        description="PolyPhen-2 HDIV score (0–1; >0.909 = probably damaging)",
+    )
+
+
+class VariantAnnotation(BaseModel):
+    """Consolidated variant annotation from MyVariant.info."""
+
+    query: str = Field(description="HGVS genomic string used to query MyVariant.info")
+    clinvar: ClinVarRecord | None = Field(default=None, description="ClinVar records if indexed")
+    gnomad: PopulationFrequency | None = Field(
+        default=None, description="gnomAD exome frequency if variant is observed"
+    )
+    in_silico: InSilicoPredictions | None = Field(
+        default=None, description="AlphaMissense/REVEL/CADD/SIFT/PolyPhen predictions"
+    )
+
+
+class MaveDBVariantScore(BaseModel):
+    """One per-variant DMS fitness score retrieved from MaveDB."""
+
+    urn: str = Field(description="MaveDB score-set URN")
+    title: str = Field(description="Score-set title")
+    hgvs_pro: str = Field(description="HGVS protein notation of the variant in this score set")
+    score: float = Field(description="Fitness / function score")
+    epsilon: float | None = Field(default=None, description="Optional error estimate on the score")
+
+
+class VariantEffects(BaseModel):
+    """Fanned-out variant effect report for a gene + protein change."""
+
+    gene_symbol: str = Field(description="HGNC gene symbol the mutation is in")
+    mutation_input: str = Field(description="Raw mutation string as provided by the user")
+    canonical_one_letter: str = Field(description="Canonical 1-letter form, e.g. 'R175H'")
+    canonical_hgvs_protein: str = Field(description="Canonical HGVS p. form, e.g. 'p.Arg175His'")
+    gnomad_variant_id: str | None = Field(
+        default=None,
+        description="gnomAD variant ID (chrom-pos-ref-alt) if the exact AA change was located",
+    )
+    annotation: VariantAnnotation | None = Field(
+        default=None, description="MyVariant.info consolidated annotation"
+    )
+    dms_scores: list[MaveDBVariantScore] = Field(
+        default_factory=list, description="Per-variant DMS fitness scores from MaveDB"
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Free-text diagnostics, e.g. 'variant not found in gnomAD'",
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Variant Effects: {self.gene_symbol} {self.canonical_one_letter}",
+            f"_HGVS p._: `{self.canonical_hgvs_protein}`"
+            + (
+                f" | _gnomAD variant_: `{self.gnomad_variant_id}`" if self.gnomad_variant_id else ""
+            ),
+        ]
+        cv = self.annotation.clinvar if self.annotation else None
+        insilico = self.annotation.in_silico if self.annotation else None
+        freq = self.annotation.gnomad if self.annotation else None
+
+        verdict_parts: list[str] = []
+        if cv and cv.assertions:
+            verdict_parts.append(
+                f"**ClinVar:** {cv.significance_summary} ({len(cv.assertions)} submission(s))"
+            )
+        elif cv is not None:
+            verdict_parts.append("**ClinVar:** no pathogenicity record indexed")
+        else:
+            verdict_parts.append("**ClinVar:** not found")
+        if insilico and insilico.alphamissense_score is not None:
+            klass = insilico.alphamissense_class or ""
+            verdict_parts.append(f"**AlphaMissense:** {insilico.alphamissense_score:.2f} ({klass})")
+        if self.dms_scores:
+            verdict_parts.append(
+                f"**DMS:** {len(self.dms_scores)} per-variant score(s) across "
+                f"{len({s.urn for s in self.dms_scores})} score set(s)"
+            )
+        lines += ["", " | ".join(verdict_parts) if verdict_parts else "_No data_"]
+
+        if freq is not None:
+            pops = ", ".join(f"{k}={v:.2e}" for k, v in freq.by_population.items())
+            lines += [
+                "",
+                f"**gnomAD exome AF:** {freq.overall_af:.2e}" + (f" ({pops})" if pops else ""),
+            ]
+
+        if insilico is not None:
+            rows: list[str] = []
+            if insilico.alphamissense_score is not None:
+                rows.append(
+                    f"| AlphaMissense | {insilico.alphamissense_score:.3f} | "
+                    f"{insilico.alphamissense_class or '—'} |"
+                )
+            if insilico.revel_score is not None:
+                rows.append(
+                    f"| REVEL | {insilico.revel_score:.3f} | "
+                    f"{'likely pathogenic' if insilico.revel_score > 0.75 else 'lower risk'} |"
+                )
+            if insilico.cadd_phred is not None:
+                rows.append(
+                    f"| CADD | {insilico.cadd_phred:.1f} | "
+                    f"{'top 1% deleterious' if insilico.cadd_phred > 20 else 'below top 1%'} |"
+                )
+            if insilico.sift_score is not None:
+                rows.append(
+                    f"| SIFT | {insilico.sift_score:.3f} | "
+                    f"{'deleterious' if insilico.sift_score < 0.05 else 'tolerated'} |"
+                )
+            if insilico.polyphen_score is not None:
+                rows.append(
+                    f"| PolyPhen-2 | {insilico.polyphen_score:.3f} | "
+                    f"{'probably damaging' if insilico.polyphen_score > 0.909 else 'benign/possibly'} |"
+                )
+            if rows:
+                lines += [
+                    "",
+                    "### In silico predictions",
+                    "| Predictor | Score | Interpretation |",
+                    "|---|---|---|",
+                    *rows,
+                ]
+
+        if cv and cv.assertions:
+            lines += ["", "### ClinVar submissions"]
+            for a in cv.assertions[:5]:
+                cond = ", ".join(a.conditions[:2]) if a.conditions else "—"
+                eval_suffix = f" | Last eval: {a.last_evaluated}" if a.last_evaluated else ""
+                lines.append(
+                    f"- **{a.significance}** ({a.accession}) — {cond}"
+                    f" | Review: {a.review_status}{eval_suffix}"
+                )
+            if len(cv.assertions) > 5:
+                lines.append(f"- _...and {len(cv.assertions) - 5} more_")
+
+        if self.dms_scores:
+            lines += ["", "### MaveDB DMS scores"]
+            for s in self.dms_scores[:5]:
+                eps = f" ± {s.epsilon:.3f}" if s.epsilon is not None else ""
+                lines.append(f"- `{s.urn}`: **{s.score:.3f}**{eps} — {s.title[:80]}")
+            if len(self.dms_scores) > 5:
+                lines.append(f"- _...and {len(self.dms_scores) - 5} more_")
+
+        if self.notes:
+            lines += ["", "_Notes:_ " + "; ".join(self.notes)]
+
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Open Targets
 # ---------------------------------------------------------------------------
 
