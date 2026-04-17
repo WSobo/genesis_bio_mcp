@@ -248,6 +248,9 @@ MOCK_ENTREZ_AIDS = {
 
 MOCK_PUBCHEM_ACTIVE_CIDS = {"IdentifierList": {"CID": [44462760, 11338033]}}
 
+# PUG REST primary path: assay/target/genesymbol/{symbol}/aids/JSON
+MOCK_PUBCHEM_GENESYMBOL_AIDS = {"IdentifierList": {"AID": [1259398, 686978]}}
+
 MOCK_PUBCHEM_PROPERTIES = {
     "PropertyTable": {
         "Properties": [

@@ -32,6 +32,7 @@ from tests.conftest import (
     MOCK_OT_DISEASE_SEARCH,
     MOCK_OT_GENE_SEARCH,
     MOCK_PUBCHEM_ACTIVE_CIDS,
+    MOCK_PUBCHEM_GENESYMBOL_AIDS,
     MOCK_PUBCHEM_PROPERTIES,
     MOCK_UNIPROT_BRAF,
     MOCK_UNIPROT_FASTA_BRAF,
@@ -285,9 +286,9 @@ async def test_gwas_returns_none_when_no_hits(http_client):
 
 @respx.mock
 async def test_pubchem_returns_compounds(http_client):
-    # New flow: Entrez esearch → active CIDs → compound properties
-    respx.get(url__regex=r"esearch\.fcgi").mock(
-        return_value=httpx.Response(200, json=MOCK_ENTREZ_AIDS)
+    # Primary path: PUG REST genesymbol AIDs → active CIDs → compound properties
+    respx.get(url__regex=r"assay/target/genesymbol").mock(
+        return_value=httpx.Response(200, json=MOCK_PUBCHEM_GENESYMBOL_AIDS)
     )
     respx.get(url__regex=r"cids/JSON\?cids_type=active").mock(
         return_value=httpx.Response(200, json=MOCK_PUBCHEM_ACTIVE_CIDS)
@@ -307,8 +308,27 @@ async def test_pubchem_returns_compounds(http_client):
 
 
 @respx.mock
+async def test_pubchem_falls_back_to_entrez_when_pug_rest_empty(http_client):
+    """If the PUG REST genesymbol path returns no AIDs, fall back to Entrez."""
+    respx.get(url__regex=r"assay/target/genesymbol").mock(return_value=httpx.Response(404))
+    respx.get(url__regex=r"esearch\.fcgi").mock(
+        return_value=httpx.Response(200, json=MOCK_ENTREZ_AIDS)
+    )
+    respx.get(url__regex=r"cids/JSON\?cids_type=active").mock(
+        return_value=httpx.Response(200, json=MOCK_PUBCHEM_ACTIVE_CIDS)
+    )
+    respx.get(url__regex=r"property/MolecularFormula").mock(
+        return_value=httpx.Response(200, json=MOCK_PUBCHEM_PROPERTIES)
+    )
+    client = PubChemClient(http_client)
+    result = await client.get_compounds("BRAF")
+    assert result is not None
+    assert result.total_active_compounds >= 1
+
+
+@respx.mock
 async def test_pubchem_retries_on_503(http_client):
-    """Verify tenacity retries on 503 from Entrez."""
+    """Verify tenacity retries on 503 from the primary PUG REST path."""
     call_count = 0
 
     def side_effect(request):
@@ -316,9 +336,9 @@ async def test_pubchem_retries_on_503(http_client):
         call_count += 1
         if call_count == 1:
             return httpx.Response(503)
-        return httpx.Response(200, json=MOCK_ENTREZ_AIDS)
+        return httpx.Response(200, json=MOCK_PUBCHEM_GENESYMBOL_AIDS)
 
-    respx.get(url__regex=r"esearch\.fcgi").mock(side_effect=side_effect)
+    respx.get(url__regex=r"assay/target/genesymbol").mock(side_effect=side_effect)
     respx.get(url__regex=r"cids/JSON\?cids_type=active").mock(
         return_value=httpx.Response(200, json=MOCK_PUBCHEM_ACTIVE_CIDS)
     )
@@ -334,12 +354,11 @@ async def test_pubchem_retries_on_503(http_client):
 
 @respx.mock
 async def test_pubchem_returns_none_when_no_assays(http_client):
-    # Entrez returns empty, fallback gene symbol AID lookup returns 404,
-    # fallback name search also returns 404
+    # PUG REST returns 404, Entrez returns empty, name fallback returns 404
+    respx.get(url__regex=r"assay/target/genesymbol").mock(return_value=httpx.Response(404))
     respx.get(url__regex=r"esearch\.fcgi").mock(
         return_value=httpx.Response(200, json={"esearchresult": {"idlist": []}})
     )
-    respx.get(url__regex=r"genesymbol").mock(return_value=httpx.Response(404))
     respx.get(url__regex=r"compound/name").mock(return_value=httpx.Response(404))
     client = PubChemClient(http_client)
     result = await client.get_compounds("FAKEGENE")

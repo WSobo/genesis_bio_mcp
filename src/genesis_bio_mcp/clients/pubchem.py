@@ -46,20 +46,26 @@ class PubChemClient:
         """Return active small molecules with bioactivity against a gene target."""
         symbol = gene_symbol.strip().upper()
 
-        # Strategy 1: NCBI Entrez search for BioAssay records with IC50/active data
-        aids = await self._search_assays_entrez(symbol)
+        # Strategy 1 (primary): PUG REST structured assay→gene-symbol lookup.
+        # Returns the full set of AIDs targeting the gene without depending on
+        # free-text Entrez metadata. For BRAF this yields 1300+ assays where
+        # the Entrez query (which requires literal "active"/"IC50" terms in
+        # assay metadata) returned only 0–1 hits.
+        aids = await self._get_aids_by_gene_symbol(symbol)
 
-        # Strategy 2: Fall back to UniProt accession-based AID lookup if Entrez finds nothing
+        # Strategy 2 (fallback): NCBI Entrez if PUG REST is unavailable.
         if not aids:
-            aids = await self._get_aids_by_gene_symbol(symbol)
+            aids = await self._search_assays_entrez(symbol)
 
         if not aids:
             logger.info("PubChem: no assays found for gene '%s'", symbol)
             return None
 
-        # Collect active CIDs across assays
+        # Collect active CIDs across assays. 30 is a balance between coverage
+        # and per-assay HTTP cost; the 100-compound early-exit usually fires
+        # well before this cap on heavily-drugged targets like BRAF.
         all_compounds: list[CompoundActivity] = []
-        for aid in aids[:8]:
+        for aid in aids[:30]:
             compounds = await self._get_active_cids(aid, symbol)
             all_compounds.extend(compounds)
             if len(all_compounds) >= 100:
@@ -125,7 +131,9 @@ class PubChemClient:
             data = await self._get(url)
             if data is None:
                 return []
-            return data.get("IdentifierList", {}).get("AID", [])[:20]
+            # 50 is a safety cap; the per-assay loop in get_compounds further
+            # restricts to 30 and exits early at 100 compounds collected.
+            return data.get("IdentifierList", {}).get("AID", [])[:50]
         except Exception as exc:
             logger.debug("PubChem AID lookup failed for '%s': %s", symbol, exc)
             return []
