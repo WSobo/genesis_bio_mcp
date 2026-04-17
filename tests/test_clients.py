@@ -867,16 +867,37 @@ _MOCK_REACTOME_SEARCH_RESPONSE = {
     ]
 }
 
+# Real Reactome /data/participants response shape: each entry is a
+# PhysicalEntity with refEntities carrying displayName "UniProt:ACC SYMBOL"
+# and a schemaClass — gene symbols must be parsed from displayName.
 _MOCK_REACTOME_PARTICIPANTS_RESPONSE = [
     {
         "refEntities": [
-            {"geneName": ["BRAF"], "className": "ReferenceGeneProduct"},
-            {"geneName": ["RAF1"], "className": "ReferenceGeneProduct"},
+            {
+                "displayName": "UniProt:P15056 BRAF",
+                "identifier": "P15056",
+                "schemaClass": "ReferenceGeneProduct",
+            },
+            {
+                "displayName": "UniProt:P04049 RAF1",
+                "identifier": "P04049",
+                "schemaClass": "ReferenceGeneProduct",
+            },
         ]
     },
     {
         "refEntities": [
-            {"geneName": ["MAP2K1", "MEK1"], "className": "ReferenceGeneProduct"},
+            {
+                "displayName": "UniProt:Q02750 MAP2K1",
+                "identifier": "Q02750",
+                "schemaClass": "ReferenceGeneProduct",
+            },
+            # Non-protein refEntity should be filtered out
+            {
+                "displayName": "water [ChEBI:15377]",
+                "identifier": "15377",
+                "schemaClass": "ReferenceMolecule",
+            },
         ]
     },
 ]
@@ -884,7 +905,8 @@ _MOCK_REACTOME_PARTICIPANTS_RESPONSE = [
 
 @respx.mock
 async def test_reactome_get_pathway_members_by_name(http_client):
-    respx.get(url__regex=r"reactome\.org/ContentService/data/search/query").mock(
+    # Search endpoint lives at /search/query (no /data/ prefix)
+    respx.get(url__regex=r"reactome\.org/ContentService/search/query").mock(
         return_value=httpx.Response(200, json=_MOCK_REACTOME_SEARCH_RESPONSE)
     )
     respx.get(url__regex=r"reactome\.org/ContentService/data/participants").mock(
@@ -895,8 +917,9 @@ async def test_reactome_get_pathway_members_by_name(http_client):
 
     assert "BRAF" in genes
     assert "RAF1" in genes
-    # MAP2K1 should appear (first geneName entry wins)
     assert "MAP2K1" in genes
+    # ReferenceMolecule entries (water) must not leak through
+    assert not any("WATER" in g or "CHEBI" in g for g in genes)
 
 
 @respx.mock
@@ -914,12 +937,48 @@ async def test_reactome_get_pathway_members_by_stid(http_client):
 
 @respx.mock
 async def test_reactome_get_pathway_members_not_found(http_client):
-    respx.get(url__regex=r"reactome\.org/ContentService/data/search/query").mock(
+    respx.get(url__regex=r"reactome\.org/ContentService/search/query").mock(
         return_value=httpx.Response(200, json={"results": []})
     )
     client = ReactomeClient(http_client)
     genes = await client.get_pathway_members("nonexistent pathway xyz")
     assert genes == []
+
+
+@respx.mock
+async def test_reactome_get_pathway_members_caches_result(http_client):
+    """Second call with same input must hit the in-memory cache (no re-fetch)."""
+    participants_route = respx.get(
+        url__regex=r"reactome\.org/ContentService/data/participants"
+    ).mock(return_value=httpx.Response(200, json=_MOCK_REACTOME_PARTICIPANTS_RESPONSE))
+    client = ReactomeClient(http_client)
+    first = await client.get_pathway_members("R-HSA-5673001")
+    second = await client.get_pathway_members("R-HSA-5673001")
+    assert first == second
+    assert participants_route.call_count == 1
+
+
+@respx.mock
+async def test_reactome_get_pathway_members_truncates_at_max(http_client):
+    """max_genes caps the result and short-circuits the parse loop."""
+    big_participants = [
+        {
+            "refEntities": [
+                {
+                    "displayName": f"UniProt:P{i:05d} GENE{i}",
+                    "identifier": f"P{i:05d}",
+                    "schemaClass": "ReferenceGeneProduct",
+                }
+            ]
+        }
+        for i in range(200)
+    ]
+    respx.get(url__regex=r"reactome\.org/ContentService/data/participants").mock(
+        return_value=httpx.Response(200, json=big_participants)
+    )
+    client = ReactomeClient(http_client)
+    genes = await client.get_pathway_members("R-HSA-5673001", max_genes=20)
+    assert len(genes) == 20
 
 
 # ---------------------------------------------------------------------------

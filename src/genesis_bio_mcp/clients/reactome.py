@@ -70,10 +70,11 @@ _KEYWORD_CATEGORIES = [
 class ReactomeClient:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
-        # Session-scoped cache: only successful results are cached.
+        # Session-scoped caches: only successful results are cached.
         # Failures (network errors, empty results) are NOT cached so that transient
         # errors don't permanently poison the cache for the remainder of the session.
         self._cache: dict[str, PathwayContext] = {}
+        self._members_cache: dict[str, list[str]] = {}
 
     async def get_pathway_context(
         self, gene_symbol: str, max_pathways: int = 10
@@ -202,13 +203,25 @@ class ReactomeClient:
                 if stid is None:
                     return []
 
-            return await self._fetch_pathway_genes(stid, max_genes)
+            cache_key = f"{stid}:{max_genes}"
+            cached = self._members_cache.get(cache_key)
+            if cached is not None:
+                logger.debug("Reactome members cache hit: %s", cache_key)
+                return cached
+
+            genes = await self._fetch_pathway_genes(stid, max_genes)
+            if genes:
+                # Only cache successful fetches; transient failures must be retryable.
+                self._members_cache[cache_key] = genes
+            return genes
 
     async def _search_pathway_stid(self, name: str) -> str | None:
         """Search Reactome ContentService for a pathway by name; return its stId."""
         try:
+            # NOTE: the search endpoint lives at /search/query (no /data/ prefix);
+            # /data/search/query 404s.
             resp = await self._client.get(
-                f"{_REACTOME_CONTENT_URL}/data/search/query",
+                f"{_REACTOME_CONTENT_URL}/search/query",
                 params={
                     "query": name,
                     "types": "Pathway",
@@ -234,10 +247,12 @@ class ReactomeClient:
     async def _fetch_pathway_genes(self, stid: str, max_genes: int) -> list[str]:
         """Fetch ReferenceGeneProduct participants for a Reactome pathway stId."""
         try:
+            # 60s timeout: large pathways like MAPK signaling return ~300 KB of
+            # nested participant JSON; 20s left no margin for parse latency.
             resp = await self._client.get(
                 f"{_REACTOME_CONTENT_URL}/data/participants/{stid}",
                 params={"type": "ReferenceGeneProduct"},
-                timeout=20.0,
+                timeout=60.0,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -247,20 +262,23 @@ class ReactomeClient:
 
         genes: set[str] = set()
         for entry in data:
-            # Each entry is a PhysicalEntity; its refEntities carry the gene names
-            ref_entities = entry.get("refEntities", [])
-            for ref in ref_entities:
-                gene_names = ref.get("geneName", [])
-                if isinstance(gene_names, list):
-                    genes.update(g.upper() for g in gene_names if g)
-                elif isinstance(gene_names, str) and gene_names:
-                    genes.add(gene_names.upper())
-
-            # Fallback: identifier field on the entry itself
-            if not genes:
-                identifier = entry.get("identifier", "")
-                if identifier:
-                    genes.add(identifier.upper())
+            for ref in entry.get("refEntities", []):
+                # Only ReferenceGeneProduct entries carry gene-symbol info; the
+                # ?type= filter applies to the top-level participant query, not
+                # to refEntities, so non-protein entries (e.g. ReferenceMolecule
+                # for water/ATP) leak through.
+                if ref.get("schemaClass") != "ReferenceGeneProduct":
+                    continue
+                # displayName format: "UniProt:P12345 SYMBOL"; the gene symbol
+                # is the trailing token. There is no "geneName" field on these
+                # responses (despite older docs).
+                display = ref.get("displayName", "")
+                if " " in display:
+                    sym = display.rsplit(" ", 1)[-1].strip().upper()
+                    if sym:
+                        genes.add(sym)
+            if len(genes) >= max_genes:
+                break
 
         return sorted(genes)[:max_genes]
 
