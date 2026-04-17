@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, model_validator
 
+from genesis_bio_mcp.tools.biochem import BiochemFeatures, LiabilityHit
+
 # ---------------------------------------------------------------------------
 # Gene resolution
 # ---------------------------------------------------------------------------
@@ -64,6 +66,10 @@ class ProteinInfo(BaseModel):
     known_variants: list[KnownVariant] = Field(
         default_factory=list, description="Curated disease-linked natural variants"
     )
+    disulfide_bond_positions: list[int] = Field(
+        default_factory=list,
+        description="1-indexed Cys positions involved in annotated disulfide bonds (UniProt DISULFID feature).",
+    )
     reviewed: bool = Field(description="True if Swiss-Prot (manually reviewed), False if TrEMBL")
 
     def to_markdown(self) -> str:
@@ -112,6 +118,110 @@ class ProteinInfo(BaseModel):
                 lines.append(f"- **{pos}** — {disease}{sig}")
             if len(self.known_variants) > 5:
                 lines.append(f"- _...and {len(self.known_variants) - 5} more_")
+        if self.disulfide_bond_positions:
+            lines += [
+                "",
+                f"**Annotated disulfide bonds:** {len(self.disulfide_bond_positions) // 2} bond(s) "
+                f"across Cys positions {', '.join(str(p) for p in self.disulfide_bond_positions[:12])}"
+                + (
+                    f" (+{len(self.disulfide_bond_positions) - 12} more)"
+                    if len(self.disulfide_bond_positions) > 12
+                    else ""
+                ),
+            ]
+        return "\n".join(lines)
+
+
+class ProteinSequence(BaseModel):
+    """Protein sequence with computed biochem features and liability-motif hits."""
+
+    uniprot_accession: str = Field(description="Primary UniProt accession")
+    gene_symbol: str = Field(description="HGNC gene symbol")
+    organism: str = Field(description="Source organism parsed from FASTA header")
+    description: str = Field(description="Free-text description from FASTA header")
+    sequence: str = Field(description="Amino-acid sequence (one-letter codes)")
+    region_start: int | None = Field(
+        None, description="1-indexed slice start, if a region was requested"
+    )
+    region_end: int | None = Field(
+        None, description="1-indexed slice end, if a region was requested"
+    )
+    features: BiochemFeatures = Field(description="Computed biochemical features")
+    liabilities: list[LiabilityHit] = Field(
+        default_factory=list, description="Liability-motif scanner hits"
+    )
+    disulfide_bond_positions: list[int] = Field(
+        default_factory=list,
+        description="1-indexed Cys positions from UniProt DISULFID annotation",
+    )
+
+    def to_markdown(self) -> str:
+        region = (
+            f" (residues {self.region_start}–{self.region_end})"
+            if self.region_start and self.region_end
+            else ""
+        )
+        feats = self.features
+        lines = [
+            f"## Protein Sequence: {self.gene_symbol}{region}",
+            f"**UniProt:** {self.uniprot_accession} | **Organism:** {self.organism or 'n/a'} | "
+            f"**Length:** {feats.length} aa",
+            "",
+            "### Biochemistry",
+            "",
+            "| Feature | Value |",
+            "|---|---|",
+            f"| Molecular weight | {feats.molecular_weight_Da:,.1f} Da |",
+            f"| Theoretical pI | {feats.theoretical_pI:.2f} |",
+            f"| GRAVY (Kyte-Doolittle) | {feats.gravy:+.3f} |",
+            f"| Net charge at pH 7.4 | {feats.net_charge_pH74:+.2f} |",
+            f"| Aromatic fraction | {feats.aromatic_fraction:.1%} |",
+            f"| Cysteines | {feats.cysteine_count} |",
+            f"| ε₂₈₀ (reduced) | {feats.extinction_coefficient_280nm_reduced:,} M⁻¹cm⁻¹ |",
+            f"| ε₂₈₀ (oxidized, all Cys → S-S) | {feats.extinction_coefficient_280nm:,} M⁻¹cm⁻¹ |",
+        ]
+        if self.liabilities:
+            grouped: dict[str, list[LiabilityHit]] = {}
+            for h in self.liabilities:
+                grouped.setdefault(h.motif_type, []).append(h)
+            lines += ["", "### Liability Motifs"]
+            # Order matters: real liabilities first, then observational data.
+            order = [
+                "deamidation",
+                "isomerization",
+                "n_glycosylation",
+                "free_cysteine",
+                "oxidation_methionine",
+                "oxidation_tryptophan",
+                "cysteine_position",
+            ]
+            for motif_type in order:
+                hits = grouped.get(motif_type)
+                if not hits:
+                    continue
+                positions = ", ".join(str(h.position) for h in hits[:20])
+                more = f" (+{len(hits) - 20} more)" if len(hits) > 20 else ""
+                label = motif_type.replace("_", " ")
+                lines.append(f"- **{label}** ({len(hits)}): positions {positions}{more}")
+        if self.disulfide_bond_positions:
+            lines += [
+                "",
+                f"**Annotated disulfide bonds:** {len(self.disulfide_bond_positions) // 2} bond(s) "
+                f"across Cys {', '.join(str(p) for p in self.disulfide_bond_positions[:12])}"
+                + (
+                    f" (+{len(self.disulfide_bond_positions) - 12} more)"
+                    if len(self.disulfide_bond_positions) > 12
+                    else ""
+                ),
+            ]
+        lines += ["", "### Sequence"]
+        if len(self.sequence) <= 80:
+            lines.append(f"`{self.sequence}`")
+        else:
+            lines.append(
+                f"`{self.sequence[:60]}...{self.sequence[-20:]}` "
+                f"(showing 60 + 20 of {len(self.sequence)} residues)"
+            )
         return "\n".join(lines)
 
 

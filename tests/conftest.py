@@ -87,9 +87,29 @@ MOCK_UNIPROT_BRAF = {
                 "alternativeSequences": ["E"],
             },
             "description": "In melanoma; somatic mutation",
-        }
+        },
+        {
+            "type": "Disulfide bond",
+            "location": {"start": {"value": 157}, "end": {"value": 162}},
+            "description": "",
+        },
     ],
 }
+
+# Real UniProt FASTA format — single-line header with OS/OX/GN metadata,
+# sequence wrapped to 60 characters. Truncated to a manageable test size.
+MOCK_UNIPROT_FASTA_BRAF = (
+    ">sp|P15056|BRAF_HUMAN Serine/threonine-protein kinase B-raf OS=Homo sapiens OX=9606 GN=BRAF PE=1 SV=4\n"
+    "MAALSGGGGGGAEPGQALFNGDMEPEAGAGAGAAASSAADPAIPEEVWNIKQMIKLTQEHI\n"
+    "EALLDKFGGEHNPPSIYLEAYEEYTSKLDALQQREQQLLESLGNGTDFSVSSSASMDTVTS\n"
+    "SSSSSLSVLPSSLSVFQNPTDVARSNPKSPQKPIVRVFLPNKQRTVVPARCGVTVRDSLKK\n"
+)
+
+MOCK_UNIPROT_FASTA_BRAF_SEQUENCE = (
+    "MAALSGGGGGGAEPGQALFNGDMEPEAGAGAGAAASSAADPAIPEEVWNIKQMIKLTQEHI"
+    "EALLDKFGGEHNPPSIYLEAYEEYTSKLDALQQREQQLLESLGNGTDFSVSSSASMDTVTS"
+    "SSSSSLSVLPSSLSVFQNPTDVARSNPKSPQKPIVRVFLPNKQRTVVPARCGVTVRDSLKK"
+)
 
 MOCK_OT_GENE_SEARCH = {
     "data": {"search": {"hits": [{"id": "ENSG00000157764", "name": "BRAF", "entity": "target"}]}}

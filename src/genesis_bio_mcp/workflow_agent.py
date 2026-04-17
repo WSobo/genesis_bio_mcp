@@ -114,6 +114,46 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"No UniProt Swiss-Prot entry found for '{gene_symbol}'."
         return result.to_markdown()
 
+    async def _get_protein_sequence_fn(
+        gene_symbol: str, start: int | None = None, end: int | None = None
+    ) -> str:
+        from genesis_bio_mcp.models import ProteinSequence
+        from genesis_bio_mcp.tools.biochem import compute_features, scan_liabilities
+
+        protein = await state.uniprot.get_protein(gene_symbol)
+        if protein is None:
+            return f"No UniProt Swiss-Prot entry found for '{gene_symbol}'."
+        fetched = await state.uniprot.get_sequence(protein.uniprot_accession, start=start, end=end)
+        if fetched is None:
+            return (
+                f"Could not fetch FASTA for '{gene_symbol}' (UniProt {protein.uniprot_accession})."
+            )
+        sequence, organism, description = fetched
+        if start is not None and end is not None:
+            offset = start - 1
+            local_disulfide = {
+                p - offset for p in protein.disulfide_bond_positions if start <= p <= end
+            }
+            region_disulfide = sorted(local_disulfide)
+        else:
+            local_disulfide = set(protein.disulfide_bond_positions)
+            region_disulfide = list(protein.disulfide_bond_positions)
+        result = ProteinSequence(
+            uniprot_accession=protein.uniprot_accession,
+            gene_symbol=protein.gene_symbol,
+            organism=organism or protein.organism,
+            description=description or protein.protein_name,
+            sequence=sequence,
+            region_start=start,
+            region_end=end,
+            features=compute_features(sequence),
+            liabilities=scan_liabilities(
+                sequence, disulfide_annotated_positions=local_disulfide or None
+            ),
+            disulfide_bond_positions=region_disulfide,
+        )
+        return result.to_markdown()
+
     async def _get_target_disease_fn(gene_symbol: str, disease_name: str) -> str:
         result = await state.open_targets.get_association(gene_symbol, disease_name)
         if result is None:
@@ -361,6 +401,38 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="gene_annotation",
             use_when="Use to understand a protein's function, biology, and disease relevance from curated annotation.",
             fn=_get_protein_info_fn,
+        ),
+        "get_protein_sequence": ToolSpec(
+            name="get_protein_sequence",
+            description=(
+                "Fetch the protein FASTA sequence from UniProt and compute biochemistry "
+                "(MW, theoretical pI, GRAVY, net charge at pH 7.4, ε₂₈₀ reduced/oxidized) "
+                "plus a liability-motif scan (deamidation NG/NS, isomerization DG/DS, "
+                "N-glycosylation NXS/NXT sequons, oxidation-prone M/W, free cysteines). "
+                "Optional start/end residue range selects a sub-region. UniProt DISULFID "
+                "annotations are used to distinguish bonded from free cysteines."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_symbol": {
+                        "type": "string",
+                        "description": "HGNC gene symbol. Example: 'BRAF'",
+                    },
+                    "start": {
+                        "type": "integer",
+                        "description": "Optional 1-indexed inclusive slice start (use with end).",
+                    },
+                    "end": {
+                        "type": "integer",
+                        "description": "Optional 1-indexed inclusive slice end; must be ≥ start.",
+                    },
+                },
+                "required": ["gene_symbol"],
+            },
+            tool_category="protein_engineering",
+            use_when="Use to retrieve protein sequence, biochemistry, and developability liabilities before any sequence-level engineering, mutagenesis planning, or antibody CDR analysis.",
+            fn=_get_protein_sequence_fn,
         ),
         "get_target_disease_association": ToolSpec(
             name="get_target_disease_association",

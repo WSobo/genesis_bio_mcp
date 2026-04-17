@@ -33,6 +33,8 @@ from tests.conftest import (
     MOCK_PUBCHEM_ACTIVE_CIDS,
     MOCK_PUBCHEM_PROPERTIES,
     MOCK_UNIPROT_BRAF,
+    MOCK_UNIPROT_FASTA_BRAF,
+    MOCK_UNIPROT_FASTA_BRAF_SEQUENCE,
 )
 
 # ---------------------------------------------------------------------------
@@ -68,6 +70,64 @@ async def test_uniprot_returns_none_for_unknown_gene(http_client):
     )
     client = UniProtClient(http_client)
     result = await client.get_protein("NOTAREALGENE999")
+    assert result is None
+
+
+@respx.mock
+async def test_uniprot_parses_disulfide_bonds(http_client):
+    respx.get("https://rest.uniprot.org/uniprotkb/search").mock(
+        return_value=httpx.Response(200, json={"results": [MOCK_UNIPROT_BRAF]})
+    )
+    client = UniProtClient(http_client)
+    result = await client.get_protein("BRAF")
+    assert result is not None
+    # BRAF mock has one DISULFID feature at positions 157 and 162
+    assert result.disulfide_bond_positions == [157, 162]
+
+
+@respx.mock
+async def test_uniprot_get_sequence_happy_path(http_client):
+    respx.get("https://rest.uniprot.org/uniprotkb/P15056.fasta").mock(
+        return_value=httpx.Response(200, text=MOCK_UNIPROT_FASTA_BRAF)
+    )
+    client = UniProtClient(http_client)
+    result = await client.get_sequence("P15056")
+    assert result is not None
+    seq, organism, description = result
+    assert seq == MOCK_UNIPROT_FASTA_BRAF_SEQUENCE
+    assert "Homo sapiens" in organism
+    assert "B-raf" in description
+
+
+@respx.mock
+async def test_uniprot_get_sequence_slice(http_client):
+    respx.get("https://rest.uniprot.org/uniprotkb/P15056.fasta").mock(
+        return_value=httpx.Response(200, text=MOCK_UNIPROT_FASTA_BRAF)
+    )
+    client = UniProtClient(http_client)
+    result = await client.get_sequence("P15056", start=1, end=10)
+    assert result is not None
+    seq, _, _ = result
+    assert seq == MOCK_UNIPROT_FASTA_BRAF_SEQUENCE[:10]
+
+
+@respx.mock
+async def test_uniprot_get_sequence_404(http_client):
+    respx.get("https://rest.uniprot.org/uniprotkb/BADACC.fasta").mock(
+        return_value=httpx.Response(404, text="Not found")
+    )
+    client = UniProtClient(http_client)
+    result = await client.get_sequence("BADACC")
+    assert result is None
+
+
+@respx.mock
+async def test_uniprot_get_sequence_network_error(http_client):
+    respx.get("https://rest.uniprot.org/uniprotkb/P15056.fasta").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+    client = UniProtClient(http_client)
+    result = await client.get_sequence("P15056")
     assert result is None
 
 

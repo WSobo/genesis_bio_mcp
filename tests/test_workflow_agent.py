@@ -47,6 +47,7 @@ def _mock_state() -> MagicMock:
         client = MagicMock()
         for method in (
             "get_protein",
+            "get_sequence",
             "get_association",
             "get_essentiality",
             "get_evidence",
@@ -119,6 +120,7 @@ def test_build_tool_registry_has_all_tools():
     expected_tools = {
         "resolve_gene",
         "get_protein_info",
+        "get_protein_sequence",
         "get_target_disease_association",
         "get_cancer_dependency",
         "get_gwas_evidence",
@@ -491,7 +493,7 @@ def test_format_registry_docs_structure():
 
     # Header present
     assert "genesis-bio-mcp Tool Registry" in docs
-    assert "20 tools" in docs
+    assert f"{len(registry)} tools" in docs
 
     # Every tool name must appear
     for name in registry:

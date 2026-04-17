@@ -1,8 +1,9 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 20 tools for biomedical database queries:
+Exposes 22 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
+  - get_protein_sequence          UniProt FASTA + biochem + liability scan
   - get_target_disease_association Open Targets: target–disease association score
   - get_cancer_dependency         DepMap: CRISPR essentiality across cancer lines
   - get_gwas_evidence             GWAS Catalog: genetic associations for a trait
@@ -39,7 +40,7 @@ from typing import Literal
 import httpx
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from genesis_bio_mcp import __version__
 from genesis_bio_mcp.clients.alphafold import AlphaFoldClient
@@ -61,7 +62,13 @@ from genesis_bio_mcp.clients.string_db import StringDbClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
 from genesis_bio_mcp.config.efo_resolver import EFOResolver
 from genesis_bio_mcp.config.settings import settings
-from genesis_bio_mcp.models import ComparisonReport, DrugHistory, TargetComparisonRow
+from genesis_bio_mcp.models import (
+    ComparisonReport,
+    DrugHistory,
+    ProteinSequence,
+    TargetComparisonRow,
+)
+from genesis_bio_mcp.tools.biochem import compute_features, scan_liabilities
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
     prioritize_target as _prioritize_target,
@@ -188,6 +195,32 @@ class _GeneInput(BaseModel):
 
 class GetProteinInfoInput(_GeneInput):
     """Input for get_protein_info."""
+
+
+class GetProteinSequenceInput(_GeneInput):
+    """Input for get_protein_sequence."""
+
+    start: int | None = Field(
+        default=None,
+        description=(
+            "Optional 1-indexed inclusive slice start. Use together with 'end' to "
+            "request a specific domain or region (e.g. kinase domain 457-717)."
+        ),
+        ge=1,
+    )
+    end: int | None = Field(
+        default=None,
+        description="Optional 1-indexed inclusive slice end. Must be ≥ start.",
+        ge=1,
+    )
+
+    @model_validator(mode="after")
+    def _validate_region(self) -> GetProteinSequenceInput:
+        if (self.start is None) != (self.end is None):
+            raise ValueError("start and end must both be provided or both omitted")
+        if self.start is not None and self.end is not None and self.end < self.start:
+            raise ValueError("end must be >= start")
+        return self
 
 
 class GetCancerDependencyInput(_GeneInput):
@@ -460,6 +493,76 @@ async def get_protein_info(params: GetProteinInfoInput) -> str:
         params.response_format,
         f"No UniProt Swiss-Prot entry found for gene '{symbol}' in Homo sapiens.",
     )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_protein_sequence(params: GetProteinSequenceInput) -> str:
+    """Fetch the protein FASTA sequence and compute biochemistry + liability motifs.
+
+    Call this tool FIRST for any sequence-level protein engineering question.
+    Returns the amino-acid sequence (optionally sliced to a residue range),
+    standard ExPASy ProtParam-style biochemistry (MW, pI, GRAVY, net charge,
+    ε₂₈₀ reduced/oxidized), and a liability-motif scan covering:
+    deamidation (NG/NS), isomerization (DG/DS), N-glycosylation sequons
+    (N-X-S/T), oxidation-prone residues (M/W), and cysteines (flagged as
+    free when UniProt annotates no disulfide bond at that position).
+
+    Args:
+        params (GetProteinSequenceInput): gene_symbol, optional start/end
+            residue range, response_format.
+
+    Returns:
+        Markdown with biochemistry table, liability motifs grouped by type,
+        annotated disulfide bonds, and a sequence preview.
+    """
+    symbol, _ = await _resolve_symbol(params.gene_symbol)
+    protein = await mcp.state.uniprot.get_protein(symbol)
+    if protein is None:
+        return _fmt(
+            None,
+            params.response_format,
+            f"No UniProt Swiss-Prot entry found for gene '{symbol}' in Homo sapiens.",
+        )
+    fetched = await mcp.state.uniprot.get_sequence(
+        protein.uniprot_accession, start=params.start, end=params.end
+    )
+    if fetched is None:
+        return _fmt(
+            None,
+            params.response_format,
+            f"Could not fetch FASTA for '{symbol}' (UniProt {protein.uniprot_accession}).",
+        )
+    sequence, organism, description = fetched
+    features = compute_features(sequence)
+    # Translate full-sequence disulfide annotations into local positions if
+    # a region was requested; otherwise use them directly.
+    if params.start is not None and params.end is not None:
+        offset = params.start - 1
+        local_disulfide = {
+            p - offset for p in protein.disulfide_bond_positions if params.start <= p <= params.end
+        }
+        region_disulfide_list = sorted(local_disulfide)
+    else:
+        local_disulfide = set(protein.disulfide_bond_positions)
+        region_disulfide_list = list(protein.disulfide_bond_positions)
+    liabilities = scan_liabilities(sequence, disulfide_annotated_positions=local_disulfide or None)
+    result = ProteinSequence(
+        uniprot_accession=protein.uniprot_accession,
+        gene_symbol=protein.gene_symbol,
+        organism=organism or protein.organism,
+        description=description or protein.protein_name,
+        sequence=sequence,
+        region_start=params.start,
+        region_end=params.end,
+        features=features,
+        liabilities=liabilities,
+        disulfide_bond_positions=region_disulfide_list,
+    )
+    return _fmt(result, params.response_format, "")
 
 
 @mcp.tool(
