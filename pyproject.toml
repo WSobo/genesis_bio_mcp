@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genesis-bio-mcp"
-version = "0.2.2"
+version = "0.2.3"
 description = "MCP server wrapping major public biomedical databases for AI-driven drug discovery"
 readme = "README.md"
 requires-python = ">=3.11"
