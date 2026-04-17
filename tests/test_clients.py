@@ -688,10 +688,33 @@ _MOCK_CT_RESPONSE = {
 }
 
 
-@respx.mock
-async def test_clinical_trials_get_trials(http_client):
-    respx.get(url__regex=r"clinicaltrials\.gov/api/v2/studies").mock(
-        return_value=httpx.Response(200, json=_MOCK_CT_RESPONSE)
+def _make_cffi_session_mock(payload: dict | None = None, raise_for_status: bool = False):
+    """Build a mock curl_cffi AsyncSession context manager returning *payload*.
+
+    Used to test ClinicalTrialsClient without reaching the network. The
+    client uses curl_cffi (not httpx), so respx can't intercept — we mock
+    the AsyncSession class itself.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_resp = MagicMock()
+    if raise_for_status:
+        mock_resp.raise_for_status.side_effect = Exception("HTTP 500")
+    else:
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = payload or {}
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__.return_value.get = AsyncMock(return_value=mock_resp)
+    mock_session.__aexit__.return_value = None
+    return mock_session
+
+
+async def test_clinical_trials_get_trials(http_client, monkeypatch):
+    mock_session = _make_cffi_session_mock(_MOCK_CT_RESPONSE)
+    monkeypatch.setattr(
+        "genesis_bio_mcp.clients.clinical_trials.AsyncSession",
+        lambda *args, **kwargs: mock_session,
     )
     client = ClinicalTrialsClient(http_client)
     trials, counts = await client.get_trials("BRAF")
@@ -706,10 +729,11 @@ async def test_clinical_trials_get_trials(http_client):
     assert counts["Phase 3"] == 1
 
 
-@respx.mock
-async def test_clinical_trials_returns_empty_on_error(http_client):
-    respx.get(url__regex=r"clinicaltrials\.gov/api/v2/studies").mock(
-        return_value=httpx.Response(500)
+async def test_clinical_trials_returns_empty_on_error(http_client, monkeypatch):
+    mock_session = _make_cffi_session_mock(raise_for_status=True)
+    monkeypatch.setattr(
+        "genesis_bio_mcp.clients.clinical_trials.AsyncSession",
+        lambda *args, **kwargs: mock_session,
     )
     client = ClinicalTrialsClient(http_client)
     trials, counts = await client.get_trials("BRAF")

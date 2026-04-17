@@ -1,16 +1,34 @@
-"""ClinicalTrials.gov API v2 client."""
+"""ClinicalTrials.gov API v2 client.
+
+ClinicalTrials.gov sits behind Cloudflare, which TLS-fingerprints stock
+Python HTTP clients (httpx, requests) and returns 403 from WSL2 and some
+cloud IP ranges even though the requests are well-formed. We work around
+this by using :mod:`curl_cffi` with Chrome impersonation for this one
+client — it loads the real libcurl + a Chrome TLS profile so the
+fingerprint matches a normal browser.
+
+Every other client in the repo keeps using the shared
+:class:`httpx.AsyncClient`; the curl_cffi session is scoped to this class.
+"""
 
 from __future__ import annotations
 
 import logging
 
 import httpx
+from curl_cffi.requests import AsyncSession
 
 from genesis_bio_mcp.models import ClinicalTrial
 
 logger = logging.getLogger(__name__)
 
 _CT_URL = "https://clinicaltrials.gov/api/v2/studies"
+
+# Chrome TLS impersonation profile. Newer identifiers (chrome131, chrome136)
+# exist but track current stable; pinning to chrome124 gives a stable
+# fingerprint without chasing the Chrome release cycle. Bump only if
+# Cloudflare starts blocking it.
+_IMPERSONATE_PROFILE = "chrome124"
 
 _PHASE_NORMALIZE = {
     "PHASE1": "Phase 1",
@@ -23,7 +41,16 @@ _PHASE_NORMALIZE = {
 
 
 class ClinicalTrialsClient:
+    """Client for ClinicalTrials.gov v2.
+
+    Accepts an :class:`httpx.AsyncClient` for interface compatibility with
+    the rest of the lifespan wiring, but internally routes traffic through
+    a dedicated :class:`curl_cffi.requests.AsyncSession` with Chrome TLS
+    impersonation to bypass Cloudflare's fingerprint block.
+    """
+
     def __init__(self, client: httpx.AsyncClient) -> None:
+        # Kept for interface parity with other clients; not used for HTTP.
         self._client = client
 
     async def get_trials(
@@ -31,19 +58,20 @@ class ClinicalTrialsClient:
     ) -> tuple[list[ClinicalTrial], dict[str, int]]:
         """Return trials mentioning a gene target and counts by phase."""
         try:
-            resp = await self._client.get(
-                _CT_URL,
-                params={
-                    "query.term": gene_symbol,
-                    "query.intr": gene_symbol,
-                    "pageSize": max_results,
-                    "format": "json",
-                    "fields": "NCTId,BriefTitle,Phase,OverallStatus,Condition",
-                },
-                timeout=20.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            async with AsyncSession(impersonate=_IMPERSONATE_PROFILE) as s:
+                resp = await s.get(
+                    _CT_URL,
+                    params={
+                        "query.term": gene_symbol,
+                        "query.intr": gene_symbol,
+                        "pageSize": max_results,
+                        "format": "json",
+                        "fields": "NCTId,BriefTitle,Phase,OverallStatus,Condition",
+                    },
+                    timeout=20.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
             return _parse_trials(data)
         except Exception as exc:
             logger.warning("ClinicalTrials.gov request failed for %s: %s", gene_symbol, exc)
