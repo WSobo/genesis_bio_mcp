@@ -36,6 +36,13 @@ _OLS_URL = "https://www.ebi.ac.uk/ols4/api/search"
 # disease-tagged study.
 _MAX_DESCENDANTS = 500
 _MAX_ANCESTORS = 10
+
+# Bump when the cached entry schema changes so stale entries are invalidated
+# on first read rather than served without required fields.
+# v2 (0.2.5): adds ``related_uris`` populated by hierarchy expansion. Without
+# the bump, entries written by v0.2.3 load with an empty list (dataclass
+# default) and the expansion is never re-triggered.
+_CACHE_SCHEMA_VERSION = 2
 # Default cache path read from settings at class definition time so it can be
 # used as the default argument to EFOResolver.__init__ below.
 _EFO_CACHE_PATH: Path = settings.efo_cache_path
@@ -120,9 +127,18 @@ class EFOResolver:
         if key in self._session_cache:
             return self._session_cache[key]
 
-        # 2. Disk cache (7-day TTL)
+        # 2. Disk cache (7-day TTL). Reject entries written by earlier schema
+        # versions so the hierarchy expansion runs on the next resolve after
+        # an upgrade. Without this check, v0.2.3 cache entries load fine
+        # (dataclass default fills related_uris with []) and the expansion
+        # is never re-triggered, which was the root cause of the v0.2.4
+        # "polycythemia vera still misses" regression.
         entry = self._disk_cache.get(key)
-        if entry and time.time() - entry.get("fetched_at", 0) < settings.efo_cache_ttl_secs:
+        if (
+            entry
+            and entry.get("schema_version", 0) >= _CACHE_SCHEMA_VERSION
+            and time.time() - entry.get("fetched_at", 0) < settings.efo_cache_ttl_secs
+        ):
             try:
                 terms = [EFOTerm(**t) for t in entry["terms"]]
                 self._session_cache[key] = terms
@@ -216,6 +232,7 @@ class EFOResolver:
         if not self._cache_path:
             return
         self._disk_cache[key] = {
+            "schema_version": _CACHE_SCHEMA_VERSION,
             "terms": [
                 {
                     "uri": t.uri,
