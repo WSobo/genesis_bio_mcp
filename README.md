@@ -1,4 +1,4 @@
-# genesis-bio-mcp
+# genesis_bio_mcp
 
 [![CI](https://github.com/WSobo/genesis-bio-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WSobo/genesis-bio-mcp/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
@@ -14,7 +14,7 @@ Ask *"Find underexplored MAPK kinases with no approved drugs"* or
 Claude-powered workflow agent chains queries across UniProt, Open Targets,
 DepMap, GWAS Catalog, ChEMBL, PubChem, AlphaFold, STRING, DGIdb,
 ClinicalTrials.gov, Reactome, SAbDab, IEDB, InterPro, MaveDB, gnomAD, and
-MyVariant.info into a structured evidence report — no hardcoded scripts,
+MyVariant.info into a structured evidence report. no hardcoded scripts,
 no manual API calls.
 
 > **What is MCP?** The [Model Context Protocol](https://modelcontextprotocol.io)
