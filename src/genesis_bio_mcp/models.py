@@ -1779,6 +1779,22 @@ class PathwayContext(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# Expression axis scoring table — maps HPA's tissue-specificity category to a
+# 0.0–1.0 contribution. Calibrated so that only clearly restricted expression
+# earns the full bonus (therapeutic-window advantage); "Low tissue specificity"
+# still earns a small credit because expression is detected at all.
+#
+# Kept outside _compute_score so TargetPrioritizationReport.to_markdown can
+# render the row with the same weights used at scoring time.
+_EXPRESSION_BY_CATEGORY: dict[str, float] = {
+    "Tissue enriched": 1.0,
+    "Group enriched": 0.7,
+    "Tissue enhanced": 0.5,
+    "Low tissue specificity": 0.2,
+    "Not detected": 0.0,
+}
+
+
 class ScoreBreakdown(BaseModel):
     """Per-axis contributions that sum to the priority score.
 
@@ -1794,17 +1810,33 @@ class ScoreBreakdown(BaseModel):
     known_drug: float = Field(default=0.0, description="Known-drug evidence contribution (max 1.5)")
     chem_matter: float = Field(default=0.0, description="Chemical matter contribution (max 1.5)")
     protein: float = Field(default=0.0, description="Protein annotation contribution (max 1.5)")
+    # Added in v0.3.0 — HPA tissue-specificity axis. Only populated when the
+    # caller passes extended=True and HPA is reachable. Keeps pre-cap sum
+    # ≤ 11.5 + 1.0 = 12.5; the 10.0 ceiling in _compute_score absorbs it.
+    expression: float = Field(
+        default=0.0,
+        description="HPA tissue-specificity contribution (max 1.0). 0.0 when HPA data is absent.",
+    )
 
     @property
     def total(self) -> float:
-        """Pre-cap sum of the six axes. Caller applies the 10.0 ceiling."""
-        return self.ot + self.depmap + self.gwas + self.known_drug + self.chem_matter + self.protein
+        """Pre-cap sum of the seven axes. Caller applies the 10.0 ceiling."""
+        return (
+            self.ot
+            + self.depmap
+            + self.gwas
+            + self.known_drug
+            + self.chem_matter
+            + self.protein
+            + self.expression
+        )
 
     def to_compact(self) -> str:
-        """Single-line breakdown, e.g. ``OT 2.3 · Dep 1.2 · GWAS 0.0 · Drug 1.1 · Chem 1.5 · Prot 0.6``."""
+        """Single-line breakdown, e.g. ``OT 2.3 · Dep 1.2 · GWAS 0.0 · Drug 1.1 · Chem 1.5 · Prot 0.6 · Exp 0.7``."""
         return (
             f"OT {self.ot:.1f} · Dep {self.depmap:.1f} · GWAS {self.gwas:.1f} · "
-            f"Drug {self.known_drug:.1f} · Chem {self.chem_matter:.1f} · Prot {self.protein:.1f}"
+            f"Drug {self.known_drug:.1f} · Chem {self.chem_matter:.1f} · "
+            f"Prot {self.protein:.1f} · Exp {self.expression:.1f}"
         )
 
 
@@ -1825,6 +1857,13 @@ class TargetPrioritizationReport(BaseModel):
     protein_interactome: ProteinInteractome | None = None
     drug_history: DrugHistory | None = None
     pathway_context: PathwayContext | None = None
+    protein_atlas: ProteinAtlasReport | None = Field(
+        default=None,
+        description=(
+            "HPA tissue-specificity + subcellular + pathology summary. Only populated "
+            "in extended mode; contributes to the expression scoring axis."
+        ),
+    )
     priority_score: float = Field(
         ge=0.0,
         le=10.0,
@@ -1967,6 +2006,23 @@ class TargetPrioritizationReport(BaseModel):
         else:
             lines.append("| Protein annotation | 0.0 (no data) | 1.5 |")
 
+        # Expression axis (HPA tissue specificity) — rendered only when HPA was
+        # queried. Absent HPA → skip the row rather than print a "no data" line,
+        # because expression is an optional extended-mode axis and its absence
+        # is the normal case for non-extended calls.
+        pa = self.protein_atlas
+        if pa:
+            exp_score = _EXPRESSION_BY_CATEGORY.get(
+                (pa.expression.rna_tissue_specificity_category if pa.expression else None) or "",
+                0.0,
+            )
+            exp_cat = (
+                pa.expression.rna_tissue_specificity_category
+                if pa.expression and pa.expression.rna_tissue_specificity_category
+                else "no HPA data"
+            )
+            lines.append(f"| Tissue expression | {exp_score} ({exp_cat}) | 1.0 |")
+
         lines += ["", "## Data Sources"]
         sources = [
             ("UniProt", self.protein_info),
@@ -2029,6 +2085,8 @@ class TargetPrioritizationReport(BaseModel):
             lines += ["", self.drug_history.to_markdown()]
         if self.pathway_context:
             lines += ["", self.pathway_context.to_markdown()]
+        if self.protein_atlas:
+            lines += ["", self.protein_atlas.to_markdown()]
 
         # Resolution info
         r = self.resolution

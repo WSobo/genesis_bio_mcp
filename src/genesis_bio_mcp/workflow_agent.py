@@ -365,6 +365,7 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             clinical_trials=state.clinical_trials if extended else None,
             openfda=state.openfda if extended else None,
             reactome=state.reactome if extended else None,
+            hpa=state.hpa if extended else None,
         )
         return result.to_markdown()
 

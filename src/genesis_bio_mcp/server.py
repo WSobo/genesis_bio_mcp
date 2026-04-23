@@ -1495,6 +1495,7 @@ async def prioritize_target(params: PrioritizeTargetInput) -> str:
         clinical_trials=mcp.state.clinical_trials if params.extended else None,
         openfda=mcp.state.openfda if params.extended else None,
         reactome=mcp.state.reactome if params.extended else None,
+        hpa=mcp.state.hpa if params.extended else None,
     )
     return _fmt(result, params.response_format, "")
 

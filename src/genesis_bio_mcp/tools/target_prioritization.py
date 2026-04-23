@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from genesis_bio_mcp.models import (
+    _EXPRESSION_BY_CATEGORY,
     CancerDependency,
     ChEMBLCompounds,
     Compounds,
@@ -15,6 +16,7 @@ from genesis_bio_mcp.models import (
     GeneResolution,
     GwasEvidence,
     PathwayContext,
+    ProteinAtlasReport,
     ProteinInfo,
     ProteinInteractome,
     ProteinStructure,
@@ -31,6 +33,7 @@ if TYPE_CHECKING:
     from genesis_bio_mcp.clients.depmap import DepMapClient
     from genesis_bio_mcp.clients.dgidb import DGIdbClient
     from genesis_bio_mcp.clients.gwas import GwasClient
+    from genesis_bio_mcp.clients.hpa import HPAClient
     from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
     from genesis_bio_mcp.clients.openfda import OpenFDAClient
     from genesis_bio_mcp.clients.pubchem import PubChemClient
@@ -103,6 +106,7 @@ async def prioritize_target(
     clinical_trials: ClinicalTrialsClient | None = None,
     openfda: OpenFDAClient | None = None,
     reactome: ReactomeClient | None = None,
+    hpa: HPAClient | None = None,
 ) -> TargetPrioritizationReport:
     """Run all database queries in parallel and synthesize a target prioritization report.
 
@@ -164,6 +168,37 @@ async def prioritize_target(
     _check("pubchem", compounds, co_err)
     _check("chembl", chembl_compounds, chembl_err)
 
+    # Extended mode: structure, interactome, drug history, pathway context,
+    # tissue expression (HPA). All are independent so they fan out in parallel.
+    # Must happen before scoring so the HPA report can feed the expression axis.
+    ext_structure: ProteinStructure | None = None
+    ext_interactome: ProteinInteractome | None = None
+    ext_drug_history: DrugHistory | None = None
+    ext_pathway: PathwayContext | None = None
+    ext_protein_atlas: ProteinAtlasReport | None = None
+
+    if any(c is not None for c in (alphafold, string_db, dgidb, clinical_trials, reactome, hpa)):
+        uniprot_accession = protein.uniprot_accession if protein else None
+
+        ext_results = await asyncio.gather(
+            _safe(alphafold.get_structure(symbol, uniprot_accession=uniprot_accession))
+            if alphafold
+            else _safe_none(),
+            _safe(string_db.get_interactome(symbol)) if string_db else _safe_none(),
+            _safe(_fetch_drug_history(symbol, dgidb, clinical_trials, openfda=openfda))
+            if (dgidb or clinical_trials)
+            else _safe_none(),
+            _safe(reactome.get_pathway_context(symbol)) if reactome else _safe_none(),
+            _safe(hpa.get_report(symbol)) if hpa else _safe_none(),
+        )
+        (
+            (ext_structure, _),
+            (ext_interactome, _),
+            (ext_drug_history, _),
+            (ext_pathway, _),
+            (ext_protein_atlas, _),
+        ) = ext_results
+
     priority_score, score_breakdown = _compute_score(
         disease_assoc,
         cancer_dep,
@@ -172,6 +207,7 @@ async def prioritize_target(
         protein,
         chembl_compounds,
         indication=indication,
+        protein_atlas=ext_protein_atlas,
     )
     priority_tier = _tier(priority_score)
 
@@ -205,32 +241,6 @@ async def prioritize_target(
         chembl_compounds,
         ot_error=da_err,
     )
-
-    # Extended mode: structure, interactome, drug history, pathway context
-    ext_structure: ProteinStructure | None = None
-    ext_interactome: ProteinInteractome | None = None
-    ext_drug_history: DrugHistory | None = None
-    ext_pathway: PathwayContext | None = None
-
-    if any(c is not None for c in (alphafold, string_db, dgidb, clinical_trials, reactome)):
-        uniprot_accession = protein.uniprot_accession if protein else None
-
-        ext_results = await asyncio.gather(
-            _safe(alphafold.get_structure(symbol, uniprot_accession=uniprot_accession))
-            if alphafold
-            else _safe_none(),
-            _safe(string_db.get_interactome(symbol)) if string_db else _safe_none(),
-            _safe(_fetch_drug_history(symbol, dgidb, clinical_trials, openfda=openfda))
-            if (dgidb or clinical_trials)
-            else _safe_none(),
-            _safe(reactome.get_pathway_context(symbol)) if reactome else _safe_none(),
-        )
-        (
-            (ext_structure, _),
-            (ext_interactome, _),
-            (ext_drug_history, _),
-            (ext_pathway, _),
-        ) = ext_results
 
     api_latency_s: dict[str, float] = {
         "uniprot": round(t_uniprot, 2),
@@ -271,6 +281,7 @@ async def prioritize_target(
         protein_interactome=ext_interactome,
         drug_history=ext_drug_history,
         pathway_context=ext_pathway,
+        protein_atlas=ext_protein_atlas,
     )
 
 
@@ -397,6 +408,7 @@ def _compute_score(
     protein: ProteinInfo | None,
     chembl_compounds: ChEMBLCompounds | None = None,
     indication: str = "",
+    protein_atlas: ProteinAtlasReport | None = None,
 ) -> tuple[float, ScoreBreakdown]:
     """Compute the priority score and the per-axis breakdown that produced it.
 
@@ -481,6 +493,15 @@ def _compute_score(
             pi_score += 0.5
         pi_score += min(len(protein.known_variants), 2) / 2 * 1.0
         breakdown.protein = pi_score
+
+    # Tissue expression (max 1.0) — HPA tissue-specificity category drives a
+    # therapeutic-window bonus. Restricted expression is favorable: a gene
+    # expressed everywhere has a narrower safety margin than one concentrated
+    # in the indication-relevant tissue. No HPA → axis contributes 0.0, which
+    # preserves pre-v0.3.0 rankings when HPA isn't queried.
+    if protein_atlas and protein_atlas.expression:
+        cat = protein_atlas.expression.rna_tissue_specificity_category or ""
+        breakdown.expression = _EXPRESSION_BY_CATEGORY.get(cat, 0.0)
 
     total = min(breakdown.total, 10.0)
     return total, breakdown

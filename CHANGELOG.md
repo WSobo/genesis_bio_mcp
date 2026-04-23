@@ -7,6 +7,39 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.3.0] — 2026-04-22
+
+Major feature release. Closes the genomics coordinate gap, adds tissue/protein expression evidence, introduces a post-market drug-safety layer, and deepens ChEMBL assay context. Two new MCP tools (`get_variant_consequences`, `get_tissue_expression`, `get_protein_atlas`) plus meaningful depth fixes to `get_variant_effects`, `get_drug_history`, `get_chembl_compounds`, and `prioritize_target`. No breaking changes to tool names or argument shapes — all additions are additive on the response side.
+
+### Added
+
+- **Ensembl REST client + VEP (M1)** — `clients/ensembl.py` wraps `/lookup/symbol`, `/overlap/region`, `/vep/human/hgvs` with a 5-req/s semaphore. `EnsemblGene`, `VEPConsequence`, `TranscriptInfo` models with `to_markdown`. New MCP tool `get_variant_consequences` returns splice/UTR/regulatory overlap and VEP's own SIFT/PolyPhen — complementary to the dbNSFP values from MyVariant. Canonical-transcript by default; `include_all_transcripts` opt-in for full coverage.
+- **GTEx + Human Protein Atlas clients (M2)** — `clients/gtex.py` fetches median TPM per tissue (resolves HGNC → GENCODE via the shared EnsemblClient). `clients/hpa.py` parses the HPA bulk-download JSON for tissue-specificity category, subcellular localization, and pathology prognostics. New MCP tools `get_tissue_expression` and `get_protein_atlas`. Both share the 7-day disk-cache pattern from SAbDab. New `config/indication_tissue_map.py` with a hardcoded top-20 therapeutic-area → tissue mapping (interim; v0.3.1 plans EFO → UBERON resolution).
+- **OpenFDA drug-safety client (M3)** — `clients/openfda.py` wraps FAERS `/drug/event.json`, structured label `/drug/label.json` (boxed warnings), and `/drug/enforcement.json` (recalls). Fans out all three sub-queries in parallel with a 2-concurrency semaphore. 7-day disk cache. Optional `OPENFDA_API_KEY` env var lifts the 240 req/min / 1000 req/day free quota. `AdverseEventCount`, `DrugRecall`, `DrugSafetySignal` models, all carrying a permanent disclaimer field so FAERS counts are never rendered without the regulatory caveat. No new MCP tool — `get_drug_history` and extended-mode `prioritize_target` now populate `.safety` on the top-5 approved drugs by phase via a new `tools/target_prioritization.attach_safety_signals()` helper that isolates per-drug failures.
+- **Expression axis in priority scoring (M5)** — `ScoreBreakdown` gains an `expression` field (max 1.0). `_compute_score` accepts an optional `protein_atlas` argument and applies the HPA-derived tissue-specificity bonus via a new `_EXPRESSION_BY_CATEGORY` table (`Tissue enriched` = 1.0 → `Not detected` = 0.0). `prioritize_target` fetches the HPA report in extended mode and passes it through; the 10.0 score cap absorbs the new axis so existing tiers do not regress.
+- Test coverage added this release: 4 Ensembl + VEP tests, 3 GTEx tests, 3 HPA tests, 4 OpenFDA tests, 4 ChEMBL tests (previously uncovered), 9 scoring-axis parametrized tests. **184/184 tests pass on `feat/v0.3.0`.**
+
+### Changed
+
+- **ChEMBL assay context depth (M4)** — `ChEMBLActivity` gains `assay_type` (B/F/A/T/P), `assay_organism`, `assay_cell_type`, `bao_format`, and `confidence_score`. All five fields are already in the ChEMBL activity response; they were dropped before and are now parsed. `ChEMBLCompounds.to_markdown` surfaces an **Assay mix** summary (e.g. `12 binding, 5 functional (3 cell-based)`), flags non-human organisms, and flags `confidence_score < 9`. The per-row table gains Assay and Organism columns; functional rows render cell type inline (e.g. `F (A375)`). Biochemical and cell-based potency numbers are no longer visually identical.
+- **`get_variant_effects`** — third parallel task added: VEP consequences via `EnsemblClient.get_vep_consequences()`. `VariantEffects` gains a `vep_consequences` field; the aggregator no longer depends on a gnomAD hit to return a non-empty result.
+- **`prioritize_target` signature** — new keyword `hpa: HPAClient | None = None` (parallels `reactome`, `openfda`). Extended-mode fetches now include HPA so the expression axis can score it. Fan-out happens before `_compute_score` so the HPA report feeds the scoring table.
+- Version bumped to `0.3.0`; `__init__.py` drift from `0.2.1` also fixed.
+
+### Fixed
+
+- **MyVariant.info vs. gnomAD routing** — AlphaMissense removed from the gnomAD GraphQL path (the v4 schema does not expose it); AlphaMissense, ClinVar, REVEL, CADD, SIFT, PolyPhen, and gnomAD AF are now sourced exclusively from MyVariant/dbNSFP.
+- **IEDB transport** — async-ticket pattern via the HTTPS NextGen Tools host (`api-nextgen-tools.iedb.org`); the deprecated `tools-cluster-interface.iedb.org` direct POST path is removed.
+
+### Deferred to v0.3.1 / v0.4.0
+
+- 5-target live-API regression check (BRAF/melanoma, EGFR/NSCLC, PCSK9/hypercholesterolemia, TNF/RA, KRAS/pancreatic) — scoring invariants covered at unit level in M5.
+- EFO → UBERON ontology-backed indication-to-tissue mapping (hardcoded top-20 table lives in `config/indication_tissue_map.py` as an interim solution).
+- CDR developability on `get_antibody_structures`, Foldseek-based structural homologs, per-residue pLDDT bands, dedicated per-variant MaveDB tool.
+- ProteomicsDB / CPTAC, OMIM / ClinGen, patent-landscape, AlphaFold Multimer, ESM Metagenomic Atlas.
+
+---
+
 ## [0.2.4] — 2026-04-17
 
 Polish release addressing six issues surfaced by a JAK2 end-to-end evaluation. All fixes use dynamic, structural solutions (EFO URIs, activity_outcome fallback, token-prefix dedup) rather than hardcoded per-trait/per-drug vocabulary.

@@ -1932,6 +1932,72 @@ def test_score_breakdown_sums_to_priority_score():
     # And unpopulated axes are zero
     assert breakdown.chem_matter == 0.0
     assert breakdown.protein == 0.0
+    # Expression axis is 0.0 when no HPA report is passed (v0.3.0: backward-compat)
+    assert breakdown.expression == 0.0
+
+
+@pytest.mark.parametrize(
+    "category,expected",
+    [
+        ("Tissue enriched", 1.0),
+        ("Group enriched", 0.7),
+        ("Tissue enhanced", 0.5),
+        ("Low tissue specificity", 0.2),
+        ("Not detected", 0.0),
+        ("Unknown category", 0.0),  # unmapped category → no credit
+        (None, 0.0),  # missing category on the HPA payload
+    ],
+)
+def test_expression_axis_maps_hpa_category_to_score(category, expected):
+    """The expression axis must follow the HPA tissue-specificity table exactly.
+
+    This is the new v0.3.0 scoring axis and its weights directly affect
+    target rankings for reference targets like BRAF (low specificity) vs.
+    tissue-restricted targets like MC1R (tissue enriched in skin).
+    """
+    from genesis_bio_mcp.models import HPAExpression, ProteinAtlasReport
+    from genesis_bio_mcp.tools.target_prioritization import _compute_score
+
+    atlas = ProteinAtlasReport(
+        gene_symbol="TEST",
+        expression=HPAExpression(
+            gene_symbol="TEST",
+            rna_tissue_specificity_category=category,
+        ),
+        pathology=[],
+    )
+    _, breakdown = _compute_score(
+        disease_assoc=None,
+        cancer_dep=None,
+        gwas_ev=None,
+        compounds=None,
+        protein=None,
+        chembl_compounds=None,
+        indication="test",
+        protein_atlas=atlas,
+    )
+    assert breakdown.expression == expected
+    # When ONLY the expression axis contributes, the priority score equals
+    # the expression value — this locks the axis's isolation from the cap.
+    assert breakdown.total == expected
+
+
+def test_expression_axis_none_report_contributes_zero():
+    """protein_atlas=None is the backward-compatible path; axis contributes 0.0."""
+    from genesis_bio_mcp.tools.target_prioritization import _compute_score
+
+    _, breakdown = _compute_score(
+        disease_assoc=None,
+        cancer_dep=None,
+        gwas_ev=None,
+        compounds=None,
+        protein=None,
+        chembl_compounds=None,
+        indication="test",
+        protein_atlas=None,
+    )
+    assert breakdown.expression == 0.0
+    assert breakdown.total == 0.0
 
 
 def test_sabdab_to_markdown():
