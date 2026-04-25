@@ -4771,3 +4771,280 @@ def test_compute_score_chemical_matter_discounts_binding_only_potency():
         chembl_compounds=bind_lead,
     )
     assert b_bind_lead.chem_matter == 0.7
+
+
+# ---------------------------------------------------------------------------
+# v0.3.4 regression tests — five fourth-round fixes from the third smoke run
+# ---------------------------------------------------------------------------
+
+
+def test_format_ic50_nm_handles_sub_nanomolar_potency():
+    """Bug Q: pChEMBL ≥ 10 yielded sub-nM IC50 that rendered as '0.0 nM'.
+    Sub-nM should display in pM; nM in 1–1000 range; µM beyond."""
+    from genesis_bio_mcp.models import _format_ic50_nm
+
+    # pChEMBL=11 → 0.01 nM → 10 pM
+    assert _format_ic50_nm(0.01) == "10 pM"
+    # pChEMBL=10.7 → ~0.02 nM → 20 pM (matches CALCA/GLP1R real-world case)
+    assert _format_ic50_nm(0.0199526) == "20 pM"
+    # Boundary at 1 nM stays in nM
+    assert _format_ic50_nm(1.0) == "1.0 nM"
+    # Sub-nM but close → still pM
+    assert _format_ic50_nm(0.5) == "500 pM"
+    # Standard nM range
+    assert _format_ic50_nm(50.0) == "50.0 nM"
+    # Crosses to µM
+    assert _format_ic50_nm(2500.0) == "2.50 µM"
+
+
+def test_reactome_parse_pathways_filters_non_human_species():
+    """Bug R: R-CFA-* (canine), R-MMU-* (mouse), R-RNO-* (rat) entries can
+    leak through Reactome's analysis when the gene maps across species
+    silos. Human queries must only surface R-HSA-* pathways."""
+    from genesis_bio_mcp.clients.reactome import _parse_pathways
+
+    raw = [
+        {
+            "stId": "R-HSA-1234567",
+            "name": "Class A/1 (Rhodopsin-like receptors)",
+            "entities": {"pValue": 1e-5, "total": 200},
+        },
+        {
+            "stId": "R-CFA-381676",  # canine — must be dropped (the GLP1R bug)
+            "name": "Some canine pathway",
+            "entities": {"pValue": 1e-3, "total": 50},
+        },
+        {
+            "stId": "R-MMU-9876543",  # mouse — must be dropped
+            "name": "Murine pathway",
+            "entities": {"pValue": 1e-4, "total": 30},
+        },
+        {
+            "stId": "",  # missing stId — must be dropped (was previously kept as anonymous)
+            "name": "Anonymous",
+            "entities": {"pValue": 1e-2, "total": 10},
+        },
+    ]
+    parsed = _parse_pathways(raw)
+    assert len(parsed) == 1
+    assert parsed[0].reactome_id == "R-HSA-1234567"
+    assert all(p.reactome_id.startswith("R-HSA-") for p in parsed)
+
+
+def test_open_targets_normalize_variants_expands_common_acronyms():
+    """Bug P: bare acronyms (NSCLC, PDAC, T2DM) returned 0 OT hits because
+    OT's autocomplete-style search doesn't index abbreviations. The variant
+    generator must add the canonical full form so the resolver can find it."""
+    from genesis_bio_mcp.clients.open_targets import _normalize_indication_variants
+
+    # Bare acronym → expansion appears as a fallback variant
+    nsclc = _normalize_indication_variants("NSCLC")
+    assert "NSCLC" in nsclc  # literal still tried first
+    assert "non-small cell lung carcinoma" in nsclc
+
+    pdac = _normalize_indication_variants("PDAC")
+    assert "pancreatic ductal adenocarcinoma" in pdac
+
+    t2dm = _normalize_indication_variants("T2DM")
+    assert "type 2 diabetes mellitus" in t2dm
+
+    # Acronym embedded in longer string — expansion still fires
+    nsclc_messy = _normalize_indication_variants("EGFR-mutant NSCLC adenocarcinoma")
+    assert "non-small cell lung carcinoma" in nsclc_messy
+
+    # Mixed-case / case-insensitive acronyms (HFpEF, AFib)
+    hfpef = _normalize_indication_variants("HFpEF")
+    assert "heart failure with preserved ejection fraction" in hfpef
+
+    # Non-acronym input is unaffected
+    plain = _normalize_indication_variants("rheumatoid arthritis")
+    assert plain == ["rheumatoid arthritis"]  # no spurious expansions
+
+
+def test_compute_score_zeros_gwas_when_traits_off_indication():
+    """Bug M refined: TP53/Li-Fraumeni returned direct-match GWAS hits whose
+    trait labels are sex-hormone-binding-globulin and height — completely
+    unrelated to Li-Fraumeni. The fallback sentinel doesn't fire (these came
+    through filter_by_trait), so we need an additional trait-relevance gate
+    in _compute_score that zeros the GWAS axis when no hit's trait overlaps
+    the indication meaningfully."""
+    from genesis_bio_mcp.models import GwasEvidence, GwasHit
+    from genesis_bio_mcp.tools.target_prioritization import _compute_score
+
+    off_trait = GwasEvidence(
+        gene_symbol="TP53",
+        trait_query="li-fraumeni syndrome",  # no fallback sentinel — direct return
+        total_associations=5,
+        associations=[
+            GwasHit(
+                study_accession="GCST007",
+                trait="sex hormone-binding globulin levels",
+                mapped_gene="TP53",
+                risk_allele="rs999-A",
+                p_value=4e-276,
+            ),
+            GwasHit(
+                study_accession="GCST008",
+                trait="height",
+                mapped_gene="TP53",
+                risk_allele="rs1000-G",
+                p_value=1e-50,
+            ),
+        ],
+        strongest_p_value=4e-276,
+    )
+    _, breakdown = _compute_score(
+        disease_assoc=None,
+        cancer_dep=None,
+        gwas_ev=off_trait,
+        compounds=None,
+        protein=None,
+        indication="li-fraumeni syndrome",
+    )
+    assert breakdown.gwas == 0.0, (
+        "trait-relevance check should zero GWAS when no hit's trait overlaps the indication"
+    )
+
+    # On-trait direct-match hits keep full credit
+    on_trait = GwasEvidence(
+        gene_symbol="PCSK9",
+        trait_query="coronary artery disease",
+        total_associations=5,
+        associations=[
+            GwasHit(
+                study_accession="GCST100",
+                trait="Coronary artery disease",
+                mapped_gene="PCSK9",
+                risk_allele="rs11591147-T",
+                p_value=4e-20,
+            ),
+            GwasHit(
+                study_accession="GCST101",
+                trait="Myocardial infarction",
+                mapped_gene="PCSK9",
+                risk_allele="rs562556-A",
+                p_value=3e-15,
+            ),
+        ],
+        strongest_p_value=4e-20,
+    )
+    _, breakdown2 = _compute_score(
+        disease_assoc=None,
+        cancer_dep=None,
+        gwas_ev=on_trait,
+        compounds=None,
+        protein=None,
+        indication="coronary artery disease",
+    )
+    assert breakdown2.gwas == 2.0  # full credit for relevant hits
+
+
+def test_target_prioritization_breakdown_table_matches_score_breakdown():
+    """Bug M.1: the displayed scoring breakdown was recomputing each axis
+    inline with stale formulas (cap at 10 not 3 for GWAS, no monogenic
+    credit, no functional/binding split). The numbers in the rendered
+    table drifted from the canonical _compute_score output. Fix uses
+    score_breakdown directly so they match by construction."""
+    from genesis_bio_mcp.models import (
+        CancerDependency,
+        GeneResolution,
+        GwasEvidence,
+        GwasHit,
+        ScoreBreakdown,
+        TargetDiseaseAssociation,
+        TargetPrioritizationReport,
+    )
+
+    # Build a report with intentionally tricky GWAS — the inline recompute
+    # would have shown 1.0 (5 hits / 10 * 2.0); the breakdown shows 0.0
+    # (off-trait suppression). The fix means the table mirrors the breakdown.
+    breakdown = ScoreBreakdown(
+        ot=2.55,
+        depmap=0.5,
+        gwas=0.0,  # canonical: zeroed by trait-relevance gate
+        known_drug=1.43,
+        chem_matter=1.0,  # canonical: binding-only discount
+        protein=1.5,
+        expression=0.0,
+    )
+    fallback_gwas = GwasEvidence(
+        gene_symbol="TP53",
+        trait_query="li-fraumeni syndrome",
+        total_associations=5,
+        associations=[
+            GwasHit(
+                study_accession="GCST007",
+                trait="sex hormone-binding globulin",
+                mapped_gene="TP53",
+                risk_allele="rs999-A",
+                p_value=4e-276,
+            )
+        ],
+        strongest_p_value=4e-276,
+    )
+    report = TargetPrioritizationReport(
+        gene_symbol="TP53",
+        indication="Li-Fraumeni syndrome",
+        resolution=GeneResolution(hgnc_symbol="TP53", source="input"),
+        protein_info=None,
+        disease_association=TargetDiseaseAssociation(
+            gene_symbol="TP53",
+            disease_name="Li-Fraumeni syndrome",
+            disease_efo_id="EFO_0009248",
+            ensembl_id="ENSG00000141510",
+            overall_score=0.85,
+            genetic_association_score=0.5,
+            somatic_mutation_score=0.7,
+            known_drug_score=0.95,
+            literature_mining_score=0.8,
+            evidence_count=200,
+        ),
+        cancer_dependency=CancerDependency(
+            gene_symbol="TP53",
+            mean_ceres_score=-0.2,
+            fraction_dependent_lines=0.15,
+            pan_essential=False,
+            top_dependent_lineages=[],
+            cell_lines=[],
+            data_source="DepMap Chronos Combined",
+        ),
+        gwas_evidence=fallback_gwas,
+        compounds=None,
+        chembl_compounds=None,
+        priority_score=6.98,
+        priority_tier="Medium",
+        score_breakdown=breakdown,
+        evidence_summary="test",
+        data_gaps=[],
+        errors={},
+        data_coverage_pct=80.0,
+        proxy_data_flags={},
+        score_confidence_interval=None,
+        api_latency_s={},
+    )
+    md = report.to_markdown()
+
+    # The GWAS row must show 0.00, NOT the stale formula's 1.00 (5 hits/10 * 2.0).
+    assert "| GWAS evidence | 0.00" in md
+    # And it must explain WHY (off-trait suppression note).
+    assert "off-indication" in md or "not credited" in md
+    # OT row uses the breakdown's 2.55, not da.overall_score * 3.0 = 2.55
+    # (these happen to match here, but the test guards against drift).
+    assert "| Open Targets association | 2.55" in md
+    # Cancer dependency row uses breakdown's 0.50, not the inline recompute.
+    assert "| Cancer dependency | 0.50" in md
+    # Sum check: every numeric contribution in the breakdown must come from
+    # `score_breakdown`, so summing the visible contributions equals
+    # breakdown.total (within rounding).
+    import re as _re
+
+    contribs = [float(m) for m in _re.findall(r"\| [A-Za-z][^|]*? \| ([0-9]+\.[0-9]+)", md)]
+    # The first match is the priority score itself; subsequent ones are
+    # axis contributions. Sum the axis contributions and compare to
+    # breakdown.total.
+    axis_contribs = contribs[:7]  # 7 axes max (some may be skipped)
+    # Allow rounding tolerance.
+    assert abs(sum(axis_contribs) - breakdown.total) < 0.05, (
+        f"breakdown table contributions {axis_contribs} (sum {sum(axis_contribs):.2f}) "
+        f"don't match score_breakdown.total ({breakdown.total:.2f}) — display drift"
+    )

@@ -105,6 +105,57 @@ OT_CLINICALLY_VALIDATED_FLOOR = 3.25
 #   above 0.8 leaves some monogenic targets uncredited.
 OT_GENETIC_MONOGENIC_THRESHOLD = 0.7
 
+# _GWAS_TRAIT_RELEVANCE_MIN (0.15):
+#   Minimum token-set Jaccard between the indication and the most-relevant
+#   GWAS hit's trait label, below which the GWAS axis is zeroed even when
+#   the gwas_ev was not flagged as a fallback. Catches direct-match returns
+#   where the queried trait substring-matched something incidental in the
+#   GWAS Catalog (TP53/Li-Fraumeni returning sex-hormone-binding-globulin
+#   hits because "TP53" appeared in the study title). Calibrated so:
+#     - PCSK9/CHD vs "Coronary artery disease" → ~0.50, credited ✓
+#     - EGFR/NSCLC vs "Lung cancer" → ~0.20, credited ✓
+#     - TP53/LFS vs "sex hormone-binding globulin" → ~0.0, zeroed ✓
+#   Range to consider: 0.10–0.25. Below 0.10 risks crediting completely
+#   unrelated traits; above 0.25 risks zeroing legitimate near-misses
+#   (parent disease vs subtype, brand-name trait vs generic).
+_GWAS_TRAIT_RELEVANCE_MIN = 0.15
+
+
+def _max_trait_relevance(associations: list, indication: str) -> float:
+    """Highest token-set Jaccard between the indication and any hit's trait label."""
+    if not indication or not associations:
+        return 0.0
+    ind_tokens = _tokenize_for_relevance(indication)
+    if not ind_tokens:
+        return 0.0
+    best = 0.0
+    for hit in associations:
+        trait = getattr(hit, "trait", None) or ""
+        h_tokens = _tokenize_for_relevance(trait)
+        if not h_tokens:
+            continue
+        intersection = ind_tokens & h_tokens
+        union = ind_tokens | h_tokens
+        if union:
+            best = max(best, len(intersection) / len(union))
+    return best
+
+
+# Stop-word set for trait-relevance tokenization. These tokens appear in too
+# many disease/trait labels to discriminate (e.g. "disease", "syndrome") and
+# would inflate Jaccard scores spuriously if kept.
+_TRAIT_STOPWORDS: frozenset[str] = frozenset(
+    {"disease", "syndrome", "disorder", "the", "of", "and", "a", "an", "in", "for"}
+)
+
+
+def _tokenize_for_relevance(text: str) -> set[str]:
+    """Lowercase, split on non-alphanumerics, drop stopwords + length-1 tokens."""
+    import re
+
+    raw = re.split(r"[^a-z0-9]+", text.lower())
+    return {t for t in raw if len(t) > 1 and t not in _TRAIT_STOPWORDS}
+
 
 async def prioritize_target(
     gene_symbol: str,
@@ -523,7 +574,21 @@ def _compute_score(
     # and other targets where OT's overall_score already captures the genetic
     # certainty in full.
     if gwas_ev:
-        if "no exact-trait match" in (gwas_ev.trait_query or ""):
+        # Bug M (v0.3.3): zero credit when the fallback path explicitly
+        # marked the hits as off-trait via the trait_query sentinel.
+        # Bug M refined (v0.3.4): even in the direct-match path, GWAS
+        # Catalog can return hits whose trait labels don't relate to the
+        # queried indication (TP53/Li-Fraumeni returning sex-hormone-binding-
+        # globulin hits because "TP53" is in the study title). Also zero
+        # out when the returned hits' trait labels show no meaningful token
+        # overlap with the indication.
+        is_fallback = "no exact-trait match" in (gwas_ev.trait_query or "")
+        is_off_trait = (
+            not is_fallback
+            and gwas_ev.associations
+            and _max_trait_relevance(gwas_ev.associations, indication) < _GWAS_TRAIT_RELEVANCE_MIN
+        )
+        if is_fallback or is_off_trait:
             breakdown.gwas = 0.0
         else:
             breakdown.gwas = min(gwas_ev.total_associations, 3) / 3 * 2.0
@@ -696,7 +761,10 @@ def _build_summary(
     if chembl_compounds and chembl_compounds.best_pchembl is not None:
         bp = chembl_compounds.best_pchembl
         ic50_nm = 10 ** (9 - bp)
-        ic50_str = f"{ic50_nm:.1f} nM" if ic50_nm < 1000 else f"{ic50_nm / 1000:.1f} µM"
+        # Use models._format_ic50_nm so sub-nM potency renders as "50 pM" not "0.0 nM" (Bug Q).
+        from genesis_bio_mcp.models import _format_ic50_nm
+
+        ic50_str = _format_ic50_nm(ic50_nm)
         potency_label = (
             "clinical-grade" if bp >= 9 else "lead-quality" if bp >= 7 else "hit-quality"
         )

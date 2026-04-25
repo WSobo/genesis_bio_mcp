@@ -300,10 +300,17 @@ def _parse_pathways(pathways_data: list[dict]) -> list[Pathway]:
     parsed: list[Pathway] = []
     for p in pathways_data:
         reactome_id = p.get("stId", "")
-        if reactome_id and reactome_id in seen_ids:
+        # Bug R (v0.3.4): the AnalysisService doesn't have a species filter
+        # at the request level, so it can return pathways from any species
+        # the gene maps to (R-CFA-* canine, R-MMU-* mouse, etc.). For human
+        # gene queries we only want human pathways. Drop anything that
+        # isn't an R-HSA-* stable ID — a pathway with no stId at all is
+        # also dropped because it's not actionable.
+        if not reactome_id or not reactome_id.startswith("R-HSA-"):
             continue
-        if reactome_id:
-            seen_ids.add(reactome_id)
+        if reactome_id in seen_ids:
+            continue
+        seen_ids.add(reactome_id)
 
         p_value = p.get("entities", {}).get("pValue")
         gene_count = p.get("entities", {}).get("total")

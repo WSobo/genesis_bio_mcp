@@ -7,6 +7,98 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.3.4] — 2026-04-25
+
+Patch release. Fixes five bugs caught by a fourth-round live MCP smoke test
+(EGFR, GLP1R, CALCA, TP53, ABL1, MT-ND1, RAS family, NSCLC, PDAC). The most
+impactful is **Bug M.1**: the `prioritize_target` Markdown report was
+recomputing every score axis inline using stale formulas, producing a
+breakdown table whose numbers drifted from the canonical `_compute_score`
+output. That display recompute was also masking the v0.3.3 fixes (functional
+vs binding split, fallback suppression, monogenic credit) — the actual
+priority score reflected them, but the table didn't.
+
+### Fixed
+
+- **Display drift in `prioritize_target` scoring breakdown (Bug M.1).**
+  `TargetPrioritizationReport.to_markdown` was a duplicate of
+  `_compute_score` with stale logic — GWAS capped at 10 instead of 3, no
+  monogenic credit, no fallback suppression, no functional/binding split.
+  Now renders directly from `score_breakdown` (the canonical
+  `ScoreBreakdown` produced by `_compute_score`), with descriptive notes
+  derived from the source models. Eliminates two parallel scoring code
+  paths and surfaces the v0.3.2/v0.3.3 fixes in the displayed table for
+  the first time. Also adds a "Clinical / known-drug" row (was previously
+  absorbed into OT) and explanatory notes for fallback / off-trait
+  suppression so a 0.00 GWAS score isn't mistaken for "no data."
+- **GWAS axis credited off-trait direct-match returns (Bug M refined).**
+  v0.3.3 zeroed GWAS credit when the fallback path explicitly marked hits
+  as off-trait via the `trait_query` sentinel. But TP53/Li-Fraumeni
+  produced direct-match GWAS returns whose trait labels were
+  sex-hormone-binding-globulin and height — completely unrelated to
+  Li-Fraumeni, but `_process_for_trait` let them through. Added a
+  trait-relevance gate in `_compute_score`: token-set Jaccard between the
+  indication and each hit's trait label, with a `_GWAS_TRAIT_RELEVANCE_MIN`
+  threshold (0.15) below which the GWAS axis is zeroed. Catches
+  direct-match returns where the queried indication substring-matched
+  something incidental in GWAS Catalog. Calibrated so PCSK9/CHD (~0.50)
+  and EGFR/NSCLC (~0.20) keep credit; TP53/sex-hormone (~0.0) gets zeroed.
+- **OT silent-data-loss on bare acronyms (Bug P).** `EGFR + "NSCLC"`
+  returned 0 OT evidence because OT's autocomplete-style `search` doesn't
+  index abbreviations. Different failure mode from Bug J (parens
+  contamination) — Bug P is the bare acronym alone. Added
+  `_ACRONYM_EXPANSIONS` table with ~50 common indication abbreviations
+  (NSCLC, PDAC, T2DM, AD, PD, CFTR-relevant: CF, AML, CML, COPD, NASH/MASH,
+  HFpEF/HFrEF, etc.) keyed off all-caps tokens in the input. The
+  expansion is added as a fallback variant to `_normalize_indication_variants`
+  so the literal acronym is still tried first (cache-friendly).
+- **Sub-nM IC50 rendered as "0.0 nM" (Bug Q).** Calcitonin gene-related
+  peptide / GLP1R agonists hit pChEMBL ≈ 11 (sub-pM territory) which the
+  format string rounded to "0.0 nM" — looked like a missing-data error
+  rather than ultrahigh potency. New `_format_ic50_nm()` helper renders
+  sub-nM in pM, 1–1000 nM in nM, beyond in µM. Used by both the
+  ChEMBLCompounds table and the prose summary in `target_prioritization`.
+- **Reactome cross-species pathway leakage (Bug R).** The AnalysisService
+  doesn't have a species filter on the request; for human gene queries it
+  could return canine (`R-CFA-*`), mouse (`R-MMU-*`), or rat (`R-RNO-*`)
+  pathways when the gene mapped across species silos. GLP1R surfaced an
+  `R-CFA-381676` row in its top pathway list. `_parse_pathways` now
+  drops anything whose stable ID doesn't start with `R-HSA-` (also drops
+  empty-stId entries which weren't actionable anyway).
+
+### Verified — no fix needed
+
+- **Bug S** — `run_biology_workflow` already handles missing
+  `ANTHROPIC_API_KEY` gracefully: server logs a warning at startup
+  (`server.py:110`) and the agent itself returns a clear
+  "Set ANTHROPIC_API_KEY in claude_desktop_config.json" message rather
+  than a stack trace. The user explicitly OK'd this behavior.
+
+### Added
+
+- `_format_ic50_nm()` helper in `models.py` for unit-aware IC50 rendering.
+- `_ACRONYM_EXPANSIONS` table in `clients/open_targets.py` (~50 entries
+  spanning oncology, cardiometabolic, neuroscience, immunology).
+- `_GWAS_TRAIT_RELEVANCE_MIN` constant + `_max_trait_relevance` /
+  `_tokenize_for_relevance` helpers in `tools/target_prioritization.py`
+  with documented tuning rationale.
+- 5 regression tests in `tests/test_clients.py` (one per bug, including a
+  display-vs-breakdown drift test that asserts the rendered table matches
+  the canonical `ScoreBreakdown` numbers).
+- **214/214 tests pass.**
+
+### Still deferred to v0.4.0
+
+- **Bug N** — `compare_targets` DepMap column shows blank for pan-essential
+  rows (cosmetic).
+- **Bug O** — Compounds column conflates PubChem and ChEMBL counts (cosmetic).
+- **Bug H** — GWAS empty-result latency optimization.
+- **EFO → UBERON** ontology-backed indication-to-tissue mapping.
+- **5-target live-API regression check** + **CDR developability** + **Foldseek**
+  + **per-residue pLDDT** + **dedicated MaveDB tool**.
+
+---
+
 ## [0.3.3] — 2026-04-25
 
 Patch release. Fixes six bugs caught by a third-round live MCP smoke test

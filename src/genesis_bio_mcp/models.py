@@ -1112,7 +1112,7 @@ class ChEMBLCompounds(BaseModel):
             for c in self.compounds[:10]:
                 name = (c.molecule_name or c.molecule_chembl_id)[:35]
                 ic50_nm = 10 ** (9 - c.pchembl_value)
-                ic50_str = f"{ic50_nm:.1f} nM" if ic50_nm < 1000 else f"{ic50_nm / 1000:.2f} µM"
+                ic50_str = _format_ic50_nm(ic50_nm)
                 assay_label = _assay_type_label(c.assay_type, c.assay_cell_type)
                 org = _organism_short(c.assay_organism)
                 lines.append(
@@ -1138,6 +1138,22 @@ _ORGANISM_SHORT = {
     "Macaca mulatta": "macaque",
     "Canis lupus familiaris": "dog",
 }
+
+
+def _format_ic50_nm(ic50_nm: float) -> str:
+    """Render a free IC50 (in nanomolar) using sensible units across magnitudes.
+
+    Sub-nanomolar potency (pChEMBL ≥ 10) was rendering as ``"0.0 nM"`` which
+    looked like a missing-data error rather than ultrahigh potency. Switch to
+    pM for sub-nM, nM in the 1–1000 range, and µM beyond.
+    """
+    if ic50_nm < 1.0:
+        # Sub-nM — render in pM so ``0.05 nM`` shows as ``50 pM`` rather than
+        # rounding to a misleading ``0.0 nM``.
+        return f"{ic50_nm * 1000:.0f} pM"
+    if ic50_nm < 1000.0:
+        return f"{ic50_nm:.1f} nM"
+    return f"{ic50_nm / 1000:.2f} µM"
 
 
 def _assay_type_label(assay_type: str | None, cell_type: str | None) -> str:
@@ -1950,92 +1966,109 @@ class TargetPrioritizationReport(BaseModel):
             "|---|---|---|",
         ]
 
-        # Local mirrors of scoring constants from target_prioritization.py — keep in sync.
-        _LINEAGE_MATCH_FACTOR = 1.2
-        _PUBCHEM_MIN_COMPOUNDS = 5
-
-        # Build score breakdown
+        # Bug M.1 (v0.3.4): the breakdown table previously RECOMPUTED scores
+        # inline using stale formulas (cap at 10 not 3, no monogenic credit,
+        # no fallback suppression, no functional/binding split). The displayed
+        # numbers drifted from the actual ``priority_score`` and from the
+        # canonical _compute_score logic. Now we render directly from the
+        # ``score_breakdown`` that _compute_score produced — the only source
+        # of truth — and decorate each row with a contextual note derived
+        # from the source models.
+        sb = self.score_breakdown
         da = self.disease_association
         cd = self.cancer_dependency
         gw = self.gwas_evidence
         cp = self.compounds
+        chembl = self.chembl_compounds
         pi = self.protein_info
 
-        ot_score = round(da.overall_score * 3.0, 2) if da else 0.0
-        lines.append(f"| Open Targets association | {ot_score} | 3.0 |")
+        # Open Targets association
+        ot_note = f"OT overall_score={da.overall_score:.2f}" if da else "no data"
+        lines.append(f"| Open Targets association | {sb.ot:.2f} ({ot_note}) | 3.0 |")
 
+        # Cancer dependency
         if cd:
             if cd.pan_essential:
-                dep_score = 0.5
                 dep_note = "pan-essential cap"
             else:
-                is_real = "DepMap" in cd.data_source
-                confidence = 1.0 if is_real else 0.7
-                lineage_match = self.indication and any(
+                dep_note = f"{int(cd.fraction_dependent_lines * 100)}% dependent"
+                if "DepMap" not in cd.data_source:
+                    dep_note += " (OT proxy, 0.7×)"
+                if self.indication and any(
                     self.indication.lower() in lin.lower() or lin.lower() in self.indication.lower()
                     for lin in (cd.top_dependent_lineages or [])
-                )
-                lineage_factor = _LINEAGE_MATCH_FACTOR if lineage_match else 1.0
-                dep_score = round(
-                    min(cd.fraction_dependent_lines * 2.0 * confidence * lineage_factor, 2.0), 2
-                )
-                dep_note = f"{int(cd.fraction_dependent_lines * 100)}% dependent"
-                if not is_real:
-                    dep_note += " (proxy, 0.7×)"
-                if lineage_match:
-                    dep_note += f" (lineage match, {_LINEAGE_MATCH_FACTOR}×)"
-            lines.append(f"| Cancer dependency | {dep_score} ({dep_note}) | 2.0 |")
+                ):
+                    dep_note += " (lineage match, 1.2×)"
         else:
-            lines.append("| Cancer dependency | 0.0 (no data) | 2.0 |")
+            dep_note = "no data"
+        lines.append(f"| Cancer dependency | {sb.depmap:.2f} ({dep_note}) | 2.0 |")
 
-        gw_score = round(min(gw.total_associations, 10) / 10 * 2.0, 2) if gw else 0.0
-        lines.append(f"| GWAS evidence | {gw_score} | 2.0 |")
-
-        chembl = self.chembl_compounds
-        if chembl and chembl.best_pchembl is not None:
-            bp = chembl.best_pchembl
-            if bp >= 9:
-                cp_score = 1.5
-            elif bp >= 7:
-                cp_score = 1.0
-            elif bp >= 5:
-                cp_score = 0.5
+        # GWAS evidence — flag fallback / off-trait suppression so a 0.00
+        # score isn't mistaken for "no data" when hits actually exist.
+        if gw:
+            if "no exact-trait match" in (gw.trait_query or ""):
+                gw_note = (
+                    f"{gw.total_associations} fallback hits — no exact-trait match, not credited"
+                )
+            elif sb.gwas == 0.0 and gw.total_associations > 0:
+                gw_note = (
+                    f"{gw.total_associations} hits but trait labels off-indication — not credited"
+                )
             else:
-                cp_score = 0.25
-            cp_label = f"ChEMBL pChEMBL={bp:.1f}"
-        elif cp and cp.total_active_compounds >= _PUBCHEM_MIN_COMPOUNDS:
-            cp_score = round(min(cp.total_active_compounds, 100) / 100 * 1.5, 2)
+                gw_note = f"{gw.total_associations} hits"
+        elif da and (da.genetic_association_score or 0) > 0.7:
+            gw_note = "monogenic credit (OT genetic > 0.7, GWAS Catalog absent)"
+        else:
+            gw_note = "no data"
+        lines.append(f"| GWAS evidence | {sb.gwas:.2f} ({gw_note}) | 2.0 |")
+
+        # Clinical / known-drug — surfaced as its own row (was previously
+        # absorbed into the OT row, contributing to the breakdown-vs-displayed
+        # mismatch).
+        if da:
+            kd_note = (
+                f"known_drug_score={da.known_drug_score:.2f}"
+                if da.known_drug_score
+                else "no approved drugs"
+            )
+        else:
+            kd_note = "no data"
+        lines.append(f"| Clinical / known-drug | {sb.known_drug:.2f} ({kd_note}) | 1.5 |")
+
+        # Chemical matter — surface whether the credit came from functional
+        # or discounted binding-only data so the v0.3.3 weighting is visible.
+        if chembl and chembl.best_pchembl is not None:
+            if chembl.best_pchembl_functional is not None:
+                cp_label = f"ChEMBL pChEMBL={chembl.best_pchembl_functional:.1f} (functional)"
+            else:
+                cp_label = f"ChEMBL pChEMBL={chembl.best_pchembl:.1f} (binding-only — discounted)"
+        elif cp and cp.total_active_compounds >= 5:
             cp_label = f"PubChem count={cp.total_active_compounds}"
         elif cp:
-            cp_score = 0.0
             cp_label = f"PubChem count={cp.total_active_compounds} (below tractability threshold)"
         else:
-            cp_score = 0.0
             cp_label = "no data"
-        lines.append(f"| Chemical matter | {cp_score} ({cp_label}) | 1.5 |")
+        lines.append(f"| Chemical matter | {sb.chem_matter:.2f} ({cp_label}) | 1.5 |")
 
+        # Protein annotation
         if pi:
-            pi_score = (0.5 if pi.reviewed else 0.0) + min(len(pi.known_variants), 2) / 2 * 1.0
-            lines.append(f"| Protein annotation | {pi_score:.2f} | 1.5 |")
+            pi_note = (
+                f"{'reviewed' if pi.reviewed else 'unreviewed'}, "
+                f"{len(pi.known_variants)} known variants"
+            )
         else:
-            lines.append("| Protein annotation | 0.0 (no data) | 1.5 |")
+            pi_note = "no data"
+        lines.append(f"| Protein annotation | {sb.protein:.2f} ({pi_note}) | 1.5 |")
 
-        # Expression axis (HPA tissue specificity) — rendered only when HPA was
-        # queried. Absent HPA → skip the row rather than print a "no data" line,
-        # because expression is an optional extended-mode axis and its absence
-        # is the normal case for non-extended calls.
+        # Expression axis — rendered only when HPA was queried.
         pa = self.protein_atlas
         if pa:
-            exp_score = _EXPRESSION_BY_CATEGORY.get(
-                (pa.expression.rna_tissue_specificity_category if pa.expression else None) or "",
-                0.0,
-            )
             exp_cat = (
                 pa.expression.rna_tissue_specificity_category
                 if pa.expression and pa.expression.rna_tissue_specificity_category
                 else "no HPA data"
             )
-            lines.append(f"| Tissue expression | {exp_score} ({exp_cat}) | 1.0 |")
+            lines.append(f"| Tissue expression | {sb.expression:.2f} ({exp_cat}) | 1.0 |")
 
         lines += ["", "## Data Sources"]
         sources = [

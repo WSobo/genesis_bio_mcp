@@ -294,6 +294,76 @@ def _name_match_score(query: str, hit_name: str) -> float:
     return len(intersection) / len(union)
 
 
+# Common indication acronyms → canonical full forms. Used by
+# ``_normalize_indication_variants`` to expand bare acronyms (``"NSCLC"``,
+# ``"PDAC"``, ``"T2DM"``) to a form OT's autocomplete-style search will
+# resolve. The acronym itself is still tried first; the expansion is added
+# as a fallback variant so users who type the long form keep cache hits.
+#
+# Curated to oncology + cardiometabolic + neuroscience + immunology, the
+# four areas that produced silent-data-loss bugs in the v0.3.0–v0.3.3 smoke
+# tests. Add new entries when you find another acronym OT's search misses.
+_ACRONYM_EXPANSIONS: dict[str, str] = {
+    # Oncology — solid tumors
+    "NSCLC": "non-small cell lung carcinoma",
+    "SCLC": "small cell lung carcinoma",
+    "PDAC": "pancreatic ductal adenocarcinoma",
+    "TNBC": "triple-negative breast cancer",
+    "HCC": "hepatocellular carcinoma",
+    "RCC": "renal cell carcinoma",
+    "CRC": "colorectal carcinoma",
+    "GBM": "glioblastoma multiforme",
+    # Oncology — hematologic
+    "AML": "acute myeloid leukemia",
+    "ALL": "acute lymphoblastic leukemia",
+    "CML": "chronic myeloid leukemia",
+    "CLL": "chronic lymphocytic leukemia",
+    "MM": "multiple myeloma",
+    "DLBCL": "diffuse large B-cell lymphoma",
+    # Endocrine / metabolic
+    "T1D": "type 1 diabetes mellitus",
+    "T1DM": "type 1 diabetes mellitus",
+    "T2D": "type 2 diabetes mellitus",
+    "T2DM": "type 2 diabetes mellitus",
+    "MODY": "maturity-onset diabetes of the young",
+    # Cardiovascular
+    "CAD": "coronary artery disease",
+    "CHD": "coronary heart disease",
+    "MI": "myocardial infarction",
+    "HF": "heart failure",
+    "HFpEF": "heart failure with preserved ejection fraction",
+    "HFrEF": "heart failure with reduced ejection fraction",
+    "AFib": "atrial fibrillation",
+    "FH": "familial hypercholesterolemia",
+    # Liver / GI
+    "NASH": "non-alcoholic steatohepatitis",
+    "MASH": "metabolic dysfunction-associated steatohepatitis",
+    "NAFLD": "non-alcoholic fatty liver disease",
+    "MASLD": "metabolic dysfunction-associated steatotic liver disease",
+    "IBD": "inflammatory bowel disease",
+    "UC": "ulcerative colitis",
+    # Pulmonary
+    "COPD": "chronic obstructive pulmonary disease",
+    "IPF": "idiopathic pulmonary fibrosis",
+    # Neuroscience
+    "AD": "Alzheimer disease",
+    "PD": "Parkinson disease",
+    "ALS": "amyotrophic lateral sclerosis",
+    "MS": "multiple sclerosis",
+    "ASD": "autism spectrum disorder",
+    "ADHD": "attention deficit hyperactivity disorder",
+    "MDD": "major depressive disorder",
+    "OCD": "obsessive compulsive disorder",
+    "PTSD": "post-traumatic stress disorder",
+    # Immunology / rheumatology
+    "RA": "rheumatoid arthritis",
+    "SLE": "systemic lupus erythematosus",
+    "PsA": "psoriatic arthritis",
+    "AS": "ankylosing spondylitis",
+    "OA": "osteoarthritis",
+}
+
+
 def _normalize_indication_variants(name: str) -> list[str]:
     """Return ordered, deduped query variants to try against OT disease search.
 
@@ -307,6 +377,11 @@ def _normalize_indication_variants(name: str) -> list[str]:
        is the variant that catches the real-world case where OT's search
        indexes the abbreviation but not the long form
     4. Hyphen-stripped (``"non-small-cell"`` → ``"non small cell"``)
+    5. Acronym expansion — for any all-caps token in the input that matches
+       ``_ACRONYM_EXPANSIONS``, add the canonical full form. Catches bare
+       ``"NSCLC"`` / ``"PDAC"`` / ``"T2DM"`` queries that OT's search returns
+       zero hits for, and also rescues messy strings where the abbreviation
+       was the only resolvable token.
     """
     import re
 
@@ -329,6 +404,16 @@ def _normalize_indication_variants(name: str) -> list[str]:
     # Hyphen variant operates on whichever stripped form exists.
     pivot = stripped or base
     _add(pivot.replace("-", " "))
+
+    # Acronym expansion: scan all 2–6 char alphanumeric tokens (preserving
+    # mixed case so HFpEF / HFrEF / AFib still match), look each up in the
+    # acronym table case-insensitively, and add the expansion as a variant.
+    for token in re.findall(r"\b[A-Za-z][A-Za-z0-9]{1,5}\b", base):
+        expansion = _ACRONYM_EXPANSIONS.get(token)
+        if expansion is None:
+            expansion = _ACRONYM_EXPANSIONS.get(token.upper())
+        if expansion:
+            _add(expansion)
 
     return variants
 
