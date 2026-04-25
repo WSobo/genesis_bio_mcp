@@ -63,35 +63,6 @@ Polish release addressing six issues surfaced by a JAK2 end-to-end evaluation. A
 
 ---
 
-## [Unreleased] — v0.1.5
-
-### Added
-- `get_pathway_members` tool — enumerate all HGNC gene symbols in a named Reactome pathway by display name or stable ID; enables systematic pathway-based screening in `run_biology_workflow`
-- `Settings` class (`config/settings.py`) via `pydantic-settings` — all runtime config now configurable via `GENESIS_*` environment variables or a `.env` file without code changes
-- `docs/deployment.md` — full deployment guide covering env vars, Claude Desktop config, Docker setup, and production checklist
-- `CONTRIBUTING.md` augmented with settings integration pattern for new clients
-- **BioGRID client** — `get_biogrid_interactions` tool returning curated literature PPI records with experimental method metadata (two-hybrid, co-IP, etc.) and PubMed citations; requires `BIOGRID_ACCESS_KEY` env var (free registration at webservice.thebiogrid.org)
-- `BioGRIDInteraction` and `BioGRIDInteractome` Pydantic models with `to_markdown()`
-- `test_string_returns_empty_interactors_on_network_failure` — covers STRING resolve-success/network-failure edge case
-
-### Fixed
-- Reactome cache poisoning — transient network failures no longer block subsequent retries for the same gene within a session
-- Reactome inline pathway parsing — switched from two-step POST→GET to using the inline `pathways` array in the `/identifiers/` response; adds trailing newline to identifier body per API contract
-- `run_biology_workflow` auth error — `AsyncAnthropic()` init is now wrapped in try/except with a plain-language message directing users to set `ANTHROPIC_API_KEY` in the MCP server's env
-- MCP server startup now logs a warning if `ANTHROPIC_API_KEY` is absent, surfacing the error before the first `run_biology_workflow` call
-
-### Changed
-- Server now exposes **15 tools**
-- All hardcoded timeouts, cache paths, TTLs, semaphore limits, and the Claude model ID are now read from `Settings` at startup; defaults are unchanged
-- Removed unused `polars` runtime dependency
-- Removed stale `[project.optional-dependencies]` dev-dep block; `[dependency-groups]` is now the sole authoritative source
-- Version bumped to `0.1.5`; `User-Agent` header is now dynamically read from `__version__` rather than hardcoded
-- `README.md` updated with `env` block example for Claude Desktop and link to deployment guide
-- `CLAUDE.md` expanded with concrete client/model/tool/test/workflow-agent patterns; dead docs/ references fixed
-- `CONTRIBUTING.md` updated with current tool registration example, Step 5 (workflow agent), and updated PR checklist
-
----
-
 ## [0.1.0] - 2026-04-11 — Initial Alpha Release
 
 ### Summary

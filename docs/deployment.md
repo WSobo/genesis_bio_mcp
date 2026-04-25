@@ -21,6 +21,9 @@ All runtime settings use the `GENESIS_` prefix. Every variable has a sensible de
 | `GENESIS_CLAUDE_MODEL` | `claude-sonnet-4-6` | Claude model used by `run_biology_workflow` |
 | `NCBI_EMAIL` | `genesis-bio-mcp@example.com` | Email sent in NCBI E-utils requests (required by NCBI ToS for production) |
 | `BIOGRID_ACCESS_KEY` | *(unset)* | Required for `get_biogrid_interactions`. Free key from <https://webservice.thebiogrid.org/>. When unset, the tool returns an empty result with a warning logged — all other tools work normally. |
+| `OPENFDA_API_KEY` | *(unset)* | Optional — lifts the OpenFDA free-tier quota (240 req/min, 1000 req/day). Free key from <https://open.fda.gov/apis/authentication/>. Affects `get_drug_history` and `prioritize_target` (extended mode); without it the tools work but may rate-limit on heavy workflows. |
+| `GENESIS_OPENFDA_CACHE_PATH` | `data/openfda_cache.json` | Path to OpenFDA drug-safety cache |
+| `GENESIS_OPENFDA_CACHE_TTL_SECS` | `604800` | OpenFDA cache TTL in seconds (default 7 days) |
 
 Set via a `.env` file in the working directory (loaded automatically) or as shell exports.
 

@@ -139,6 +139,19 @@ MaveDB DMS scores
 message listing the accepted forms — invalid input surfaces as a tool
 error, never silent coercion.
 
+### Splice / UTR / regulatory consequences
+
+For non-missense variants — splice-site, 5'/3' UTR, intronic, regulatory —
+use `get_variant_consequences` (Ensembl VEP). It complements
+`get_variant_effects` (which sources dbNSFP missense scores via
+MyVariant.info) with VEP's transcript-aware consequence terms and its own
+SIFT/PolyPhen calls. Canonical transcript by default;
+`include_all_transcripts=True` for the full set. Inside
+`get_variant_effects`, VEP is already fanned out as a third parallel
+source, so a separate call is only needed when you want the
+all-transcripts view or are starting from coordinates rather than a
+protein change.
+
 ---
 
 ## Therapeutic immunogenicity / T-cell epitope screening

@@ -1,7 +1,7 @@
 # Tool catalog
 
-genesis-bio-mcp exposes **23 MCP tools** across **19 biomedical data sources**
-(plus `run_biology_workflow`, the 24th, which chains the others with Claude).
+genesis-bio-mcp exposes **27 MCP tools** across **23 biomedical data sources**
+(plus `run_biology_workflow`, the 28th, which chains the others with Claude).
 
 All tools return Markdown strings by default and accept
 `response_format="json"` for programmatic integration. Single-gene tools
@@ -15,6 +15,7 @@ Jump to:
 [Structure & interactions](#structure--interactions) ·
 [Antibody & epitope](#antibody--epitope) ·
 [Protein engineering](#protein-engineering) ·
+[Expression](#expression) ·
 [Pathways](#pathways) ·
 [Synthesis & orchestration](#synthesis--orchestration)
 
@@ -68,11 +69,23 @@ for end-to-end examples.
 | Tool | Data source | Purpose |
 |---|---|---|
 | `get_protein_sequence` | UniProt FASTA + pure-Python biochem | FASTA + molecular weight, theoretical pI, GRAVY, net charge, ε₂₈₀ reduced/oxidized + liability-motif scan (deamidation NG/NS, isomerization DG/DS, N-glycosylation NXS/NXT, oxidation M/W, free cysteines via UniProt DISULFID annotation) |
-| `get_variant_effects` | gnomAD + MyVariant.info + MaveDB | Mutation-level pathogenicity: ClinVar submissions, AlphaMissense class + score, REVEL, CADD-Phred, SIFT, PolyPhen-2, gnomAD allele frequency, matching DMS fitness scores from top MaveDB score sets |
+| `get_variant_effects` | gnomAD + MyVariant.info + MaveDB + Ensembl VEP | Mutation-level pathogenicity: ClinVar submissions, AlphaMissense class + score, REVEL, CADD-Phred, SIFT, PolyPhen-2, gnomAD allele frequency, DMS fitness scores from MaveDB, plus VEP splice/UTR/regulatory consequences |
 | `get_variant_constraints` | gnomAD v4 | Gene-level pLI, LOEUF, oe_lof, oe_mis, Z-scores — tolerance-to-mutation pre-filter |
+| `get_variant_consequences` | Ensembl VEP | Splice / UTR / regulatory overlap and SIFT / PolyPhen for any HGVS or coordinate variant. Canonical-transcript by default; `include_all_transcripts` opt-in. Complements `get_variant_effects` (dbNSFP scores) with VEP's transcript-aware consequence calls |
 | `get_domain_annotation` | InterPro | Domain boundaries with Pfam/SMART/CDD/GO term annotation |
 | `get_dms_scores` | MaveDB | Available deep mutational scanning score-set metadata (URNs, variant counts, citations) |
 | `get_mhc_binding` | IEDB NextGen Tools | MHC-I / II binding predictions for peptides or auto-windowed proteins against a configurable HLA panel |
+
+## Expression
+
+Tissue and protein expression evidence — added in v0.3.0 to support
+indication-aware target prioritization (the `expression` scoring axis pulls
+from `get_protein_atlas`).
+
+| Tool | Data source | Purpose |
+|---|---|---|
+| `get_tissue_expression` | GTEx v8 | Bulk-RNA median TPM across ~54 human tissues. Resolves HGNC → GENCODE via the shared Ensembl client. Within `prioritize_target` extended mode, the report is restricted to therapeutic-area-relevant tissues via `config/indication_tissue_map.py` |
+| `get_protein_atlas` | Human Protein Atlas | Tissue-specificity category (`Tissue enriched`, `Group enriched`, `Tissue enhanced`, `Low tissue specificity`, `Not detected`), subcellular localization, and pathology prognostics (cancer-survival hazard ratios). Powers the v0.3.0 expression scoring axis |
 
 ## Pathways
 
@@ -85,7 +98,7 @@ for end-to-end examples.
 
 | Tool | Data source | Purpose |
 |---|---|---|
-| `get_drug_history` | DGIdb + ClinicalTrials.gov | Known drug interactions with approval status + trial counts by phase |
+| `get_drug_history` | DGIdb + ClinicalTrials.gov + OpenFDA | Known drug interactions with approval status + trial counts by phase. Top-5 approved drugs are enriched with OpenFDA post-market safety signals (FAERS adverse-event counts, boxed warnings, recalls) carrying a permanent regulatory disclaimer |
 | `prioritize_target` | All of the above in parallel | Full evidence synthesis → composite priority score (0–10) with confidence interval. See [docs/architecture.md](architecture.md) for the scoring model |
 | `compare_targets` | Calls `prioritize_target` ×N | Side-by-side comparison of 2–5 targets for one indication |
 | `run_biology_workflow` | Claude + ToolSpec registry | Free-text question → inner Claude agent (`claude-sonnet-4-6`) dynamically selects and chains tools. Requires `ANTHROPIC_API_KEY` |
@@ -114,6 +127,7 @@ Exceptions (tools with additional required fields):
 | `get_gwas_evidence` | `trait` |
 | `get_protein_sequence` | optional `start`, `end` (1-indexed inclusive slice) |
 | `get_variant_effects` | `mutation` (e.g. `R175H`, `p.Arg175His`) |
+| `get_variant_consequences` | one of: `gene_symbol` + `mutation`; `hgvs_genomic` (e.g. `7:g.140753336A>T`); or `chrom` + `pos` + `ref` + `alt`. Optional `include_all_transcripts` |
 | `get_antibody_structures` | `antigen_query` (protein name for best results), optional `max_results` |
 | `get_epitope_data` | `antigen_query` |
 | `get_mhc_binding` | `sequence`; optional `hla_alleles`, `mhc_class`, `peptide_lengths`, `method` |
@@ -126,7 +140,7 @@ Exceptions (tools with additional required fields):
 ## MCP Resource: `tool://registry`
 
 Any MCP client can read the `tool://registry` resource to get a structured
-Markdown catalogue of all 24 tools grouped by category, with the
+Markdown catalogue of all 28 tools grouped by category, with the
 embedding-searchable `use_when` guidance the workflow agent uses for
 semantic retrieval. No tool call needed — useful for agent frameworks doing
 capability auditing or embedding-based tool selection.

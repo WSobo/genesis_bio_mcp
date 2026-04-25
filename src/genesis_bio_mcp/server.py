@@ -8,7 +8,7 @@ Exposes 27 tools for biomedical database queries:
   - get_cancer_dependency         DepMap: CRISPR essentiality across cancer lines
   - get_gwas_evidence             GWAS Catalog: genetic associations for a trait
   - get_compounds                 PubChem: active small molecules against a target
-  - get_chembl_compounds          ChEMBL: quantitative IC50/Ki/Kd potency data
+  - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_protein_interactome       STRING: binding partners and selectivity risks
   - get_biogrid_interactions      BioGRID: curated literature PPI network
@@ -1644,7 +1644,8 @@ async def tool_registry_resource() -> str:
 
     Returns:
         Markdown document grouped by tool category with descriptions and
-        ``use_when`` fields for all 24 registered tools.
+        ``use_when`` fields for every registered tool (count is sourced
+        from ``len(registry)`` so it stays correct as tools are added).
     """
     registry = build_tool_registry(mcp.state)
     return format_registry_docs(registry)

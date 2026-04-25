@@ -12,7 +12,7 @@ see [deployment.md](deployment.md).
 
 ```
 src/genesis_bio_mcp/
-├── server.py                       # FastMCP server: 23 tools + run_biology_workflow,
+├── server.py                       # FastMCP server: 27 tools + run_biology_workflow,
 │                                     lifespan wiring, tool://registry resource
 ├── models.py                       # Pydantic V2 output models — every one implements
 │                                     to_markdown() + model_dump_json()
@@ -42,7 +42,11 @@ src/genesis_bio_mcp/
 │   ├── interpro.py                 # InterPro domain annotations
 │   ├── mavedb.py                   # MaveDB score-set metadata + per-variant scores
 │   ├── myvariant.py                # MyVariant.info: ClinVar + AlphaMissense + REVEL + CADD aggregator
-│   └── variant_effects.py          # Aggregator combining gnomAD + MyVariant + MaveDB per-mutation
+│   ├── ensembl.py                  # Ensembl REST: HGNC → ENSG, region overlap, VEP HGVS consequences
+│   ├── gtex.py                     # GTEx v8: bulk-RNA median TPM per tissue (uses shared EnsemblClient)
+│   ├── hpa.py                      # Human Protein Atlas: tissue-specificity, subcellular, pathology (7-day disk cache)
+│   ├── openfda.py                  # OpenFDA: FAERS adverse events + boxed warnings + recalls (optional OPENFDA_API_KEY)
+│   └── variant_effects.py          # Aggregator combining gnomAD + MyVariant + MaveDB + Ensembl VEP per-mutation
 └── tools/
     ├── gene_resolver.py            # Multi-source alias resolution
     ├── target_prioritization.py    # asyncio.gather orchestration + scoring + confidence CI
@@ -115,7 +119,7 @@ See [tools.md](tools.md) for which model each tool produces.
 | DepMap + EFO 7-day disk caches | EFO IDs are stable across quarterly releases; DepMap's ~10 MB CSV download is ~30s — cached so warm starts are instant |
 | `asyncio.Semaphore` per rate-limited API | STRING / ChEMBL / BioGRID: `Semaphore(2)`. Reactome / PubChem / gnomAD: `Semaphore(3)`. Prevents 429s without serializing the pipeline |
 | `response_format` on every tool | Markdown for agents, JSON for pipelines — no separate tool variants needed |
-| `ToolSpec` registry with `use_when` | Every tool has an embedding-searchable sentence so `run_biology_workflow` can do semantic retrieval at scale rather than prompting Claude with all 23 descriptions |
+| `ToolSpec` registry with `use_when` | Every tool has an embedding-searchable sentence so `run_biology_workflow` can do semantic retrieval at scale rather than prompting Claude with all 27 descriptions |
 | Shared `tools/biochem.py` | MW / pI / GRAVY / ε₂₈₀ / liability scanner used by `get_protein_sequence` and (planned) antibody developability. Avoids duplication when M4 ships |
 | `curl_cffi` for ClinicalTrials.gov only | Cloudflare TLS-fingerprints stock httpx from WSL2 and some cloud IP ranges. Narrowly scoped to this one client — everything else still uses the shared httpx |
 
@@ -123,7 +127,7 @@ See [tools.md](tools.md) for which model each tool produces.
 
 ## Scoring model — `prioritize_target`
 
-The composite priority score (0–10) combines six evidence axes:
+The composite priority score (0–10) combines seven evidence axes:
 
 | Source | Max | Logic |
 |--------|-----|-------|
@@ -133,6 +137,12 @@ The composite priority score (0–10) combines six evidence axes:
 | Clinical / known-drug evidence | 1.5 | `known_drug_score × 1.5` |
 | ChEMBL potency | 1.5 | pChEMBL ≥9 → 1.5, ≥7 → 1.0, ≥5 → 0.5, else 0.25 |
 | UniProt protein quality | 1.5 | reviewed (+0.5) + variant coverage (max +1.0) |
+| HPA tissue specificity (extended mode) | 1.0 | `Tissue enriched` 1.0 → `Group enriched` 0.7 → `Tissue enhanced` 0.5 → `Low tissue specificity` 0.2 → `Not detected` 0.0. Sourced from `get_protein_atlas`; only contributes when extended-mode fan-out fetches HPA |
+
+The seven per-axis maxes sum to 12.5; the final priority score is capped at
+10.0. The expression axis was added in v0.3.0 — by design it does not push
+existing high-tier targets over the cap, so v0.2.x scores remain backward
+compatible.
 
 **Pan-essential cap:** pan-essential genes (DepMap `common_essential`) have
 their DepMap contribution capped at 0.5 — a narrow therapeutic window is a
@@ -178,6 +188,10 @@ intentionally conservative to avoid overfitting to any single target class.
 | InterPro | REST | — | Generous. Keyed by UniProt accession |
 | MaveDB | REST | — | Generous. Score-set search (JSON) + per-variant scores CSV. CSV cached per URN to avoid re-downloading for each variant |
 | MyVariant.info | REST | — | Generous. Single HGVS genomic key returns ClinVar + dbNSFP (AlphaMissense, REVEL, CADD, SIFT, PolyPhen) + gnomAD AF |
+| Ensembl REST + VEP | REST | — | 5 req/s (`Semaphore(5)`). HGNC → ENSG resolution, region overlap, VEP HGVS consequences (canonical transcript by default; `include_all_transcripts` opt-in) |
+| GTEx | REST | — | Generous. Median TPM per tissue. Resolves HGNC → GENCODE via the shared Ensembl client |
+| Human Protein Atlas | REST (bulk JSON) | — | Bulk-download JSON parsed for tissue-specificity category, subcellular localization, and pathology prognostics. 7-day disk cache |
+| OpenFDA | REST | optional `OPENFDA_API_KEY` | Free tier: 240 req/min, 1000 req/day; key lifts the limit. FAERS adverse events, structured drug labels (boxed warnings), recall enforcement reports. `Semaphore(2)`. 7-day disk cache |
 | NCBI E-utils | REST | — | 3 req/s. Set `NCBI_EMAIL` env var per NCBI ToS for production |
 
 ---
@@ -185,7 +199,7 @@ intentionally conservative to avoid overfitting to any single target class.
 ## Testing
 
 ```bash
-uv run pytest tests/ -v          # 146 unit + integration tests
+uv run pytest tests/ -v          # 192 unit + integration tests
 uv run pytest tests/ --cov=genesis_bio_mcp
 ```
 

@@ -2,20 +2,22 @@
 
 [![CI](https://github.com/WSobo/genesis-bio-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WSobo/genesis-bio-mcp/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
+[![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
 
-An MCP server that gives AI agents structured access to **23 tools** across
-**19 biomedical databases** for drug discovery target prioritization,
+An MCP server that gives AI agents structured access to **27 tools** across
+**23 biomedical databases** for drug discovery target prioritization,
 experiment design, and protein engineering.
 
 Ask *"Find underexplored MAPK kinases with no approved drugs"* or
 *"Is TP53 R175H pathogenic — what does AlphaMissense and DMS say?"* and a
 Claude-powered workflow agent chains queries across UniProt, Open Targets,
 DepMap, GWAS Catalog, ChEMBL, PubChem, AlphaFold, STRING, DGIdb,
-ClinicalTrials.gov, Reactome, SAbDab, IEDB, InterPro, MaveDB, gnomAD, and
-MyVariant.info into a structured evidence report. no hardcoded scripts,
-no manual API calls.
+ClinicalTrials.gov, Reactome, SAbDab, IEDB, InterPro, MaveDB, gnomAD,
+MyVariant.info, Ensembl/VEP, GTEx, the Human Protein Atlas, and OpenFDA
+into a structured evidence report — no hardcoded scripts, no manual API
+calls.
 
 > **What is MCP?** The [Model Context Protocol](https://modelcontextprotocol.io)
 > is an open standard that lets AI assistants (Claude, Cursor, etc.) call
@@ -29,7 +31,7 @@ no manual API calls.
 
 | Doc | What it covers |
 |---|---|
-| **[docs/tools.md](docs/tools.md)** | Full catalog of all 23 tools grouped by category, input fields, and use cases |
+| **[docs/tools.md](docs/tools.md)** | Full catalog of all 27 tools grouped by category, input fields, and use cases |
 | **[docs/protein-engineering.md](docs/protein-engineering.md)** | v0.2.0 protein engineering workflows: sequence analysis, variant effects, T-cell immunogenicity, combined examples |
 | **[docs/architecture.md](docs/architecture.md)** | Directory layout, client/model patterns, design decisions, `prioritize_target` scoring model, per-database API reference |
 | **[docs/benchmark.md](docs/benchmark.md)** | 12-target benchmark matrix and example `prioritize_target` output |
@@ -66,6 +68,9 @@ For the AI workflow tool (`run_biology_workflow`) only:
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+Optional — `OPENFDA_API_KEY` lifts the OpenFDA free-quota (240 req/min,
+1000 req/day → much higher). Tools work without it.
+
 ## Add to Claude Desktop
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
@@ -94,7 +99,7 @@ configuration.
 
 ## Tools at a glance
 
-23 tools across 19 data sources, organized into 8 categories. Full details
+27 tools across 23 data sources, organized into 9 categories. Full details
 in [docs/tools.md](docs/tools.md).
 
 | Category | Tools | Data sources |
@@ -104,9 +109,10 @@ in [docs/tools.md](docs/tools.md).
 | **Druggability** | `get_compounds`, `get_chembl_compounds` | PubChem, ChEMBL |
 | **Structure & interactions** | `get_protein_structure`, `get_protein_interactome`, `get_biogrid_interactions` | AlphaFold, RCSB PDB, STRING, BioGRID |
 | **Antibody & epitope** | `get_antibody_structures`, `get_epitope_data`, `get_mhc_binding` | SAbDab, IEDB, IEDB NextGen Tools |
-| **Protein engineering** | `get_protein_sequence`, `get_variant_effects`, `get_variant_constraints`, `get_domain_annotation`, `get_dms_scores`, `get_mhc_binding` | UniProt, gnomAD, MyVariant.info, MaveDB, InterPro, IEDB |
+| **Protein engineering** | `get_protein_sequence`, `get_variant_effects`, `get_variant_constraints`, `get_variant_consequences`, `get_domain_annotation`, `get_dms_scores`, `get_mhc_binding` | UniProt, gnomAD, MyVariant.info, Ensembl/VEP, MaveDB, InterPro, IEDB |
+| **Expression** | `get_tissue_expression`, `get_protein_atlas` | GTEx, Human Protein Atlas |
 | **Pathways** | `get_pathway_context`, `get_pathway_members` | Reactome |
-| **Synthesis** | `get_drug_history`, `prioritize_target`, `compare_targets`, `run_biology_workflow` | DGIdb + ClinicalTrials.gov + Claude |
+| **Synthesis** | `get_drug_history`, `prioritize_target`, `compare_targets`, `run_biology_workflow` | DGIdb + ClinicalTrials.gov + OpenFDA + Claude |
 
 All tools return Markdown by default; every tool accepts
 `response_format="json"` for pipeline integration.
@@ -141,7 +147,7 @@ All tools return Markdown by default; every tool accepts
 
 ```bash
 uv sync
-uv run pytest tests/ -v          # 146 unit + integration tests
+uv run pytest tests/ -v          # 192 unit + integration tests
 uv run pytest tests/ --cov=genesis_bio_mcp
 ```
 
@@ -159,4 +165,4 @@ Full dev workflow and the 7-step recipe for adding a new data source:
 
 ## License
 
-MIT
+Apache License 2.0 — see [LICENSE](LICENSE).
