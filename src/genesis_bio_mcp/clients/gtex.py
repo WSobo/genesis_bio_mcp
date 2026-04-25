@@ -4,18 +4,18 @@ Wraps https://gtexportal.org/api/v2. No API key required.
 
 GTEx requires the **versioned** GENCODE ID on the expression endpoint
 (``ENSG00000169174.11``); the unversioned form silently returns an empty
-``data: []`` payload. The version suffix is GTEx's pinned GENCODE release
-(currently v26 = GRCh38), not the live Ensembl version, so resolving
-through Ensembl alone is unreliable across releases.
+``data: []`` payload.
 
-We resolve through GTEx's own ``/api/v2/reference/gene`` endpoint, which
-maps an HGNC symbol to the GENCODE ID GTEx itself indexed against. The
-:class:`EnsemblClient` is kept as a secondary fallback for symbols GTEx
-doesn't know.
+The expression dataset (``gtex_v10``) indexes against **GENCODE v39**, but
+``/reference/gene`` defaults to GENCODE v26 (the historical default) and
+returns the v26-style ID — which the v39-keyed expression endpoint then
+fails to find. The reference endpoint accepts ``gencodeVersion`` ∈
+{``v19``, ``v26``, ``v39``}; we pin it to ``v39`` so the returned ID
+matches what the expression endpoint serves.
 
 Endpoints:
-- ``GET /api/v2/reference/gene?geneId={symbol}``                — symbol → versioned GENCODE ID
-- ``GET /api/v2/expression/medianGeneExpression?gencodeId={id}`` — median TPM per tissue
+- ``GET /api/v2/reference/gene?geneId={symbol}&gencodeVersion=v39``  — symbol → v39 GENCODE ID
+- ``GET /api/v2/expression/medianGeneExpression?gencodeId={id}``     — median TPM per tissue
 """
 
 from __future__ import annotations
@@ -120,7 +120,11 @@ class GTExClient:
         url = f"{_GTEX_BASE}/reference/gene"
         try:
             async with _SEMAPHORE:
-                resp = await self._client.get(url, params={"geneId": gene_symbol}, timeout=20.0)
+                resp = await self._client.get(
+                    url,
+                    params={"geneId": gene_symbol, "gencodeVersion": "v39"},
+                    timeout=20.0,
+                )
             if resp.status_code == 404:
                 return None
             resp.raise_for_status()

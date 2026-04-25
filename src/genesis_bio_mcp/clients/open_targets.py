@@ -121,13 +121,33 @@ class OpenTargetsClient:
         return hits[0]["id"] if hits else None
 
     async def _resolve_disease(self, name: str) -> tuple[str | None, str | None]:
-        data = await self._graphql(_DISEASE_SEARCH_QUERY, {"name": name})
-        if data is None:
-            return None, None
-        hits = data.get("data", {}).get("search", {}).get("hits", [])
-        for hit in hits:
-            if hit.get("entity") == "disease":
-                return hit["id"], hit.get("name")
+        """Resolve a free-text indication to (EFO ID, canonical name).
+
+        OT's ``search`` GraphQL is autocomplete-style and brittle to natural-
+        language disease strings. ``"non-small-cell lung cancer (NSCLC)"``
+        returns zero hits; even the cleaned ``"non-small-cell lung cancer"``
+        returns zero. Only the bare abbreviation ``"NSCLC"`` resolves to
+        ``EFO_0003060``. Failing silently here produces a confident-looking
+        but wrong ``LOW PRIORITY`` call on real targets, so we explicitly
+        retry with a small set of normalized variants and log which one won.
+        """
+        for candidate in _normalize_indication_variants(name):
+            data = await self._graphql(_DISEASE_SEARCH_QUERY, {"name": candidate})
+            if data is None:
+                continue
+            hits = data.get("data", {}).get("search", {}).get("hits", [])
+            for hit in hits:
+                if hit.get("entity") == "disease":
+                    if candidate != name:
+                        logger.info(
+                            "Open Targets disease resolution: '%s' returned no hits, "
+                            "fallback variant '%s' resolved to %s (%s)",
+                            name,
+                            candidate,
+                            hit.get("name"),
+                            hit["id"],
+                        )
+                    return hit["id"], hit.get("name")
         return None, None
 
     async def _fetch_association(
@@ -198,6 +218,45 @@ class OpenTargetsClient:
                 logger.warning("Open Targets GraphQL request failed: %s", exc)
                 return None
         return None
+
+
+def _normalize_indication_variants(name: str) -> list[str]:
+    """Return ordered, deduped query variants to try against OT disease search.
+
+    Order matters: the literal string is tried first to preserve cache hits
+    and respect user intent. Fallbacks fire only if the literal returns zero
+    disease hits.
+
+    1. Literal (current input, whitespace-collapsed)
+    2. Stripped of any parenthetical (``"X (NSCLC)"`` → ``"X"``)
+    3. Bare parenthetical content alone (``"X (NSCLC)"`` → ``"NSCLC"``) — this
+       is the variant that catches the real-world case where OT's search
+       indexes the abbreviation but not the long form
+    4. Hyphen-stripped (``"non-small-cell"`` → ``"non small cell"``)
+    """
+    import re
+
+    variants: list[str] = []
+
+    def _add(v: str) -> None:
+        cleaned = " ".join(v.strip().split())
+        if cleaned and cleaned not in variants:
+            variants.append(cleaned)
+
+    base = name.strip()
+    _add(base)
+
+    paren_match = re.search(r"\(([^)]+)\)", base)
+    stripped = re.sub(r"\s*\([^)]+\)\s*", " ", base).strip()
+    _add(stripped)
+    if paren_match:
+        _add(paren_match.group(1))
+
+    # Hyphen variant operates on whichever stripped form exists.
+    pivot = stripped or base
+    _add(pivot.replace("-", " "))
+
+    return variants
 
 
 def _extract_row(data: dict | None, efo_id: str) -> dict | None:

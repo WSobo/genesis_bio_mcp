@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from genesis_bio_mcp.clients.dgidb import _DIRECT_TYPES
 from genesis_bio_mcp.models import (
     _EXPRESSION_BY_CATEGORY,
     CancerDependency,
@@ -88,6 +89,21 @@ PUBCHEM_MIN_COMPOUNDS = 5
 #   Below 3.15 leaves TNF at Medium; above 3.5 risks over-scoring targets with one
 #   approved drug and a weak OT overall.
 OT_CLINICALLY_VALIDATED_FLOOR = 3.25
+
+# OT_GENETIC_MONOGENIC_THRESHOLD (0.7):
+#   Threshold on Open Targets' ``genetic_association_score`` above which the
+#   GWAS axis is treated as N/A (rather than zero) when GWAS Catalog returns
+#   no hits. A score >0.7 is the empirical signature of monogenic / Mendelian
+#   diseases (CFTR/CF=0.99, HBB/sickle cell=0.96, HTT/Huntington's=0.94 all
+#   sit here) for which GWAS Catalog has no entries by design — they're
+#   studied via Mendelian linkage and ClinVar, not population GWAS. Without
+#   this gate, CFTR/CF scored 6.7 MEDIUM despite being the most-validated
+#   target-disease pair in cystic fibrosis history. Polygenic targets
+#   (FTO/obesity=0.55, PCSK9/CHD=0.65) sit below the threshold and are
+#   unaffected. Range to consider: 0.65–0.8. Below 0.65 starts crediting
+#   moderate-evidence polygenic targets that should still surface GWAS hits;
+#   above 0.8 leaves some monogenic targets uncredited.
+OT_GENETIC_MONOGENIC_THRESHOLD = 0.7
 
 
 async def prioritize_target(
@@ -359,8 +375,25 @@ async def attach_safety_signals(
     if openfda is None or not drugs:
         return drugs
 
+    # Restrict FAERS enrichment to drugs whose DGIdb interaction_type indicates
+    # direct target engagement (inhibitor / antagonist / agonist / binder /
+    # blocker / modulator). DGIdb returns ANY drug ever co-mentioned with the
+    # gene, including incidental co-administrations: querying EGFR returns
+    # atezolizumab (PD-L1) and bevacizumab (VEGF) because they're given
+    # alongside EGFR-TKIs in trials. Their FAERS profiles describe their own
+    # mechanism, not target-related liability — including them in EGFR's safety
+    # panel is actively misleading. ``interaction_type=None`` is kept (DGIdb
+    # often lacks the typing for new approvals) but unknown-type drugs are
+    # ranked behind explicit direct interactors below.
+    approved = [d for d in drugs if d.approved]
+    direct_engagers = [
+        d for d in approved if d.interaction_type and d.interaction_type.lower() in _DIRECT_TYPES
+    ]
+    untyped = [d for d in approved if not d.interaction_type]
+
+    pool = direct_engagers + untyped if direct_engagers else approved
     approved_sorted = sorted(
-        (d for d in drugs if d.approved),
+        pool,
         key=lambda d: (-(d.phase or 4), d.drug_name.lower()),
     )
     targets = approved_sorted[:_SAFETY_LOOKUP_CAP]
@@ -462,8 +495,20 @@ def _compute_score(
     # GWAS evidence (max 2.0)
     # Cap at 3: ≥3 replicated trait hits = full credit. Keeps score stable whether
     # the fetch returned 3 or 30 hits — pagination differences don't affect scoring.
+    #
+    # Monogenic credit: when OT's genetic_association_score is high
+    # (> OT_GENETIC_MONOGENIC_THRESHOLD), the disease is Mendelian and absent
+    # GWAS data is a feature of the disease class, not weak evidence. Award
+    # full GWAS credit to avoid double-penalizing CF, sickle cell, Huntington's,
+    # and other targets where OT's overall_score already captures the genetic
+    # certainty in full.
     if gwas_ev:
         breakdown.gwas = min(gwas_ev.total_associations, 3) / 3 * 2.0
+    elif (
+        disease_assoc
+        and (disease_assoc.genetic_association_score or 0) > OT_GENETIC_MONOGENIC_THRESHOLD
+    ):
+        breakdown.gwas = 2.0
 
     # Clinical / known-drug evidence (max 1.5)
     # Distinguishes targets with approved drugs from literature-only at the same OT overall_score

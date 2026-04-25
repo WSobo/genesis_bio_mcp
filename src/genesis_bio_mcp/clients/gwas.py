@@ -92,6 +92,41 @@ async def _resolve_empty() -> list:
     return []
 
 
+def _top_unfiltered_associations(
+    raw: list[GwasHit], symbol: str, trait: str, *, top_n: int = 5
+) -> GwasEvidence | None:
+    """Return the strongest gene-level associations regardless of trait label.
+
+    Used when ``_process_for_trait`` finds no hits matching the queried trait
+    but the gene itself has GWAS evidence under different trait labels. The
+    ``trait_query`` field carries a sentinel suffix so renderers can flag that
+    the rows shown are the gene's top associations, not exact-trait matches.
+    """
+    seen: set[tuple] = set()
+    unique: list[GwasHit] = []
+    for h in raw:
+        key = (h.risk_allele, h.study_accession, h.p_value)
+        if key in seen:
+            continue
+        if not h.p_value or h.p_value <= 0:
+            continue
+        seen.add(key)
+        unique.append(h)
+
+    if not unique:
+        return None
+
+    unique.sort(key=lambda h: h.p_value)
+    selected = unique[:top_n]
+    return GwasEvidence(
+        gene_symbol=symbol,
+        trait_query=f"{trait} (no exact-trait match — top gene-level associations shown)",
+        total_associations=len(selected),
+        associations=selected,
+        strongest_p_value=selected[0].p_value,
+    )
+
+
 class GwasClient:
     def __init__(
         self,
@@ -142,13 +177,33 @@ class GwasClient:
         result = _process_for_trait(raw, symbol, trait, efo_terms=efo_terms)
         if result:
             _set_cached(self._disk_cache, symbol, trait, result)
-        else:
+            return result
+
+        # Trait-name mismatch fallback: the gene HAS GWAS evidence but no hit
+        # matches the queried trait label (e.g. PCSK9 has dozens of LDL/lipid
+        # associations but none labelled "familial hypercholesterolemia").
+        # Silently zero-scoring the GWAS axis underweights gene-level genetic
+        # support; surface the strongest gene-level associations instead so
+        # the score reflects "the gene is GWAS-implicated, just not under the
+        # exact trait label used."
+        unfiltered = _top_unfiltered_associations(raw, symbol, trait)
+        if unfiltered:
             logger.info(
-                "GWAS: no '%s' trait hits for %s — returning None (data gap)",
-                trait,
+                "GWAS: no exact-trait hits for %s/'%s'; surfaced %d top gene-level "
+                "associations as fallback",
                 symbol,
+                trait,
+                unfiltered.total_associations,
             )
-        return result
+            _set_cached(self._disk_cache, symbol, trait, unfiltered)
+            return unfiltered
+
+        logger.info(
+            "GWAS: no '%s' trait hits for %s — returning None (data gap)",
+            trait,
+            symbol,
+        )
+        return None
 
     async def _fetch_all(self, symbol: str, ncbi_gene_id: str | None) -> list[GwasHit]:
         """Run primary (gene-ID) and SNP paths concurrently, return merged results.

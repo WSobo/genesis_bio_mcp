@@ -4083,3 +4083,347 @@ async def test_uniprot_search_prefers_exact_gene_match_over_first_hit(http_clien
     assert protein.uniprot_accession == "P02768"
     assert protein.gene_symbol == "ALB"
     assert protein.protein_name == "Albumin"
+
+
+# ---------------------------------------------------------------------------
+# v0.3.2 regression tests — five second-round fixes from the live MCP smoke run
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_gtex_passes_gencode_v39_to_reference_endpoint(http_client, tmp_path, monkeypatch):
+    """Bug B (still): /reference/gene defaults to gencodeVersion=v26 which
+    returns IDs the gtex_v10 expression dataset (keyed on GENCODE v39) can't
+    find. The client must pin gencodeVersion=v39 so the returned ID matches."""
+    from genesis_bio_mcp.clients.ensembl import EnsemblClient
+    from genesis_bio_mcp.clients.gtex import GTExClient
+
+    monkeypatch.setattr(
+        "genesis_bio_mcp.config.settings.settings.gtex_cache_path",
+        tmp_path / "gtex.json",
+    )
+
+    seen_versions: list[str | None] = []
+
+    def _ref_handler(request):
+        seen_versions.append(request.url.params.get("gencodeVersion"))
+        return httpx.Response(
+            200,
+            json={"data": [{"geneSymbol": "INS", "gencodeId": "ENSG00000254647.7"}]},
+        )
+
+    respx.get(url__regex=r"gtexportal\.org/api/v2/reference/gene").mock(
+        side_effect=_ref_handler,
+    )
+    respx.get(url__regex=r"gtexportal\.org/api/v2/expression/medianGeneExpression").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "tissueSiteDetailId": "Pancreas",
+                        "median": 12345.0,
+                        "numSamples": 200,
+                        "gencodeId": "ENSG00000254647.7",
+                        "geneSymbol": "INS",
+                    }
+                ]
+            },
+        )
+    )
+
+    ensembl = EnsemblClient(http_client)
+    client = GTExClient(http_client, ensembl=ensembl)
+    profile = await client.get_expression("INS")
+
+    assert profile is not None
+    assert profile.gencode_id == "ENSG00000254647.7"
+    assert profile.samples and profile.samples[0].median_tpm == 12345.0
+    # Crucial assertion — without v39, the live API returns empty data.
+    assert seen_versions == ["v39"], f"expected gencodeVersion=v39, got {seen_versions}"
+
+
+@respx.mock
+async def test_open_targets_falls_back_to_parenthetical_abbreviation(http_client):
+    """Bug J: 'non-small-cell lung cancer (NSCLC)' returns 0 OT hits even
+    though the bare 'NSCLC' resolves to EFO_0003060. The resolver must try
+    the parenthetical abbreviation as an explicit fallback variant."""
+    import json as _json
+
+    from genesis_bio_mcp.clients.open_targets import OpenTargetsClient
+
+    seen_disease_queries: list[str] = []
+
+    def _post_handler(request):
+        body = _json.loads(request.content)
+        query = body.get("query", "")
+        variables = body.get("variables", {})
+
+        if "DiseaseSearch" in query:
+            qstr = variables.get("name", "")
+            seen_disease_queries.append(qstr)
+            if qstr.upper() == "NSCLC":
+                return httpx.Response(
+                    200,
+                    json={
+                        "data": {
+                            "search": {
+                                "hits": [
+                                    {
+                                        "id": "EFO_0003060",
+                                        "name": "non-small cell lung carcinoma",
+                                        "entity": "disease",
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                )
+            return httpx.Response(200, json={"data": {"search": {"hits": []}}})
+
+        if "GeneSearch" in query:
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "search": {
+                            "hits": [{"id": "ENSG00000146648", "entity": "target", "name": "EGFR"}]
+                        }
+                    }
+                },
+            )
+
+        # Association query — return a stub row keyed to EFO_0003060 so the
+        # association fetch succeeds.
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "target": {
+                        "associatedDiseases": {
+                            "count": 1,
+                            "rows": [
+                                {
+                                    "score": 0.85,
+                                    "datatypeScores": [],
+                                    "datasourceScores": [],
+                                    "disease": {
+                                        "id": "EFO_0003060",
+                                        "name": "non-small cell lung carcinoma",
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        )
+
+    respx.post(url__regex=r"api\.platform\.opentargets\.org/api/v4/graphql").mock(
+        side_effect=_post_handler,
+    )
+
+    client = OpenTargetsClient(http_client)
+    result = await client.get_association("EGFR", "non-small-cell lung cancer (NSCLC)")
+
+    # Literal MUST be tried first (cache-friendly + respects user intent).
+    assert seen_disease_queries[0] == "non-small-cell lung cancer (NSCLC)"
+    # The bare abbreviation MUST appear in the variant chain — it's the one
+    # that resolves the EFO ID.
+    assert "NSCLC" in seen_disease_queries
+    # Lookup must ultimately succeed.
+    assert result is not None
+    assert result.disease_efo_id == "EFO_0003060"
+
+
+def test_open_targets_normalize_indication_variants():
+    """Unit-test the variant generator directly — order and dedup matter."""
+    from genesis_bio_mcp.clients.open_targets import _normalize_indication_variants
+
+    v = _normalize_indication_variants("non-small-cell lung cancer (NSCLC)")
+    # Literal first, then stripped, then abbreviation, then hyphen-stripped.
+    assert v[0] == "non-small-cell lung cancer (NSCLC)"
+    assert "non-small-cell lung cancer" in v
+    assert "NSCLC" in v
+    assert any("non small cell" in candidate for candidate in v)
+    assert len(v) == len(set(v))  # no dupes
+
+    # No-paren input still yields the hyphen variant.
+    v2 = _normalize_indication_variants("type-2-diabetes")
+    assert "type-2-diabetes" in v2
+    assert "type 2 diabetes" in v2
+
+
+def test_compute_score_credits_gwas_axis_for_monogenic_diseases():
+    """Bug G: when OT.genetic_association_score > 0.7 (monogenic signature)
+    and GWAS Catalog returns nothing (because the disease isn't a GWAS
+    subject), the GWAS axis must NOT zero out — that double-penalizes
+    Mendelian targets like CFTR/CF whose genetic evidence is already fully
+    captured by OT's overall_score."""
+    from genesis_bio_mcp.models import TargetDiseaseAssociation
+    from genesis_bio_mcp.tools.target_prioritization import _compute_score
+
+    monogenic = TargetDiseaseAssociation(
+        gene_symbol="CFTR",
+        disease_name="cystic fibrosis",
+        disease_efo_id="EFO_0000384",
+        ensembl_id="ENSG00000001626",
+        overall_score=0.85,
+        genetic_association_score=0.99,  # > monogenic threshold
+        somatic_mutation_score=None,
+        known_drug_score=0.95,
+        literature_mining_score=0.6,
+        evidence_count=200,
+    )
+    _, breakdown = _compute_score(
+        disease_assoc=monogenic,
+        cancer_dep=None,
+        gwas_ev=None,
+        compounds=None,
+        protein=None,
+    )
+    assert breakdown.gwas == 2.0, "monogenic credit must give full GWAS axis (2.0)"
+
+    polygenic = TargetDiseaseAssociation(
+        gene_symbol="FTO",
+        disease_name="obesity",
+        disease_efo_id="EFO_0001073",
+        ensembl_id="ENSG00000140718",
+        overall_score=0.5,
+        genetic_association_score=0.55,  # below threshold
+        somatic_mutation_score=None,
+        known_drug_score=0.0,
+        literature_mining_score=0.4,
+        evidence_count=50,
+    )
+    _, breakdown2 = _compute_score(
+        disease_assoc=polygenic,
+        cancer_dep=None,
+        gwas_ev=None,
+        compounds=None,
+        protein=None,
+    )
+    assert breakdown2.gwas == 0.0, "polygenic gene without GWAS must NOT get monogenic credit"
+
+
+async def test_attach_safety_signals_filters_to_direct_engagement_drugs():
+    """Bug F: DGIdb returns ALL drugs co-mentioned with a gene (atezolizumab
+    on EGFR via co-administration). FAERS enrichment must skip drugs whose
+    interaction_type is not in _DIRECT_TYPES so the safety panel reflects
+    target-related liability, not co-administration noise."""
+    from genesis_bio_mcp.models import DrugInteraction
+    from genesis_bio_mcp.tools.target_prioritization import attach_safety_signals
+
+    drugs = [
+        DrugInteraction(
+            drug_name="afatinib",
+            interaction_type="inhibitor",
+            phase=4,
+            approved=True,
+            sources=["FDA"],
+        ),
+        # Co-mention via trials, NOT a direct EGFR drug — must be skipped.
+        DrugInteraction(
+            drug_name="atezolizumab",
+            interaction_type="other",
+            phase=4,
+            approved=True,
+            sources=["TTD"],
+        ),
+        # Untyped approved drug — kept as fallback (DGIdb often misses typing
+        # for newer approvals).
+        DrugInteraction(
+            drug_name="erlotinib",
+            interaction_type=None,
+            phase=4,
+            approved=True,
+            sources=["FDA"],
+        ),
+    ]
+
+    queried: list[str] = []
+
+    class _FakeOpenFDA:
+        async def get_safety_signals(self, drug_name: str):
+            queried.append(drug_name)
+            return None  # only verifying which drugs got queried, not the response
+
+    out = await attach_safety_signals(drugs, openfda=_FakeOpenFDA())
+
+    assert "afatinib" in queried
+    assert "erlotinib" in queried  # untyped approved retained as fallback
+    assert "atezolizumab" not in queried, (
+        "non-direct engager must NOT trigger FAERS lookup — that was Bug F"
+    )
+    assert len(out) == 3  # passthrough preserves the full list
+
+
+@respx.mock
+async def test_gwas_falls_back_to_unfiltered_top_hits_when_trait_match_empty(
+    http_client, tmp_path, monkeypatch
+):
+    """Bug D: gene has GWAS evidence but no hits match the queried trait
+    label (PCSK9 has dozens of LDL/lipid hits, none labelled 'familial
+    hypercholesterolemia'). The fallback must surface the strongest gene-
+    level associations with a sentinel trait_query so the score reflects
+    'gene IS GWAS-implicated, just not under this exact label.'"""
+    from genesis_bio_mcp.clients.gwas import GwasClient
+
+    monkeypatch.setattr(
+        "genesis_bio_mcp.config.settings.settings.gwas_cache_path",
+        tmp_path / "gwas.json",
+    )
+
+    # SNP-symbol path: empty (we want the gene-ID path to carry the result).
+    respx.get(url__regex=r"gwas/rest/api/singleNucleotidePolymorphisms/search/findByGene").mock(
+        return_value=httpx.Response(
+            200,
+            json={"_embedded": {"singleNucleotidePolymorphisms": []}},
+        )
+    )
+
+    # Gene-ID path: 2 hits labelled "LDL cholesterol levels" — they don't
+    # match the queried "familial hypercholesterolemia" trait string.
+    respx.get(url__regex=r"gwas/rest/api/associations/search/findByEntrezMappedGeneId").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "_embedded": {
+                    "associations": [
+                        {
+                            "pvalue": 4e-20,
+                            "loci": [
+                                {
+                                    "strongestRiskAlleles": [{"riskAlleleName": "rs11591147-T"}],
+                                    "authorReportedGenes": [{"geneName": "PCSK9"}],
+                                }
+                            ],
+                            "efoTraits": [{"trait": "LDL cholesterol levels", "uri": None}],
+                        },
+                        {
+                            "pvalue": 3e-15,
+                            "loci": [
+                                {
+                                    "strongestRiskAlleles": [{"riskAlleleName": "rs562556-A"}],
+                                    "authorReportedGenes": [{"geneName": "PCSK9"}],
+                                }
+                            ],
+                            "efoTraits": [{"trait": "LDL cholesterol levels", "uri": None}],
+                        },
+                    ]
+                }
+            },
+        )
+    )
+
+    client = GwasClient(http_client, efo_resolver=None)
+    result = await client.get_evidence(
+        "PCSK9", "familial hypercholesterolemia", ncbi_gene_id="255738"
+    )
+
+    # Fallback returns the top gene-level hits, NOT None.
+    assert result is not None
+    assert result.total_associations == 2
+    # Sentinel marker so renderers can flag the fallback.
+    assert "no exact-trait match" in result.trait_query
+    assert result.strongest_p_value == 4e-20

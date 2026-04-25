@@ -7,6 +7,80 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.3.2] — 2026-04-25
+
+Patch release. Fixes five bugs caught by a second-round live MCP smoke test
+(PCSK9, CFTR, MYC, EGFR, EVOLOCUMAB, EGFR/NSCLC, INS, MIR21, OCT4, MLL),
+including one **silent-data-loss critical** in Open Targets and one v0.3.1
+fix that turned out to be insufficient (GTEx).
+
+### Fixed
+
+- **GTEx still returned empty TPM payloads (Bug B carryover from v0.3.1).**
+  v0.3.1 fixed the unversioned-ID case by routing through GTEx's
+  `/reference/gene` endpoint. But that endpoint defaults to
+  `gencodeVersion=v26`, which returns IDs the current expression dataset
+  (`gtex_v10`, keyed on **GENCODE v39**) can't find — the lookup succeeded
+  but the expression endpoint silently returned `data: []` again. Pin
+  `gencodeVersion=v39` so the IDs match what `gtex_v10` indexes against.
+  Verified end-to-end against PCSK9 (liver TPM ~5–10) and INS (pancreas
+  TPM ~10000+).
+- **Open Targets indication parsing — silent data loss on parentheses.**
+  `EGFR + "non-small-cell lung cancer (NSCLC)"` returned 0 OT evidence and
+  scored 3.4 LOW PRIORITY for what is the textbook precision-oncology
+  success story. Root cause: OT's `search` GraphQL is autocomplete-style
+  and brittle — both `"non-small-cell lung cancer (NSCLC)"` AND
+  `"non-small-cell lung cancer"` return zero hits, but `"NSCLC"` alone
+  resolves to `EFO_0003060`. Added `_normalize_indication_variants()` that
+  tries the literal first (cache-friendly), then the parenthetical-stripped
+  form, then the bare abbreviation, then the hyphen-normalized form,
+  logging which variant won. Worst class of bug closed: confident-looking
+  wrong answer on a real target.
+- **GWAS trait-name mismatch (Bug D carryover).** When the queried
+  indication doesn't match any GWAS Catalog trait label (PCSK9 has dozens
+  of LDL/lipid associations, none labelled `"familial hypercholesterolemia"`),
+  the trait filter returned None and the GWAS axis zeroed out. Added a
+  fallback in `GwasClient.get_evidence` that surfaces the strongest
+  unfiltered gene-level associations with a sentinel `trait_query` so the
+  score reflects "gene IS GWAS-implicated, just not under this exact label."
+- **Composite scoring penalized monogenic diseases.** `CFTR + cystic
+  fibrosis` scored 6.7 MEDIUM despite being the most-validated CF target —
+  the GWAS axis was 0 because GWAS Catalog doesn't study Mendelian
+  diseases. Added a monogenic credit: when OT's
+  `genetic_association_score > OT_GENETIC_MONOGENIC_THRESHOLD` (0.7) and
+  GWAS returns nothing, award the full 2.0 GWAS axis. Polygenic targets
+  (FTO, PCSK9) sit below the threshold and are unaffected.
+- **FAERS pulled non-target drugs from DGIdb co-mentions.** `get_drug_history`
+  for EGFR returned safety panels including atezolizumab (anti-PD-L1) and
+  bevacizumab (anti-VEGF) because DGIdb associates them with EGFR via
+  trial co-administration. Restricted `attach_safety_signals()` to drugs
+  whose `interaction_type` is in `_DIRECT_TYPES`
+  (inhibitor / antagonist / blocker / agonist / modulator / binder), with
+  untyped approved drugs retained as fallback for newer approvals DGIdb
+  hasn't categorized yet.
+
+### Added
+
+- 6 regression tests in `tests/test_clients.py` — one per bug (B, J, D, F,
+  G) plus a unit test for `_normalize_indication_variants`. **203/203 tests
+  pass.**
+- `OT_GENETIC_MONOGENIC_THRESHOLD = 0.7` constant in
+  `tools/target_prioritization.py` with documented rationale and tuning
+  range, alongside the existing `OT_CLINICALLY_VALIDATED_FLOOR`.
+
+### Deferred to v0.4.0
+
+- **Bug H** — GWAS empty-result latency (~10s on no-hit cases). Not a real
+  bug; the SNP-fetch + cascading association fetches have a hard 15s ceiling.
+  Bug D's unfiltered fallback partially masks this since it returns earlier.
+- **Bug I** — chemical-matter score doesn't weight assay type. MYC scores
+  1.5/1.5 from binding-only assays despite being undruggable. Real
+  correctness gap, but fixing it requires a new `best_pchembl_assay_type`
+  field on `ChEMBLCompounds` and recalibration against the 14-target
+  benchmark to confirm no tier flips. v0.4.0 scoring overhaul, not a patch.
+
+---
+
 ## [0.3.1] — 2026-04-25
 
 Patch release. Fixes four bugs caught by the post-v0.3.0 smoke run against
