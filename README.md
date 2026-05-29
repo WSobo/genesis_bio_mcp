@@ -6,14 +6,14 @@
 [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
 
-An MCP server that gives AI agents structured access to **30 tools** across
-**23 biomedical databases** for drug discovery target prioritization,
+An MCP server that gives AI agents structured access to **31 tools** across
+**24 biomedical databases** for drug discovery target prioritization,
 experiment design, and protein engineering.
 
 Ask *"Find underexplored MAPK kinases with no approved drugs"* or
 *"Is TP53 R175H pathogenic — what does AlphaMissense and DMS say?"* and a
 Claude-powered workflow agent chains queries across UniProt, Open Targets,
-DepMap, GWAS Catalog, ChEMBL, PubChem, AlphaFold, STRING, DGIdb,
+DepMap, GWAS Catalog, ChEMBL, PubChem, AlphaFold, Foldseek, STRING, DGIdb,
 ClinicalTrials.gov, Reactome, SAbDab, IEDB, InterPro, MaveDB, gnomAD,
 MyVariant.info, Ensembl/VEP, GTEx, the Human Protein Atlas, and OpenFDA
 into a structured evidence report — no hardcoded scripts, no manual API
@@ -31,7 +31,7 @@ calls.
 
 | Doc | What it covers |
 |---|---|
-| **[docs/tools.md](docs/tools.md)** | Full catalog of all 30 tools grouped by category, input fields, and use cases |
+| **[docs/tools.md](docs/tools.md)** | Full catalog of all 31 tools grouped by category, input fields, and use cases |
 | **[docs/protein-engineering.md](docs/protein-engineering.md)** | v0.2.0 protein engineering workflows: sequence analysis, variant effects, T-cell immunogenicity, combined examples |
 | **[docs/architecture.md](docs/architecture.md)** | Directory layout, client/model patterns, design decisions, `prioritize_target` scoring model, per-database API reference |
 | **[docs/benchmark.md](docs/benchmark.md)** | 12-target benchmark matrix and example `prioritize_target` output |
@@ -99,7 +99,7 @@ configuration.
 
 ## Tools at a glance
 
-30 tools across 23 data sources, organized into 9 categories. Full details
+31 tools across 24 data sources, organized into 9 categories. Full details
 in [docs/tools.md](docs/tools.md).
 
 | Category | Tools | Data sources |
@@ -107,7 +107,7 @@ in [docs/tools.md](docs/tools.md).
 | **Gene annotation** | `resolve_gene`, `get_protein_info`, `get_protein_sequence` | UniProt, NCBI |
 | **Disease evidence** | `get_target_disease_association`, `get_cancer_dependency`, `get_gwas_evidence` | Open Targets, DepMap, GWAS Catalog, EFO |
 | **Druggability** | `get_compounds`, `get_chembl_compounds` | PubChem, ChEMBL |
-| **Structure & interactions** | `get_protein_structure`, `get_structure_confidence`, `get_protein_interactome`, `get_biogrid_interactions` | AlphaFold, RCSB PDB, STRING, BioGRID |
+| **Structure & interactions** | `get_protein_structure`, `get_structure_confidence`, `get_structural_homologs`, `get_protein_interactome`, `get_biogrid_interactions` | AlphaFold, RCSB PDB, Foldseek, STRING, BioGRID |
 | **Antibody & epitope** | `get_antibody_structures`, `get_epitope_data`, `get_mhc_binding`, `get_cdr_developability` | SAbDab, IEDB, IEDB NextGen Tools, AbNum |
 | **Protein engineering** | `get_protein_sequence`, `get_structure_confidence`, `get_variant_effects`, `get_variant_constraints`, `get_variant_consequences`, `get_domain_annotation`, `get_dms_scores`, `get_dms_variant_score`, `get_mhc_binding` | UniProt, AlphaFold, gnomAD, MyVariant.info, Ensembl/VEP, MaveDB, InterPro, IEDB |
 | **Expression** | `get_tissue_expression`, `get_protein_atlas` | GTEx, Human Protein Atlas |

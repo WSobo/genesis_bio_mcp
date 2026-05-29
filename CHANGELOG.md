@@ -13,6 +13,18 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Added
 
+- **`get_structural_homologs` tool (M4, 31 tools total).** Runs a Foldseek
+  structural-similarity search on the gene's AlphaFold model via the public Foldseek web
+  server (submit ticket → poll → fetch), returning proteins with a similar 3D fold sorted
+  by E-value (with bit score, match probability, and sequence identity). Surfaces distant
+  structural relatives that sequence search misses — useful for scaffold discovery,
+  function inference for poorly-annotated targets, and spotting structurally-similar
+  off-target folds. New `FoldseekClient` (job-queue submit/poll/parse, semaphore pinned to
+  1 for the shared server), `AlphaFoldClient.get_model_pdb` helper, `StructuralHomolog` /
+  `StructuralHomologs` models, `GENESIS_FOLDSEEK_*` settings (database / poll timeout /
+  interval / max hits), `run_biology_workflow` registration, and 4 client tests. The query's
+  own model is excluded; the `database` (afdb-swissprot / afdb-proteome / pdb) and `max_hits`
+  are tunable per call. Verified end-to-end against the live Foldseek API.
 - **`get_cdr_developability` tool (M3, 30 tools total).** Assesses antibody/nanobody
   CDR developability. Accepts VH/VL variable-domain sequences (auto-numbered to the six
   CDRs via AbNum, Chothia — reusing the SAbDab integration via a new

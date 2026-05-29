@@ -11,6 +11,7 @@ from genesis_bio_mcp.clients.clinical_trials import ClinicalTrialsClient
 from genesis_bio_mcp.clients.depmap import DepMapClient
 from genesis_bio_mcp.clients.dgidb import DGIdbClient
 from genesis_bio_mcp.clients.ensembl import EnsemblClient
+from genesis_bio_mcp.clients.foldseek import FoldseekClient
 from genesis_bio_mcp.clients.gnomad import GnomADClient
 from genesis_bio_mcp.clients.gtex import GTExClient
 from genesis_bio_mcp.clients.gwas import GwasClient
@@ -1240,6 +1241,118 @@ async def test_clinical_trials_returns_empty_on_error(http_client, monkeypatch):
     trials, counts = await client.get_trials("BRAF")
     assert trials == []
     assert counts == {}
+
+
+# ---------------------------------------------------------------------------
+# Foldseek client tests
+# ---------------------------------------------------------------------------
+
+
+class _FakeAlphaFold:
+    """Minimal stub: returns a canned model PDB (or None) for get_model_pdb."""
+
+    def __init__(self, pdb_text: str | None) -> None:
+        self._pdb = pdb_text
+
+    async def get_model_pdb(self, accession: str) -> str | None:
+        return self._pdb
+
+
+_MOCK_FOLDSEEK_TICKET = {"id": "TICKET123", "status": "PENDING"}
+_MOCK_FOLDSEEK_COMPLETE = {"id": "TICKET123", "status": "COMPLETE"}
+_MOCK_FOLDSEEK_RESULT = {
+    "queries": [{"header": "job_A", "sequence": "MABC"}],
+    "mode": "3diaa",
+    "results": [
+        {
+            "db": "afdb-swissprot",
+            # alignments is a list-of-lists (one inner list per submitted query).
+            "alignments": [
+                [
+                    # Self-hit: must be excluded.
+                    {
+                        "target": "AF-P15056-F1-model_v4 BRAF self",
+                        "eval": 0.0,
+                        "score": 999,
+                        "prob": 1.0,
+                        "seqId": 100,
+                        "alnLength": 766,
+                    },
+                    {
+                        "target": "AF-P04049-F1-model_v4 RAF1",
+                        "eval": 1e-9,
+                        "score": 600,
+                        "prob": 0.99,
+                        "seqId": 60,
+                        "alnLength": 600,
+                    },
+                    {
+                        "target": "AF-P10398-F1-model_v4 ARAF",
+                        "eval": 1e-4,
+                        "score": 300,
+                        "prob": 0.9,
+                        "seqId": 45,
+                        "alnLength": 500,
+                    },
+                ]
+            ],
+            "taxonomyreports": [],
+        }
+    ],
+}
+
+
+@respx.mock
+async def test_foldseek_search_happy_path(http_client):
+    respx.post("https://search.foldseek.com/api/ticket").mock(
+        return_value=httpx.Response(200, json=_MOCK_FOLDSEEK_TICKET)
+    )
+    respx.get(url__regex=r"search\.foldseek\.com/api/ticket/TICKET123").mock(
+        return_value=httpx.Response(200, json=_MOCK_FOLDSEEK_COMPLETE)
+    )
+    respx.get(url__regex=r"search\.foldseek\.com/api/result/TICKET123/0").mock(
+        return_value=httpx.Response(200, json=_MOCK_FOLDSEEK_RESULT)
+    )
+
+    client = FoldseekClient(http_client, alphafold=_FakeAlphaFold("HEADER fake\nATOM ..."))
+    result = await client.search("BRAF", "P15056")
+
+    assert result is not None
+    assert result.gene_symbol == "BRAF"
+    assert result.uniprot_accession == "P15056"
+    ids = [h.target_id for h in result.hits]
+    # Self-hit (AF-P15056-) excluded; remaining hits sorted by ascending E-value.
+    assert "AF-P15056-F1-model_v4" not in ids
+    assert ids == ["AF-P04049-F1-model_v4", "AF-P10398-F1-model_v4"]
+    top = result.hits[0]
+    assert top.uniprot_accession == "P04049"  # parsed from AF-<acc>-F..
+    assert top.description == "RAF1"
+    assert top.evalue == pytest.approx(1e-9)
+    assert top.probability == pytest.approx(0.99)
+    assert top.seq_identity == pytest.approx(60)
+    assert "Structural homologs" in result.to_markdown()
+
+
+async def test_foldseek_returns_none_without_accession(http_client):
+    client = FoldseekClient(http_client, alphafold=_FakeAlphaFold("x"))
+    assert await client.search("BRAF", None) is None
+
+
+async def test_foldseek_returns_none_when_no_model(http_client):
+    client = FoldseekClient(http_client, alphafold=_FakeAlphaFold(None))
+    assert await client.search("FAKEGENE", "Q00000") is None
+
+
+@respx.mock
+async def test_foldseek_returns_none_on_job_error(http_client):
+    respx.post("https://search.foldseek.com/api/ticket").mock(
+        return_value=httpx.Response(200, json=_MOCK_FOLDSEEK_TICKET)
+    )
+    respx.get(url__regex=r"search\.foldseek\.com/api/ticket/TICKET123").mock(
+        return_value=httpx.Response(200, json={"id": "TICKET123", "status": "ERROR"})
+    )
+    client = FoldseekClient(http_client, alphafold=_FakeAlphaFold("HEADER\nATOM"))
+    assert await client.search("BRAF", "P15056") is None
 
 
 # ---------------------------------------------------------------------------

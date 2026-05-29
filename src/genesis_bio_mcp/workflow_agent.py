@@ -213,6 +213,14 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"No AlphaFold per-residue confidence available for '{gene_symbol}'."
         return result.to_markdown()
 
+    async def _get_structural_homologs_fn(gene_symbol: str) -> str:
+        protein = await state.uniprot.get_protein(gene_symbol)
+        accession = protein.uniprot_accession if protein else None
+        result = await state.foldseek.search(gene_symbol, accession)
+        if result is None or not result.hits:
+            return f"No structural homologs found for '{gene_symbol}'."
+        return result.to_markdown()
+
     async def _get_protein_interactome_fn(gene_symbol: str) -> str:
         result = await state.string_db.get_interactome(gene_symbol)
         if result is None or result.total_partners == 0:
@@ -670,6 +678,27 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="structure",
             use_when="Use for protein engineering to find well-ordered vs flexible/disordered regions before choosing mutation sites, truncation boundaries, or scaffolds.",
             fn=_get_structure_confidence_fn,
+        ),
+        "get_structural_homologs": ToolSpec(
+            name="get_structural_homologs",
+            description=(
+                "Run a Foldseek structural-similarity search on the gene's AlphaFold model and "
+                "return proteins with a similar 3D fold (E-value, bit score, probability, % id). "
+                "Finds distant structural relatives that sequence search misses."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_symbol": {
+                        "type": "string",
+                        "description": "HGNC gene symbol. Example: 'BRAF'",
+                    }
+                },
+                "required": ["gene_symbol"],
+            },
+            tool_category="structure",
+            use_when="Use to find proteins with a similar 3D fold (structural homologs) for scaffold discovery, function inference for poorly-annotated targets, or spotting structurally-similar off-target folds.",
+            fn=_get_structural_homologs_fn,
         ),
         "get_protein_interactome": ToolSpec(
             name="get_protein_interactome",
