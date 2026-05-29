@@ -1028,6 +1028,53 @@ async def test_ensembl_get_vep_consequences_combined(http_client):
 
 
 @respx.mock
+async def test_ensembl_vep_normalizes_bare_protein_change(http_client):
+    """Regression: get_vep_consequences must normalize a bare 'V600E' to canonical
+    'p.Val600Glu' HGVS. VEP rejects the bare form, so the standalone tool returned
+    no consequences while get_variant_effects (which pre-normalizes) worked."""
+    respx.get(url__regex=r"rest\.ensembl\.org/lookup/symbol/homo_sapiens/BRAF").mock(
+        return_value=httpx.Response(200, json=_MOCK_ENSEMBL_LOOKUP_BRAF)
+    )
+    vep = respx.get(url__regex=r"rest\.ensembl\.org/vep/human/hgvs").mock(
+        return_value=httpx.Response(200, json=_MOCK_ENSEMBL_VEP_V600E)
+    )
+    client = EnsemblClient(http_client)
+    report = await client.get_vep_consequences("BRAF", "V600E")  # bare one-letter form
+    assert report is not None
+    assert report.most_severe_consequence == "missense_variant"
+    # The VEP endpoint must have been queried with the canonical p. HGVS.
+    assert vep.called
+    called_url = str(vep.calls.last.request.url)
+    assert "p.Val600Glu" in called_url
+    assert ":V600E" not in called_url
+
+    # Unparsable mutation → None rather than a malformed VEP query.
+    assert await client.get_vep_consequences("BRAF", "not-a-mutation") is None
+
+
+def test_antibody_affinity_formatting_preserves_sub_nm():
+    """Sub-nM affinities must not collapse to '0.0' — 40 pM (0.04 nM) is a strong
+    binder, not 'no affinity'. Regression for the `:.1f` rounding bug."""
+    from genesis_bio_mcp.models import AntibodyStructure, AntibodyStructures
+
+    s = AntibodyStructure(
+        pdb="5MY6",
+        is_nanobody=True,
+        is_engineered=True,
+        is_scfv=False,
+        resolution_ang=2.25,
+        affinity_nM=0.04,
+    )
+    res = AntibodyStructures(
+        query="HER2", total_structures=1, nanobody_count=1, fab_count=0, structures=[s]
+    )
+    md = res.to_markdown()
+    assert "0.04" in md
+    assert "0.0 nM" not in md
+    assert "Best measured affinity: 0.04 nM" in md
+
+
+@respx.mock
 async def test_ensembl_network_failure_returns_none(http_client):
     respx.get(url__regex=r"rest\.ensembl\.org").mock(side_effect=httpx.ConnectTimeout("boom"))
     client = EnsemblClient(http_client)

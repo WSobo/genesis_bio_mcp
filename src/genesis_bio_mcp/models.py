@@ -3129,6 +3129,22 @@ class AntibodyStructure(BaseModel):
     vl_cdr3: str | None = Field(None, description="VL CDR3 sequence (Chothia); None for nanobodies")
 
 
+def _format_affinity_nm(nm: float) -> str:
+    """Render an affinity in nM without collapsing tight (sub-nM) binders to 0.0.
+
+    A fixed ``%.1f`` rounds a 40 pM antibody (0.04 nM) to "0.0", which reads as
+    "no affinity" — the opposite of the truth. Scale the precision so sub-nM
+    values keep their significant digits.
+    """
+    if nm >= 100:
+        return f"{nm:.0f}"
+    if nm >= 1:
+        return f"{nm:.1f}"
+    if nm >= 0.01:
+        return f"{nm:.2f}"
+    return f"{nm:.3f}"
+
+
 class AntibodyStructures(BaseModel):
     """SAbDab search results: antibody and nanobody structures for an antigen."""
 
@@ -3163,7 +3179,7 @@ class AntibodyStructures(BaseModel):
             species = (s.heavy_species or "—")[:20]
             subclass = s.heavy_subclass or "—"
             eng = "Yes" if s.is_engineered else "No"
-            aff = f"{s.affinity_nM:.1f}" if s.affinity_nM else "—"
+            aff = _format_affinity_nm(s.affinity_nM) if s.affinity_nM else "—"
             lines.append(
                 f"| **{s.pdb}** | {ab_type} | {res} | {method} | {species} | {subclass} | {eng} | {aff} |"
             )
@@ -3196,7 +3212,7 @@ class AntibodyStructures(BaseModel):
         affinities = [s.affinity_nM for s in self.structures if s.affinity_nM and s.affinity_nM > 0]
         if affinities:
             best_aff = min(affinities)
-            insights.append(f"Best measured affinity: {best_aff:.1f} nM")
+            insights.append(f"Best measured affinity: {_format_affinity_nm(best_aff)} nM")
 
         if insights:
             lines += ["", "**Key insights:** " + " | ".join(insights)]
