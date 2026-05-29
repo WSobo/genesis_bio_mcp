@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from genesis_bio_mcp.tools.biochem import BiochemFeatures, LiabilityHit
 
@@ -1741,6 +1741,24 @@ class GTExExpression(BaseModel):
     )
 
 
+class GTExTissueSpecificity(BaseModel):
+    """GTEx-native tissue-specificity summary derived from the median-TPM profile."""
+
+    top_tissue: str = Field(description="Tissue with the highest median TPM")
+    top_tissue_tpm: float = Field(description="Median TPM in the top tissue")
+    fold_over_median: float | None = Field(
+        None,
+        description="Top-tissue TPM divided by the median tissue's TPM — a peakedness "
+        "measure. None when the median tissue's TPM is 0 (expression confined to few "
+        "tissues).",
+    )
+    flag: str = Field(
+        description="Qualitative specificity: 'Tissue-restricted' (fold ≥ 5 or median 0) | "
+        "'Tissue-enhanced' (fold 2–5) | 'Broadly expressed' (fold < 2) | 'Not expressed'. "
+        "Restricted expression generally implies a wider therapeutic window."
+    )
+
+
 class TissueExpressionProfile(BaseModel):
     """GTEx bulk-RNA median expression profile for a gene across tissues."""
 
@@ -1753,6 +1771,40 @@ class TissueExpressionProfile(BaseModel):
         description="Per-tissue median TPM rows, sorted by median TPM descending",
     )
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def specificity(self) -> GTExTissueSpecificity | None:
+        """Top tissue + a fold-over-median specificity flag, derived from ``samples``.
+
+        Computed (not stored) so it always reflects the current samples and adds
+        no client/cache plumbing. Surfaced in both the markdown and JSON output.
+        """
+        if not self.samples:
+            return None
+        ordered = sorted(self.samples, key=lambda s: s.median_tpm, reverse=True)
+        top = ordered[0]
+        tpms = sorted(s.median_tpm for s in self.samples)
+        n = len(tpms)
+        median = tpms[n // 2] if n % 2 == 1 else (tpms[n // 2 - 1] + tpms[n // 2]) / 2
+        if median > 0:
+            fold = round(top.median_tpm / median, 1)
+            flag = (
+                "Tissue-restricted"
+                if fold >= 5
+                else "Tissue-enhanced"
+                if fold >= 2
+                else "Broadly expressed"
+            )
+        else:
+            fold = None
+            flag = "Tissue-restricted" if top.median_tpm > 0 else "Not expressed"
+        return GTExTissueSpecificity(
+            top_tissue=top.tissue,
+            top_tissue_tpm=round(top.median_tpm, 2),
+            fold_over_median=fold,
+            flag=flag,
+        )
+
     def to_markdown(self) -> str:
         lines = [f"## GTEx tissue expression: {self.gene_symbol}"]
         if self.gencode_id:
@@ -1760,6 +1812,18 @@ class TissueExpressionProfile(BaseModel):
         if not self.samples:
             lines += ["", "_No GTEx median expression data found_"]
             return "\n".join(lines)
+
+        spec = self.specificity
+        if spec is not None:
+            fold_str = (
+                f"{spec.fold_over_median:.1f}× median"
+                if spec.fold_over_median is not None
+                else "median tissue ≈ 0"
+            )
+            lines.append(
+                f"**Top tissue:** {spec.top_tissue} ({spec.top_tissue_tpm:.2f} TPM) — "
+                f"**{spec.flag}** ({fold_str})"
+            )
 
         top = sorted(self.samples, key=lambda s: s.median_tpm, reverse=True)[:15]
         lines += [

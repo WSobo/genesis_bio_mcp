@@ -3714,6 +3714,18 @@ async def test_gtex_happy_path(http_client, tmp_path, monkeypatch):
     md = profile.to_markdown()
     assert "Testis" in md
     assert "28.7" in md
+    # GTEx-native tissue-specificity is computed from the samples and surfaced.
+    # Testis (28.7) is the top tissue; median of {4.5, 12.3, 28.7} is 12.3, so the
+    # fold-over-median is ~2.3 → "Tissue-enhanced".
+    spec = profile.specificity
+    assert spec is not None
+    assert spec.top_tissue == "Testis"
+    assert spec.top_tissue_tpm == pytest.approx(28.7)
+    assert spec.fold_over_median == pytest.approx(2.3, abs=0.1)
+    assert spec.flag == "Tissue-enhanced"
+    assert "Top tissue:" in md and "Tissue-enhanced" in md
+    # The computed field is also exposed in the JSON/model_dump output.
+    assert profile.model_dump()["specificity"]["top_tissue"] == "Testis"
 
 
 @respx.mock

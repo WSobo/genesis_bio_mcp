@@ -1372,7 +1372,11 @@ async def get_tissue_expression(params: GetTissueExpressionInput) -> str:
         params (GetTissueExpressionInput): gene_symbol, response_format.
 
     Returns:
-        Markdown table with the top tissues by median TPM.
+        Markdown table with the top tissues by median TPM, led by an explicit
+        top-tissue callout and a GTEx-native tissue-specificity flag (the top
+        tissue's fold-enrichment over the median tissue: 'Tissue-restricted' /
+        'Tissue-enhanced' / 'Broadly expressed') — restricted expression generally
+        implies a wider therapeutic window.
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.gtex.get_expression(symbol)
