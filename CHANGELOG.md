@@ -52,6 +52,13 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_variant_effects` (MyVariant) now reports conservation + modern predictors.**
+  Expanded the MyVariant field set to parse **gnomAD genome** allele frequency (with an
+  exome→genome fallback so genome-only variants surface a frequency instead of dropping
+  to `None`), **ESM1b** and **EVE** pathogenicity predictors, and **GERP++** / **phyloP**
+  evolutionary conservation. Added as optional `PopulationFrequency.genome_af` and six new
+  `InSilicoPredictions` fields, rendered in the in-silico table. Field paths confirmed
+  against the live MyVariant dbNSFP schema (Tier-2 audit enrichment).
 - **`get_target_disease_association` (Open Targets) now exposes all datatype scores.**
   Added named `affected_pathway_score`, `rna_expression_score`, and `animal_model_score`
   fields to `TargetDiseaseAssociation` (previously only genetic/somatic/known-drug/

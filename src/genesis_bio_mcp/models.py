@@ -295,9 +295,15 @@ class ClinVarRecord(BaseModel):
 
 
 class PopulationFrequency(BaseModel):
-    """gnomAD exome allele-frequency snapshot."""
+    """gnomAD allele-frequency snapshot (exome preferred, genome as fallback)."""
 
-    overall_af: float = Field(description="Overall gnomAD exome allele frequency")
+    overall_af: float = Field(
+        description="Best available gnomAD allele frequency (exome if present, else genome)"
+    )
+    genome_af: float | None = Field(
+        default=None,
+        description="gnomAD genome allele frequency; surfaces variants absent from the exome set",
+    )
     by_population: dict[str, float] = Field(
         default_factory=dict,
         description="Per-population allele frequencies (af_afr, af_amr, af_eas, af_nfe, af_sas)",
@@ -330,6 +336,29 @@ class InSilicoPredictions(BaseModel):
     polyphen_score: float | None = Field(
         default=None,
         description="PolyPhen-2 HDIV score (0–1; >0.909 = probably damaging)",
+    )
+    esm1b_score: float | None = Field(
+        default=None,
+        description="ESM1b protein-language-model score (more negative = more deleterious; "
+        "roughly < -7.5 flags damaging)",
+    )
+    esm1b_class: str | None = Field(
+        default=None, description="ESM1b call: 'damaging' | 'tolerated'"
+    )
+    eve_score: float | None = Field(
+        default=None,
+        description="EVE evolutionary-model pathogenicity score (0–1; higher = more pathogenic)",
+    )
+    eve_class: str | None = Field(
+        default=None, description="EVE call: 'pathogenic' | 'benign' | 'uncertain'"
+    )
+    gerp_rs: float | None = Field(
+        default=None,
+        description="GERP++ rejected-substitutions score (evolutionary constraint; >2 = conserved)",
+    )
+    phylop_score: float | None = Field(
+        default=None,
+        description="phyloP 100-way vertebrate conservation score (>2 = strongly conserved)",
     )
 
 
@@ -699,10 +728,12 @@ class VariantEffects(BaseModel):
 
         if freq is not None:
             pops = ", ".join(f"{k}={v:.2e}" for k, v in freq.by_population.items())
-            lines += [
-                "",
-                f"**gnomAD exome AF:** {freq.overall_af:.2e}" + (f" ({pops})" if pops else ""),
-            ]
+            af_line = f"**gnomAD AF:** {freq.overall_af:.2e}"
+            if freq.genome_af is not None:
+                af_line += f" | genome AF: {freq.genome_af:.2e}"
+            if pops:
+                af_line += f" ({pops})"
+            lines += ["", af_line]
 
         if insilico is not None:
             rows: list[str] = []
@@ -730,6 +761,23 @@ class VariantEffects(BaseModel):
                 rows.append(
                     f"| PolyPhen-2 | {insilico.polyphen_score:.3f} | "
                     f"{'probably damaging' if insilico.polyphen_score > 0.909 else 'benign/possibly'} |"
+                )
+            if insilico.esm1b_score is not None:
+                rows.append(
+                    f"| ESM1b | {insilico.esm1b_score:.2f} | "
+                    f"{insilico.esm1b_class or ('damaging' if insilico.esm1b_score < -7.5 else 'tolerated')} |"
+                )
+            if insilico.eve_score is not None:
+                rows.append(f"| EVE | {insilico.eve_score:.3f} | {insilico.eve_class or '—'} |")
+            if insilico.gerp_rs is not None:
+                rows.append(
+                    f"| GERP++ | {insilico.gerp_rs:.2f} | "
+                    f"{'conserved' if insilico.gerp_rs > 2 else 'not conserved'} |"
+                )
+            if insilico.phylop_score is not None:
+                rows.append(
+                    f"| phyloP (100-way) | {insilico.phylop_score:.2f} | "
+                    f"{'conserved' if insilico.phylop_score > 2 else 'not conserved'} |"
                 )
             if rows:
                 lines += [
