@@ -981,6 +981,12 @@ class CancerDependency(BaseModel):
         default_factory=list, description="Top 10 most dependent cell lines"
     )
     data_source: str = Field(description="DepMap release version or data source description")
+    ceres_is_approximated: bool = Field(
+        default=False,
+        description="True when mean_ceres_score is a proxy derived from the dependency "
+        "fraction (DepMap summary endpoint) or OT somatic-mutation evidence, NOT a "
+        "measured CERES/Chronos score. The summary endpoint does not expose real scores.",
+    )
 
     def to_markdown(self) -> str:
         pct = int(self.fraction_dependent_lines * 100)
@@ -995,10 +1001,23 @@ class CancerDependency(BaseModel):
         else:
             essentiality_note = f"**Weak/no dependency** — {pct}% of cancer lines dependent"
 
+        if self.ceres_is_approximated:
+            score_line = (
+                f"Mean dependency score: **{self.mean_ceres_score:.3f}** "
+                "_(approximated proxy — NOT a measured CERES/Chronos score; the DepMap "
+                "summary endpoint does not expose per-line scores. See source below.)_ "
+                "(threshold: < −0.5 = dependent)"
+            )
+        else:
+            score_line = (
+                f"Mean CERES/Chronos score: **{self.mean_ceres_score:.3f}** "
+                "(threshold: < −0.5 = dependent)"
+            )
+
         lines = [
             f"## Cancer Dependency (DepMap): {self.gene_symbol}",
             essentiality_note,
-            f"Mean CERES/Chronos score: **{self.mean_ceres_score:.3f}** (threshold: < −0.5 = dependent)",
+            score_line,
             f"_Source: {self.data_source}_",
         ]
         if self.top_dependent_lineages:

@@ -40,6 +40,14 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Fixed
 
+- **`get_cancer_dependency` no longer presents an approximated score as a measured one.**
+  The DepMap summary endpoint reports dependency *counts*, not raw per-cell-line CERES
+  scores, so the reported mean was always a proxy (derived from the dependent-line fraction,
+  or from OT somatic-mutation evidence on the fallback path). The output previously labeled
+  it "Mean CERES/Chronos score" as if measured. A new `CancerDependency.ceres_is_approximated`
+  flag now drives an explicit "approximated proxy — NOT a measured CERES/Chronos score"
+  caveat in the markdown, and the tool docstring spells out that the dependent-line fraction
+  and pan-essential flag are the reliable signals. (Tier-3 audit polish.)
 - **`compare_targets` no longer conflates PubChem and ChEMBL compounds (Bug O).** The
   comparison table had a single "Compounds" column populated only from PubChem, silently
   dropping ChEMBL potency data. It is now two columns — **PubChem** (chemical-space
