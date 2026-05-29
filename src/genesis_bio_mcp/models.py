@@ -2072,6 +2072,11 @@ class Pathway(BaseModel):
     reactome_id: str = Field(description="Reactome stable ID, e.g. 'R-HSA-5673001'")
     display_name: str = Field(description="Human-readable pathway name")
     p_value: float | None = Field(None, description="Enrichment p-value (lower = more significant)")
+    fdr: float | None = Field(
+        None,
+        description="Benjamini-Hochberg FDR (multiple-testing-corrected p-value). "
+        "FDR < 0.05 is the conventional significance threshold for enrichment.",
+    )
     gene_count: int | None = Field(None, description="Number of genes in this pathway")
     category: str | None = Field(
         None, description="Top-level category: Signaling | Metabolism | Immune | etc."
@@ -2097,11 +2102,17 @@ class PathwayContext(BaseModel):
         if self.pathways:
             lines += [
                 "",
-                "| Pathway | Category | Genes | p-value |",
-                "|---|---|---|---|",
+                "| Pathway | Category | Genes | p-value | FDR |",
+                "|---|---|---|---|---|",
             ]
             for p in self.pathways[:12]:
                 p_str = f"{p.p_value:.2e}" if p.p_value is not None else "—"
+                # Mark FDR-significant hits (BH-corrected < 0.05) so the reader
+                # can distinguish genuine enrichment from multiple-testing noise.
+                if p.fdr is not None:
+                    fdr_str = f"{p.fdr:.2e}{' ✓' if p.fdr < 0.05 else ''}"
+                else:
+                    fdr_str = "—"
                 genes = str(p.gene_count) if p.gene_count is not None else "—"
                 cat = p.category or "—"
                 # Append the stable ID so any residual same-name pathways
@@ -2110,7 +2121,7 @@ class PathwayContext(BaseModel):
                 name_cell = p.display_name[:50]
                 if p.reactome_id:
                     name_cell = f"{name_cell} [{p.reactome_id}]"
-                lines.append(f"| {name_cell} | {cat} | {genes} | {p_str} |")
+                lines.append(f"| {name_cell} | {cat} | {genes} | {p_str} | {fdr_str} |")
         return "\n".join(lines)
 
 

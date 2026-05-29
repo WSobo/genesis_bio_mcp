@@ -1595,8 +1595,9 @@ async def get_pathway_context(params: GetPathwayContextInput) -> str:
         params (GetPathwayContextInput): gene_symbol, response_format.
 
     Returns:
-        Markdown with top enriched Reactome pathways, enrichment p-values,
-        pathway categories, and gene counts per pathway.
+        Markdown with top enriched Reactome pathways, enrichment p-values and
+        Benjamini-Hochberg FDR (multiple-testing-corrected; FDR < 0.05 flagged
+        as significant), pathway categories, and gene counts per pathway.
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.reactome.get_pathway_context(symbol)
