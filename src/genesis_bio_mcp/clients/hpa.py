@@ -157,21 +157,24 @@ def _parse_hpa(row: dict, symbol: str) -> ProteinAtlasReport:
     except (TypeError, ValueError):
         spec_score_f = None
 
-    subcellular_main = row.get("Subcellular main location") or row.get("scml") or ""
-    subcellular_extra = row.get("Subcellular location") or row.get("scl") or ""
-    subcellular = [
-        s.strip()
-        for s in (str(subcellular_main) + "," + str(subcellular_extra)).split(",")
-        if s and s.strip()
-    ]
-    # Deduplicate, preserve order
+    # Subcellular locations: HPA's JSON download returns these as arrays (older
+    # shapes used comma-separated strings). _as_str_list normalizes both; merge
+    # main + additional and de-duplicate while preserving order. (str() on a list
+    # would otherwise leak a Python list repr into the output.)
+    subcellular_raw = _as_str_list(row.get("Subcellular main location") or row.get("scml"))
+    subcellular_raw += _as_str_list(row.get("Subcellular location") or row.get("scl"))
     seen: set[str] = set()
-    subcellular = [s for s in subcellular if not (s in seen or seen.add(s))]
+    subcellular = [s for s in subcellular_raw if not (s in seen or seen.add(s))]
 
-    # "Enhanced tissues" is often a comma-separated cell; if the column wasn't
-    # selected, leave empty — specificity_cat alone is enough for scoring.
-    enhanced_raw = row.get("RNA tissue specific nTPM") or row.get("Tissue expression cluster") or ""
-    enhanced_tissues = [t.strip() for t in str(enhanced_raw).split(";") if t.strip()]
+    # Enhanced tissues: HPA returns "RNA tissue specific nTPM" as a JSON object
+    # ({tissue: nTPM}); render "tissue (nTPM)". Fall back to list/string shapes.
+    enhanced_raw = row.get("RNA tissue specific nTPM") or row.get("Tissue expression cluster")
+    if isinstance(enhanced_raw, dict):
+        enhanced_tissues = [f"{k} ({v})" for k, v in enhanced_raw.items()]
+    elif isinstance(enhanced_raw, list):
+        enhanced_tissues = [str(t).strip() for t in enhanced_raw if str(t).strip()]
+    else:
+        enhanced_tissues = [t.strip() for t in str(enhanced_raw or "").split(";") if t.strip()]
 
     # Protein class — HPA returns this as a list (JSON) or a comma-separated
     # string. It carries the membrane/secreted classification, the strongest

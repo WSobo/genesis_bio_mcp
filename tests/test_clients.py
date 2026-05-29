@@ -4012,6 +4012,48 @@ async def test_hpa_handles_gzip_response(http_client, tmp_path, monkeypatch):
 
 
 @respx.mock
+async def test_hpa_parses_list_and_dict_valued_fields(http_client, tmp_path, monkeypatch):
+    """Live HPA returns subcellular locations as JSON arrays and 'RNA tissue
+    specific nTPM' as a JSON object. The parser must normalize both — NOT leak a
+    Python list/dict repr into the output (regression: subcellular rendered as
+    "['Golgi apparatus', ...]" and enhanced tissues as "{'placenta': '61.8'}")."""
+    monkeypatch.setattr(
+        "genesis_bio_mcp.config.settings.settings.hpa_cache_path",
+        tmp_path / "hpa.json",
+    )
+    mock = [
+        {
+            "Gene": "EGFR",
+            "Ensembl": "ENSG00000146648",
+            "Protein class": ["Predicted membrane proteins", "FDA approved drug targets"],
+            "RNA tissue specificity": "Tissue enhanced",
+            "Subcellular main location": ["Golgi apparatus", "Plasma membrane"],
+            "Subcellular location": ["Plasma membrane", "Cell Junctions"],
+            "RNA tissue specific nTPM": {"placenta": "61.8"},
+        }
+    ]
+    respx.get(url__regex=r"proteinatlas\.org/api/search_download\.php").mock(
+        return_value=httpx.Response(200, json=mock)
+    )
+    client = HPAClient(http_client)
+    report = await client.get_report("EGFR")
+
+    assert report is not None and report.expression is not None
+    exp = report.expression
+    # Subcellular: flattened, deduplicated, in order.
+    assert exp.subcellular_locations == ["Golgi apparatus", "Plasma membrane", "Cell Junctions"]
+    # Enhanced tissues: dict rendered as "tissue (nTPM)".
+    assert exp.enhanced_tissues == ["placenta (61.8)"]
+    assert exp.is_membrane is True
+    # No raw Python container reprs leaked into the markdown.
+    md = report.to_markdown()
+    assert "placenta (61.8)" in md
+    assert "Golgi apparatus, Plasma membrane" in md
+    assert "{'placenta'" not in md
+    assert "['Golgi" not in md
+
+
+@respx.mock
 async def test_hpa_membrane_classification(http_client, tmp_path, monkeypatch):
     monkeypatch.setattr(
         "genesis_bio_mcp.config.settings.settings.hpa_cache_path",
