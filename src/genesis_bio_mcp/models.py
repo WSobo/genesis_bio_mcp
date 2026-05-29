@@ -1058,6 +1058,9 @@ class CompoundActivity(BaseModel):
 
     cid: int = Field(description="PubChem Compound ID")
     name: str = Field(description="Preferred IUPAC name or common name")
+    smiles: str | None = Field(
+        None, description="Canonical SMILES structure string (machine-readable structure)"
+    )
     molecular_formula: str | None = None
     molecular_weight: float | None = Field(None, description="Molecular weight in g/mol")
     activity_outcome: str = Field(description="'Active' | 'Inactive' | 'Inconclusive'")
@@ -1087,8 +1090,8 @@ class Compounds(BaseModel):
         if potent:
             lines += [
                 "",
-                "| Compound | MW | Activity | Value (nM) | CID |",
-                "|---|---|---|---|---|",
+                "| Compound | MW | Activity | Value (nM) | CID | SMILES |",
+                "|---|---|---|---|---|---|",
             ]
             for c in potent[:8]:
                 mw = f"{c.molecular_weight:.1f}" if c.molecular_weight else "—"
@@ -1097,12 +1100,14 @@ class Compounds(BaseModel):
                 # on some PubChem concise-endpoint rows. Fall back to the outcome
                 # ("Active"), which the client always populates for kept rows.
                 atype = c.activity_type or c.activity_outcome or "—"
-                lines.append(f"| {c.name[:35]} | {mw} | {atype} | {val} | {c.cid} |")
+                smi = f"`{c.smiles}`" if c.smiles else "—"
+                lines.append(f"| {c.name[:35]} | {mw} | {atype} | {val} | {c.cid} | {smi} |")
         elif self.compounds:
-            lines += ["", "| Compound | Formula | CID |", "|---|---|---|"]
+            lines += ["", "| Compound | Formula | CID | SMILES |", "|---|---|---|---|"]
             for c in self.compounds[:8]:
                 formula = c.molecular_formula or "—"
-                lines.append(f"| {c.name[:35]} | {formula} | {c.cid} |")
+                smi = f"`{c.smiles}`" if c.smiles else "—"
+                lines.append(f"| {c.name[:35]} | {formula} | {c.cid} | {smi} |")
         return "\n".join(lines)
 
 
