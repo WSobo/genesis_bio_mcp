@@ -147,7 +147,7 @@ All tools return Markdown by default; every tool accepts
 
 ```bash
 uv sync
-uv run pytest tests/ -v          # 192 unit + integration tests
+uv run pytest tests/ -v          # 218 unit + integration tests
 uv run pytest tests/ --cov=genesis_bio_mcp
 ```
 

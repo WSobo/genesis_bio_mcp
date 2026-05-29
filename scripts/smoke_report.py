@@ -1,8 +1,8 @@
 """Full integration test — runs prioritize_target against live APIs for all test cases.
 
 Usage:
-    uv run python test_full.py
-    uv run python test_full.py --gene BRAF --disease melanoma   # single run
+    uv run python scripts/smoke_report.py
+    uv run python scripts/smoke_report.py --gene BRAF --disease melanoma   # single run
 
 Outputs:
     - Console: Markdown report + score summary for each case
@@ -202,7 +202,7 @@ async def run(cases: list[tuple[str, str]]) -> None:
 
 
 if __name__ == "__main__":
-    # Allow single-case override: python test_full.py BRAF melanoma
+    # Allow single-case override: python scripts/smoke_report.py BRAF melanoma
     args = sys.argv[1:]
     if len(args) == 2:
         cases = [(args[0], args[1])]
