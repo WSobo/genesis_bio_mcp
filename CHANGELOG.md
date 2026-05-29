@@ -38,6 +38,18 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
   truncation boundaries, and rigid scaffolds. Extends `AlphaFoldClient`
   (`get_confidence`); wired into `run_biology_workflow`. 3 new client tests.
 
+### Fixed
+
+- **`compare_targets` no longer conflates PubChem and ChEMBL compounds (Bug O).** The
+  comparison table had a single "Compounds" column populated only from PubChem, silently
+  dropping ChEMBL potency data. It is now two columns — **PubChem** (chemical-space
+  breadth) and **ChEMBL (best pChEMBL)** (peak measured potency) — backed by new
+  `chembl_count` / `best_pchembl` fields on `TargetComparisonRow`.
+- **De-duplicated the comparison row-builder.** The near-identical row-construction logic
+  in `server.compare_targets` and `workflow_agent._compare_targets_fn` is extracted into a
+  single `build_comparison_row()` in `tools/target_prioritization.py`, so the two surfaces
+  stay in lockstep (the workflow output now also includes the score breakdown).
+
 ### Enhanced
 
 - **`get_target_disease_association` (Open Targets) now exposes all datatype scores.**
