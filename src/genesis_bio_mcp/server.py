@@ -1544,8 +1544,9 @@ async def get_drug_history(params: GetDrugHistoryInput) -> str:
         params (GetDrugHistoryInput): gene_symbol, response_format.
 
     Returns:
-        Markdown with known drugs (type, phase, approval status), trial counts by
-        phase, a table of recent clinical trials from ClinicalTrials.gov, and a
+        Markdown with known drugs (type, phase, approval status, DGIdb interaction
+        score), trial counts by phase, a table of recent clinical trials from
+        ClinicalTrials.gov (with lead sponsor, interventions, and enrollment), and a
         safety-signals section listing boxed warnings and top adverse events for
         the highest-phase approved drugs (up to 5).
     """

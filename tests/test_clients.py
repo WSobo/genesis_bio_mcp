@@ -982,6 +982,7 @@ _MOCK_DGIDB_RESPONSE = {
                     "interactions": [
                         {
                             "drug": {"name": "Vemurafenib", "approved": True},
+                            "interactionScore": 0.85,
                             "interactionTypes": [
                                 {"type": "inhibitor", "directionality": "inhibitory"}
                             ],
@@ -989,6 +990,7 @@ _MOCK_DGIDB_RESPONSE = {
                         },
                         {
                             "drug": {"name": "PLX-4720", "approved": False},
+                            "interactionScore": 0.42,
                             "interactionTypes": [
                                 {"type": "inhibitor", "directionality": "inhibitory"}
                             ],
@@ -1018,6 +1020,7 @@ async def test_dgidb_get_drug_interactions(http_client):
     assert result[0].drug_name == "Vemurafenib"
     assert result[0].interaction_type == "inhibitor"
     assert result[0].phase == 4
+    assert result[0].interaction_score == pytest.approx(0.85)
 
 
 @respx.mock
@@ -1089,8 +1092,10 @@ _MOCK_CT_RESPONSE = {
                     "briefTitle": "Phase 2 Study of Vemurafenib in BRAF V600E Melanoma",
                 },
                 "statusModule": {"overallStatus": "COMPLETED"},
-                "designModule": {"phases": ["PHASE2"]},
+                "designModule": {"phases": ["PHASE2"], "enrollmentInfo": {"count": 132}},
                 "conditionsModule": {"conditions": ["Melanoma"]},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Hoffmann-La Roche"}},
+                "armsInterventionsModule": {"interventions": [{"name": "Vemurafenib"}]},
             }
         },
         {
@@ -1102,6 +1107,10 @@ _MOCK_CT_RESPONSE = {
                 "statusModule": {"overallStatus": "RECRUITING"},
                 "designModule": {"phases": ["PHASE3"]},
                 "conditionsModule": {"conditions": ["Non-small Cell Lung Cancer"]},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Novartis"}},
+                "armsInterventionsModule": {
+                    "interventions": [{"name": "Dabrafenib"}, {"name": "Trametinib"}]
+                },
             }
         },
     ]
@@ -1143,6 +1152,13 @@ async def test_clinical_trials_get_trials(http_client, monkeypatch):
     assert trials[0].nct_id == "NCT01234567"
     assert trials[0].phase == "Phase 2"
     assert trials[0].status == "COMPLETED"
+    # New competitive-intel fields.
+    assert trials[0].lead_sponsor == "Hoffmann-La Roche"
+    assert trials[0].interventions == ["Vemurafenib"]
+    assert trials[0].enrollment == 132
+    assert trials[1].lead_sponsor == "Novartis"
+    assert trials[1].interventions == ["Dabrafenib", "Trametinib"]
+    assert trials[1].enrollment is None  # no enrollmentInfo in second study
     assert "Phase 2" in counts
     assert "Phase 3" in counts
     assert counts["Phase 2"] == 1

@@ -26,6 +26,7 @@ query GeneInteractions($gene: String!) {
           name
           approved
         }
+        interactionScore
         interactionTypes {
           type
           directionality
@@ -66,6 +67,12 @@ class DGIdbClient:
             return []
 
 
+def _max_opt(a: float | None, b: float | None) -> float | None:
+    """Return the larger of two optional floats, ignoring ``None``."""
+    vals = [v for v in (a, b) if v is not None]
+    return max(vals) if vals else None
+
+
 def _parse_interactions(body: dict) -> list[DrugInteraction]:
     nodes = body.get("data", {}).get("genes", {}).get("nodes", [])
     if not nodes:
@@ -80,6 +87,9 @@ def _parse_interactions(body: dict) -> list[DrugInteraction]:
                 continue
 
             approved = bool(drug.get("approved", False))
+
+            score_raw = interaction.get("interactionScore")
+            score = float(score_raw) if isinstance(score_raw, (int, float)) else None
 
             # Determine interaction type from interactionTypes list
             interaction_types = interaction.get("interactionTypes") or []
@@ -107,17 +117,25 @@ def _parse_interactions(body: dict) -> list[DrugInteraction]:
                     interaction_type=itype,
                     phase=phase,
                     approved=approved,
+                    interaction_score=score,
                     sources=sorted(sources),
                 )
-            elif approved and not seen[key].approved:
-                # Upgrade to approved if we see a better record
-                seen[key] = DrugInteraction(
-                    drug_name=drug_name,
-                    interaction_type=seen[key].interaction_type or itype,
-                    phase=4,
-                    approved=True,
-                    sources=sorted(set(seen[key].sources + sources)),
-                )
+            else:
+                prev = seen[key]
+                best_score = _max_opt(prev.interaction_score, score)
+                if approved and not prev.approved:
+                    # Upgrade to approved if we see a better record.
+                    seen[key] = DrugInteraction(
+                        drug_name=drug_name,
+                        interaction_type=prev.interaction_type or itype,
+                        phase=4,
+                        approved=True,
+                        interaction_score=best_score,
+                        sources=sorted(set(prev.sources + sources)),
+                    )
+                elif best_score != prev.interaction_score:
+                    # Same approval status, but keep the strongest score seen.
+                    seen[key] = prev.model_copy(update={"interaction_score": best_score})
 
     # Sort: approved first, then direct interaction types, then alphabetical.
     # This surfaces confirmed inhibitors/modulators before substrate/inducer noise.
@@ -173,6 +191,7 @@ def _collapse_salt_forms(drugs: list[DrugInteraction]) -> list[DrugInteraction]:
             interaction_type=parent.interaction_type or salt.interaction_type,
             phase=max(parent.phase or 0, salt.phase or 0) or None,
             approved=parent.approved or salt.approved,
+            interaction_score=_max_opt(parent.interaction_score, salt.interaction_score),
             sources=sorted(set(parent.sources) | set(salt.sources)),
         )
 
