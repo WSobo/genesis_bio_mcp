@@ -38,6 +38,8 @@ class Settings(BaseSettings):
         GENESIS_CHEMBL_SEMAPHORE_LIMIT   — int (default 2)
         GENESIS_PUBCHEM_SEMAPHORE_LIMIT  — int (default 3)
         GENESIS_REACTOME_SEMAPHORE_LIMIT — int (default 3)
+        GENESIS_STRING_REQUIRED_SCORE — int 0–1000 (default 700)
+        GENESIS_STRING_NETWORK_LIMIT  — int (default 20)
         GENESIS_SABDAB_CACHE_PATH     — path string (default data/sabdab_cache.tsv)
         GENESIS_SABDAB_CACHE_TTL_SECS — int, seconds (default 604800 = 7 days)
         GENESIS_CLAUDE_MODEL          — string (default claude-sonnet-4-6)
@@ -125,6 +127,24 @@ class Settings(BaseSettings):
         default=3,
         description="Max concurrent requests to Reactome AnalysisService / ContentService.",
         gt=0,
+    )
+
+    # ---------------------------------------------------------------------------
+    # STRING protein-interaction network defaults
+    # ---------------------------------------------------------------------------
+
+    string_required_score: int = Field(
+        default=700,
+        description="Default STRING combined-score threshold (0–1000) for reported edges. "
+        "700 = high confidence; lower to widen the network, raise to tighten it.",
+        ge=0,
+        le=1000,
+    )
+    string_network_limit: int = Field(
+        default=20,
+        description="Default maximum number of STRING interaction partners to return.",
+        gt=0,
+        le=200,
     )
 
     # ---------------------------------------------------------------------------

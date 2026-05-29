@@ -52,6 +52,14 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_protein_interactome` STRING confidence threshold and partner limit are now
+  configurable.** The previously-hardcoded `required_score=700` / `limit=20` are now
+  server settings (`GENESIS_STRING_REQUIRED_SCORE`, `GENESIS_STRING_NETWORK_LIMIT`) and
+  optional per-call tool parameters (`required_score`, `limit`) — so an agent can widen
+  the network (e.g. `required_score=400` for medium confidence) or tighten it
+  (`900` = highest) on demand. The threshold is carried onto `ProteinInteractome` so the
+  rendered "confidence ≥ X" line reflects the value actually used instead of a hardcoded
+  0.7. (Tier-3 audit enrichment.)
 - **`get_protein_interactome` now surfaces each partner's dominant evidence channel.**
   STRING returns seven per-channel sub-scores (experiments, database, coexpression,
   textmining, homology, cooccurrence, gene fusion); the client previously computed them

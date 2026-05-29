@@ -287,6 +287,26 @@ class GetStructureConfidenceInput(_GeneInput):
 class GetProteinInteractomeInput(_GeneInput):
     """Input for get_protein_interactome."""
 
+    required_score: int | None = Field(
+        None,
+        ge=0,
+        le=1000,
+        description=(
+            "STRING combined-score threshold 0–1000 for reported interactions. "
+            "700 (default) = high confidence; lower it (e.g. 400 = medium) to surface "
+            "more partners, raise it (e.g. 900 = highest) to keep only the strongest. "
+            "Omit to use the server default."
+        ),
+    )
+    limit: int | None = Field(
+        None,
+        gt=0,
+        le=200,
+        description=(
+            "Maximum number of interaction partners to return. Omit to use the server default (20)."
+        ),
+    )
+
 
 class GetBioGRIDInteractionsInput(_GeneInput):
     """Input for get_biogrid_interactions."""
@@ -998,16 +1018,19 @@ async def get_protein_interactome(params: GetProteinInteractomeInput) -> str:
     High-confidence interactors (score ≥ 0.9) are particularly important for selectivity.
 
     Args:
-        params (GetProteinInteractomeInput): gene_symbol, response_format.
+        params (GetProteinInteractomeInput): gene_symbol, response_format, and optional
+            required_score (STRING confidence threshold 0–1000) and limit (max partners).
 
     Returns:
-        Markdown with top 20 interaction partners sorted by STRING confidence score,
+        Markdown with top interaction partners sorted by STRING confidence score,
         each partner's dominant evidence channel and its sub-score (so experimental /
         database support can be told apart from textmining co-mentions at the same
         combined score), the contributing evidence channels, and total partner count.
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
-    result = await mcp.state.string_db.get_interactome(symbol)
+    result = await mcp.state.string_db.get_interactome(
+        symbol, required_score=params.required_score, limit=params.limit
+    )
     if result is not None and result.total_partners == 0:
         result = None
     return _fmt(result, params.response_format, f"No STRING interaction data found for '{symbol}'.")

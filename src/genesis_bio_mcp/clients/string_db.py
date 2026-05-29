@@ -7,6 +7,7 @@ import logging
 
 import httpx
 
+from genesis_bio_mcp.config.settings import settings
 from genesis_bio_mcp.models import Interactor, ProteinInteractome
 
 logger = logging.getLogger(__name__)
@@ -42,21 +43,33 @@ class StringDbClient:
         self._client = client
 
     async def get_interactome(
-        self, gene_symbol: str, required_score: int = 700, limit: int = 20
+        self,
+        gene_symbol: str,
+        required_score: int | None = None,
+        limit: int | None = None,
     ) -> ProteinInteractome | None:
-        """Return top interaction partners for a gene from STRING."""
+        """Return top interaction partners for a gene from STRING.
+
+        ``required_score`` (STRING combined score, 0–1000) and ``limit`` default
+        to ``settings.string_required_score`` / ``settings.string_network_limit``
+        when not supplied, so deployments can tune the network breadth via the
+        ``GENESIS_STRING_*`` environment variables without code changes.
+        """
+        req_score = required_score if required_score is not None else settings.string_required_score
+        max_partners = limit if limit is not None else settings.string_network_limit
         async with _SEMAPHORE:
             string_id = await self._resolve_string_id(gene_symbol)
             if string_id is None:
                 logger.info("STRING: could not resolve '%s' to a STRING ID", gene_symbol)
                 return None
 
-            interactions = await self._fetch_network(string_id, required_score, limit)
+            interactions = await self._fetch_network(string_id, req_score, max_partners)
             if not interactions:
                 return ProteinInteractome(
                     gene_symbol=gene_symbol,
                     total_partners=0,
                     top_interactors=[],
+                    required_score=req_score,
                 )
 
             interactors = _parse_interactions(gene_symbol, string_id, interactions)
@@ -64,6 +77,7 @@ class StringDbClient:
                 gene_symbol=gene_symbol,
                 total_partners=len(interactors),
                 top_interactors=interactors,
+                required_score=req_score,
             )
 
     async def _resolve_string_id(self, gene_symbol: str) -> str | None:
