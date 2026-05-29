@@ -52,6 +52,12 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_chembl_compounds` now reports mechanism of action + clinical phase.** Added a
+  ChEMBL `/mechanism` lookup (run concurrently with the activity fetch) that surfaces the
+  most advanced clinical phase (`max_clinical_phase`) of any drug acting on the target,
+  plus distinct mechanisms of action and action types. The mechanism endpoint carries
+  `max_phase` inline, so this is a single extra call with no per-molecule fan-out.
+  Confirmed against the live ChEMBL schema (Tier-2 audit enrichment).
 - **`get_drug_history` (DGIdb + ClinicalTrials.gov) now carries competitive-intel detail.**
   DGIdb interactions gain an `interaction_score` (confidence ranking, also used as a sort
   tiebreaker); ClinicalTrials.gov trials gain `lead_sponsor`, `interventions`, and
