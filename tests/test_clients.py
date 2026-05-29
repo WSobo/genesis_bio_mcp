@@ -204,8 +204,12 @@ async def test_open_targets_association_braf_melanoma(http_client):
     assert result.overall_score == pytest.approx(0.89)
     assert result.somatic_mutation_score == pytest.approx(0.95)
     assert result.known_drug_score == pytest.approx(0.88)
-    assert result.evidence_count == 4  # Derived from number of datatypeScores
-    assert len(result.evidence_breakdown) == 4
+    # Previously-dropped datatype scores are now exposed as named fields.
+    assert result.affected_pathway_score == pytest.approx(0.55)
+    assert result.rna_expression_score == pytest.approx(0.30)
+    assert result.animal_model_score == pytest.approx(0.18)
+    assert result.evidence_count == 7  # All datatypeScores captured
+    assert len(result.evidence_breakdown) == 7
 
 
 @respx.mock

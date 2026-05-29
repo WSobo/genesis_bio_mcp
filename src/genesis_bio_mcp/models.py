@@ -793,7 +793,7 @@ class DiseaseLinkEvidence(BaseModel):
 
     evidence_type: str = Field(
         description="Evidence category: 'genetic_association' | 'somatic_mutation' | "
-        "'known_drug' | 'literature' | 'animal_model' | 'rna_expression'"
+        "'known_drug' | 'literature' | 'affected_pathway' | 'rna_expression' | 'animal_model'"
     )
     score: float = Field(description="Evidence score 0–1 for this datatype")
 
@@ -819,6 +819,15 @@ class TargetDiseaseAssociation(BaseModel):
     )
     literature_mining_score: float | None = Field(
         None, description="Score from text-mined literature co-mentions"
+    )
+    affected_pathway_score: float | None = Field(
+        None, description="Score from pathways & systems biology evidence"
+    )
+    rna_expression_score: float | None = Field(
+        None, description="Score from differential RNA-expression evidence"
+    )
+    animal_model_score: float | None = Field(
+        None, description="Score from model-organism (e.g. mouse) phenotype evidence"
     )
     evidence_count: int = Field(
         default=0, description="Number of evidence datatypes with non-zero scores"
@@ -851,6 +860,9 @@ class TargetDiseaseAssociation(BaseModel):
                 ("somatic_mutation", self.somatic_mutation_score),
                 ("known_drug", self.known_drug_score),
                 ("literature", self.literature_mining_score),
+                ("affected_pathway", self.affected_pathway_score),
+                ("rna_expression", self.rna_expression_score),
+                ("animal_model", self.animal_model_score),
             ]
             active = [(k, v) for k, v in scores if v is not None]
             if active:

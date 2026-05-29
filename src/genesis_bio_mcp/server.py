@@ -789,8 +789,9 @@ async def get_target_disease_association(params: GetTargetDiseaseInput) -> str:
         params (GetTargetDiseaseInput): gene_symbol, disease_name, response_format.
 
     Returns:
-        Markdown with overall_score and per-datatype evidence scores
-        (genetic_association, somatic_mutation, known_drug, literature).
+        Markdown with overall_score and all per-datatype evidence scores
+        (genetic_association, somatic_mutation, known_drug, literature,
+        affected_pathway, rna_expression, animal_model).
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.open_targets.get_association(symbol, params.disease_name)
