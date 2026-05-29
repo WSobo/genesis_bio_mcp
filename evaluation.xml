@@ -3,7 +3,9 @@
   genesis-bio-mcp evaluation suite
   10 multi-hop questions requiring chaining 2+ tools per question.
   All answers verified against examples/ reports or stable biological databases.
-  Run with: python scripts/evaluation.py -t stdio -c uv -a "run genesis-bio-mcp" evaluation.xml
+  TODO: the runner scripts/evaluation.py is NOT implemented yet — this file
+  currently has no working harness. Intended invocation once built:
+    python scripts/evaluation.py -t stdio -c uv -a "run genesis-bio-mcp" evaluation.xml
 -->
 <evaluation>
 

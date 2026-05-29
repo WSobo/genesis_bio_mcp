@@ -31,7 +31,7 @@ Indication: melanoma
 ## Reproduction
 
 ```bash
-uv run python test_full.py BRAF melanoma
+uv run python scripts/smoke_report.py BRAF melanoma
 # or paste the MCP call
 ```
 
