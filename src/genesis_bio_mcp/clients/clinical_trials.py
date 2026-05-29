@@ -66,7 +66,10 @@ class ClinicalTrialsClient:
                         "query.intr": gene_symbol,
                         "pageSize": max_results,
                         "format": "json",
-                        "fields": "NCTId,BriefTitle,Phase,OverallStatus,Condition",
+                        "fields": (
+                            "NCTId,BriefTitle,Phase,OverallStatus,Condition,"
+                            "LeadSponsorName,InterventionName,EnrollmentCount"
+                        ),
                     },
                     timeout=20.0,
                 )
@@ -89,6 +92,8 @@ def _parse_trials(data: dict) -> tuple[list[ClinicalTrial], dict[str, int]]:
         status_mod = proto.get("statusModule", {})
         design_mod = proto.get("designModule", {})
         conditions_mod = proto.get("conditionsModule", {})
+        sponsor_mod = proto.get("sponsorCollaboratorsModule", {})
+        arms_mod = proto.get("armsInterventionsModule", {})
 
         nct_id = id_mod.get("nctId", "")
         title = id_mod.get("briefTitle", "")
@@ -106,6 +111,16 @@ def _parse_trials(data: dict) -> tuple[list[ClinicalTrial], dict[str, int]]:
         conditions = conditions_mod.get("conditions", [])
         indication = conditions[0] if conditions else None
 
+        # Competitive-intel fields: lead sponsor, interventions, enrollment.
+        lead_sponsor = (sponsor_mod.get("leadSponsor") or {}).get("name")
+        interventions = [
+            iv["name"]
+            for iv in (arms_mod.get("interventions") or [])
+            if isinstance(iv, dict) and iv.get("name")
+        ]
+        enroll_raw = (design_mod.get("enrollmentInfo") or {}).get("count")
+        enrollment = enroll_raw if isinstance(enroll_raw, int) else None
+
         if nct_id:
             trials.append(
                 ClinicalTrial(
@@ -114,6 +129,9 @@ def _parse_trials(data: dict) -> tuple[list[ClinicalTrial], dict[str, int]]:
                     phase=phase,
                     status=status,
                     indication=indication,
+                    lead_sponsor=lead_sponsor,
+                    interventions=interventions,
+                    enrollment=enrollment,
                 )
             )
             phase_counts[phase] = phase_counts.get(phase, 0) + 1

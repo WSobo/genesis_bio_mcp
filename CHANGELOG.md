@@ -52,6 +52,11 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_drug_history` (DGIdb + ClinicalTrials.gov) now carries competitive-intel detail.**
+  DGIdb interactions gain an `interaction_score` (confidence ranking, also used as a sort
+  tiebreaker); ClinicalTrials.gov trials gain `lead_sponsor`, `interventions`, and
+  `enrollment`. Surfaced in the Known-Drugs and Recent-Trials tables. Field paths confirmed
+  against the live DGIdb GraphQL and CT.gov v2 schemas (Tier-2 audit enrichment).
 - **`get_compounds` (PubChem) now returns SMILES structures.** Added the canonical
   `SMILES` property to the compound-enrichment batch and a `smiles` field on
   `CompoundActivity`, rendered in the markdown tables — giving each active compound a

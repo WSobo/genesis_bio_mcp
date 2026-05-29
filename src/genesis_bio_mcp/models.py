@@ -1866,6 +1866,10 @@ class DrugInteraction(BaseModel):
         None, description="Highest clinical phase: 1 | 2 | 3 | 4 (4 = approved)"
     )
     approved: bool = Field(default=False, description="True if FDA/EMA approved (Phase 4)")
+    interaction_score: float | None = Field(
+        None,
+        description="DGIdb interaction confidence score (higher = better-supported drug-gene link)",
+    )
     sources: list[str] = Field(default_factory=list, description="DGIdb data source databases")
     safety: DrugSafetySignal | None = Field(
         None,
@@ -1886,6 +1890,14 @@ class ClinicalTrial(BaseModel):
         description="Trial status: RECRUITING | ACTIVE_NOT_RECRUITING | COMPLETED | etc."
     )
     indication: str | None = Field(None, description="Primary condition/indication being studied")
+    lead_sponsor: str | None = Field(
+        None, description="Lead sponsor organization (competitive-intelligence signal)"
+    )
+    interventions: list[str] = Field(
+        default_factory=list,
+        description="Intervention names (drug/biologic/procedure) in the trial",
+    )
+    enrollment: int | None = Field(None, description="Target/actual enrollment count")
 
 
 class DrugHistory(BaseModel):
@@ -1928,11 +1940,12 @@ class DrugHistory(BaseModel):
             lines += [
                 "",
                 "### Known Drugs (DGIdb)",
-                "| Drug | Type | Phase | Approved | Sources |",
-                "|---|---|---|---|---|",
+                "| Drug | Type | Phase | Approved | Score | Sources |",
+                "|---|---|---|---|---|---|",
             ]
 
-            # Sort: approved first, then direct interaction types, then phase desc
+            # Sort: approved first, then direct interaction types, then phase desc,
+            # then DGIdb interaction score desc (better-supported links first).
             def _drug_sort_key(d: DrugInteraction) -> tuple:
                 from genesis_bio_mcp.clients.dgidb import _DIRECT_TYPES
 
@@ -1940,6 +1953,7 @@ class DrugHistory(BaseModel):
                     not d.approved,
                     d.interaction_type is None or d.interaction_type.lower() not in _DIRECT_TYPES,
                     -(d.phase or 0),
+                    -(d.interaction_score or 0.0),
                     d.drug_name.lower(),
                 )
 
@@ -1947,8 +1961,11 @@ class DrugHistory(BaseModel):
                 itype = d.interaction_type or "—"
                 phase = f"Phase {d.phase}" if d.phase else "—"
                 approved = "Yes" if d.approved else "No"
+                score = f"{d.interaction_score:.2f}" if d.interaction_score is not None else "—"
                 sources = ", ".join(d.sources[:3]) if d.sources else "—"
-                lines.append(f"| {d.drug_name} | {itype} | {phase} | {approved} | {sources} |")
+                lines.append(
+                    f"| {d.drug_name} | {itype} | {phase} | {approved} | {score} | {sources} |"
+                )
 
         if self.trial_counts_by_phase:
             lines += ["", "### Clinical Trial Counts by Phase"]
@@ -1959,14 +1976,18 @@ class DrugHistory(BaseModel):
             lines += [
                 "",
                 "### Recent Trials",
-                "| NCT ID | Phase | Status | Indication |",
-                "|---|---|---|---|",
+                "| NCT ID | Phase | Status | Sponsor | Intervention | Indication |",
+                "|---|---|---|---|---|---|",
             ]
             for t in self.recent_trials[:8]:
                 phase = t.phase or "—"
-                ind = (t.indication or "—")[:40]
+                status = t.status + (f" (n={t.enrollment})" if t.enrollment else "")
+                sponsor = (t.lead_sponsor or "—")[:25]
+                interv = (", ".join(t.interventions[:2]) or "—")[:30]
+                ind = (t.indication or "—")[:30]
                 lines.append(
-                    f"| [{t.nct_id}](https://clinicaltrials.gov/study/{t.nct_id}) | {phase} | {t.status} | {ind} |"
+                    f"| [{t.nct_id}](https://clinicaltrials.gov/study/{t.nct_id}) | {phase} "
+                    f"| {status} | {sponsor} | {interv} | {ind} |"
                 )
 
         safety_drugs = [
