@@ -3595,12 +3595,33 @@ _MOCK_HPA_BRAF = [
     {
         "Gene": "BRAF",
         "Ensembl": "ENSG00000157764",
+        "Protein class": ["Enzymes", "Predicted intracellular proteins", "Cancer-related genes"],
         "RNA tissue specificity": "Low tissue specificity",
         "RNA tissue specificity score": "1.3",
         "Subcellular main location": "Cytosol",
         "Subcellular location": "Cytosol, Plasma membrane",
         "Pathology prognostics - Melanoma": "Unfavorable (p=0.001)",
         "Pathology prognostics - Glioma": "Favorable (p=0.03)",
+    }
+]
+
+# A membrane receptor and a secreted protein — to exercise the accessibility flags.
+_MOCK_HPA_EGFR = [
+    {
+        "Gene": "EGFR",
+        "Ensembl": "ENSG00000146648",
+        "Protein class": ["Predicted membrane proteins", "CD markers", "Enzymes"],
+        "RNA tissue specificity": "Tissue enhanced",
+    }
+]
+
+_MOCK_HPA_INS = [
+    {
+        "Gene": "INS",
+        "Ensembl": "ENSG00000254647",
+        # HPA also returns this field as a comma-separated string in some rows.
+        "Protein class": "Predicted secreted proteins, Plasma proteins",
+        "RNA tissue specificity": "Tissue enriched",
     }
 ]
 
@@ -3628,9 +3649,51 @@ async def test_hpa_happy_path(http_client, tmp_path, monkeypatch):
     assert ("Melanoma", "Unfavorable") in outcomes
     assert ("Glioma", "Favorable") in outcomes
 
+    # Protein class parsed; BRAF is intracellular, so no accessibility flags.
+    assert "Enzymes" in report.expression.protein_classes
+    assert report.expression.is_membrane is False
+    assert report.expression.is_secreted is False
+
     md = report.to_markdown()
     assert "Melanoma" in md
     assert "Low tissue specificity" in md
+    assert "Protein class" in md
+
+
+@respx.mock
+async def test_hpa_membrane_classification(http_client, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "genesis_bio_mcp.config.settings.settings.hpa_cache_path",
+        tmp_path / "hpa.json",
+    )
+    respx.get(url__regex=r"proteinatlas\.org/api/search_download\.php").mock(
+        return_value=httpx.Response(200, json=_MOCK_HPA_EGFR)
+    )
+    client = HPAClient(http_client)
+    report = await client.get_report("EGFR")
+    assert report is not None and report.expression is not None
+    assert report.expression.is_membrane is True
+    assert report.expression.is_secreted is False
+    assert "Predicted membrane proteins" in report.expression.protein_classes
+    assert "Target accessibility" in report.to_markdown()
+
+
+@respx.mock
+async def test_hpa_secreted_classification_from_string(http_client, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "genesis_bio_mcp.config.settings.settings.hpa_cache_path",
+        tmp_path / "hpa.json",
+    )
+    respx.get(url__regex=r"proteinatlas\.org/api/search_download\.php").mock(
+        return_value=httpx.Response(200, json=_MOCK_HPA_INS)
+    )
+    client = HPAClient(http_client)
+    report = await client.get_report("INS")
+    assert report is not None and report.expression is not None
+    # Comma-separated string form must parse identically to the list form.
+    assert report.expression.is_secreted is True
+    assert report.expression.is_membrane is False
+    assert "Plasma proteins" in report.expression.protein_classes
 
 
 @respx.mock

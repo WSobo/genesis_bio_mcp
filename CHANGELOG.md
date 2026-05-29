@@ -40,6 +40,11 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_protein_atlas` (HPA) now reports target accessibility.** Added the HPA
+  protein-class column (`pc`) and derived `is_membrane` / `is_secreted` flags on
+  `HPAExpression`, surfaced as a "Target accessibility" line — the strongest single
+  signal for whether a target is reachable by antibodies/biologics. Handles both the
+  list and comma-separated-string forms HPA returns (Tier-1 audit enrichment).
 - **`get_protein_info` (UniProt) now surfaces functional ontology.** Expanded the
   UniProt field set to parse Gene Ontology terms (aspect-prefixed: F/P/C), the Enzyme
   Commission (EC) number, controlled-vocabulary keywords, and canonical sequence length

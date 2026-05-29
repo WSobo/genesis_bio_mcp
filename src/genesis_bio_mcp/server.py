@@ -1344,17 +1344,21 @@ async def get_protein_atlas(params: GetProteinAtlasInput) -> str:
     Returns HPA's RNA tissue-specificity category (Tissue enriched /
     Group enriched / Tissue enhanced / Low tissue specificity / Not detected),
     the numerical specificity score, subcellular localization (IHC-based),
-    and prognostic cancer-outcome data per indication.
+    the protein-class annotation with a derived membrane/secreted call
+    (target accessibility — whether the protein is reachable by antibodies or
+    other biologics), and prognostic cancer-outcome data per indication.
 
     Complementary to get_tissue_expression (GTEx): HPA adds protein-level
-    localization and pathology context that bulk RNA cannot provide.
+    localization, druggability/accessibility class, and pathology context
+    that bulk RNA cannot provide.
 
     Args:
         params (GetProteinAtlasInput): gene_symbol, response_format.
 
     Returns:
-        Markdown with specificity category, subcellular locations,
-        enhanced tissues, and pathology cancer rows.
+        Markdown with specificity category, subcellular locations, protein
+        class + membrane/secreted accessibility, enhanced tissues, and
+        pathology cancer rows.
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.hpa.get_report(symbol)
