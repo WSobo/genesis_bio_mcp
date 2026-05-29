@@ -40,6 +40,12 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_target_disease_association` (Open Targets) now exposes all datatype scores.**
+  Added named `affected_pathway_score`, `rna_expression_score`, and `animal_model_score`
+  fields to `TargetDiseaseAssociation` (previously only genetic/somatic/known-drug/
+  literature were surfaced as named fields, though they were already in the evidence
+  table). Completes programmatic/JSON access to the full Open Targets datatype breakdown
+  (Tier-1 audit enrichment).
 - **`get_protein_atlas` (HPA) now reports target accessibility.** Added the HPA
   protein-class column (`pc`) and derived `is_membrane` / `is_secreted` flags on
   `HPAExpression`, surfaced as a "Target accessibility" line — the strongest single

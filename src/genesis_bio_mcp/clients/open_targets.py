@@ -513,6 +513,9 @@ def _parse_row(
         somatic_mutation_score=datatype_scores.get("somatic_mutation"),
         known_drug_score=datatype_scores.get("known_drug") or datatype_scores.get("clinical"),
         literature_mining_score=datatype_scores.get("literature"),
+        affected_pathway_score=datatype_scores.get("affected_pathway"),
+        rna_expression_score=datatype_scores.get("rna_expression"),
+        animal_model_score=datatype_scores.get("animal_model"),
         evidence_count=len(evidence_breakdown),
         evidence_breakdown=evidence_breakdown,
     )
