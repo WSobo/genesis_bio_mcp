@@ -11,6 +11,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **`get_protein_atlas` (HPA) leaked Python list/dict reprs into its output.** With live
+  data flowing again (see the gzip fix), HPA returns subcellular locations as JSON arrays
+  and `RNA tissue specific nTPM` as a JSON object, but the parser stringified them directly
+  — rendering `Subcellular: ['Golgi apparatus', 'Plasma membrane'], ...` and
+  `Enhanced tissues: {'placenta': '61.8'}`. The parser now normalizes subcellular fields via
+  `_as_str_list` (flatten + dedup) and renders the nTPM object as `tissue (nTPM)` (e.g.
+  `placenta (61.8)`). Added a regression test using the real array/object field shapes (the
+  existing mocks used flat strings and never exercised this).
 - **`resolve_gene` no longer presents an unrecognized input as a valid gene.** When
   resolution fell through to the raw-input fallback (no UniProt/NCBI/HGNC match), the
   output echoed the uppercased query as `## Gene: **<input>**` with no IDs — reading as a
