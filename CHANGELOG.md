@@ -38,6 +38,14 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
   truncation boundaries, and rigid scaffolds. Extends `AlphaFoldClient`
   (`get_confidence`); wired into `run_biology_workflow`. 3 new client tests.
 
+### Enhanced
+
+- **`get_protein_info` (UniProt) now surfaces functional ontology.** Expanded the
+  UniProt field set to parse Gene Ontology terms (aspect-prefixed: F/P/C), the Enzyme
+  Commission (EC) number, controlled-vocabulary keywords, and canonical sequence length
+  — all added as optional `ProteinInfo` fields and rendered in the markdown. No change to
+  the tool surface or inputs (Tier-1 audit enrichment).
+
 ### Changed
 
 - Untracked `.claude/worktrees/` from the git index (63 files committed before

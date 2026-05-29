@@ -682,16 +682,17 @@ async def resolve_gene(params: ResolveGeneInput) -> str:
 async def get_protein_info(params: GetProteinInfoInput) -> str:
     """Retrieve protein-level annotation for a human gene from UniProt Swiss-Prot.
 
-    Use this tool to understand a protein's biological function, subcellular location,
-    known disease-linked variants, and available 3D structures. Best used after
-    resolve_gene to ensure a canonical symbol.
+    Use this tool to understand a protein's biological function, Gene Ontology terms,
+    enzyme class (EC), keywords, subcellular location, known disease-linked variants,
+    and available 3D structures. Best used after resolve_gene to ensure a canonical
+    symbol.
 
     Args:
         params (GetProteinInfoInput): gene_symbol, response_format.
 
     Returns:
-        Markdown with function summary, pathways, disease associations, PDB IDs,
-        known variants, and reviewed status.
+        Markdown with function summary, sequence length, EC number, GO terms, keywords,
+        pathways, disease associations, PDB IDs, known variants, and reviewed status.
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.uniprot.get_protein(symbol)

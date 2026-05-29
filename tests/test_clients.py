@@ -72,6 +72,27 @@ async def test_uniprot_get_protein_braf(http_client):
 
 
 @respx.mock
+async def test_uniprot_parses_go_ec_keywords_length(http_client):
+    respx.get("https://rest.uniprot.org/uniprotkb/search").mock(
+        return_value=httpx.Response(200, json={"results": [MOCK_UNIPROT_BRAF]})
+    )
+    client = UniProtClient(http_client)
+    result = await client.get_protein("BRAF")
+    assert result is not None
+    assert result.ec_number == "2.7.11.1"
+    assert result.sequence_length == 766
+    assert "F:protein kinase activity" in result.go_terms
+    assert "P:signal transduction" in result.go_terms
+    assert "Kinase" in result.keywords
+    assert "ATP-binding" in result.keywords
+    # New annotations should also render in the markdown.
+    md = result.to_markdown()
+    assert "EC:" in md and "2.7.11.1" in md
+    assert "GO terms" in md
+    assert "Keywords" in md
+
+
+@respx.mock
 async def test_uniprot_returns_none_for_unknown_gene(http_client):
     respx.get("https://rest.uniprot.org/uniprotkb/search").mock(
         return_value=httpx.Response(200, json={"results": []})

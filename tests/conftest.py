@@ -42,8 +42,16 @@ MOCK_UNIPROT_BRAF = {
         }
     ],
     "proteinDescription": {
-        "recommendedName": {"fullName": {"value": "Serine/threonine-protein kinase B-raf"}}
+        "recommendedName": {
+            "fullName": {"value": "Serine/threonine-protein kinase B-raf"},
+            "ecNumbers": [{"value": "2.7.11.1"}],
+        }
     },
+    "sequence": {"length": 766},
+    "keywords": [
+        {"id": "KW-0418", "category": "Molecular function", "name": "Kinase"},
+        {"id": "KW-0067", "category": "Ligand", "name": "ATP-binding"},
+    ],
     "organism": {"scientificName": "Homo sapiens"},
     "comments": [
         {
@@ -76,6 +84,22 @@ MOCK_UNIPROT_BRAF = {
             "database": "Reactome",
             "id": "R-HSA-5673001",
             "properties": [{"key": "PathwayName", "value": "RAF/MAP kinase cascade"}],
+        },
+        {
+            "database": "GO",
+            "id": "GO:0004672",
+            "properties": [
+                {"key": "GoTerm", "value": "F:protein kinase activity"},
+                {"key": "GoEvidenceType", "value": "IEA:InterPro"},
+            ],
+        },
+        {
+            "database": "GO",
+            "id": "GO:0007165",
+            "properties": [
+                {"key": "GoTerm", "value": "P:signal transduction"},
+                {"key": "GoEvidenceType", "value": "TAS:Reactome"},
+            ],
         },
     ],
     "features": [
