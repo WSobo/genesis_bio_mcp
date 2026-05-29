@@ -60,6 +60,13 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_tissue_expression` now surfaces a top-tissue callout + GTEx-native specificity
+  flag.** A Pydantic V2 `computed_field` (`TissueExpressionProfile.specificity`) derives the
+  single highest-expression tissue and its fold-enrichment over the median tissue, classified
+  as 'Tissue-restricted' (≥ 5×), 'Tissue-enhanced' (2–5×), or 'Broadly expressed' (< 2×) —
+  restricted expression implies a wider therapeutic window. Rendered as a header line above
+  the existing top-15 TPM table and exposed in the JSON output. Computed (not stored), so it
+  always tracks the samples and needs no client/cache changes. (Tier-3 audit polish.)
 - **`get_protein_interactome` STRING confidence threshold and partner limit are now
   configurable.** The previously-hardcoded `required_score=700` / `limit=20` are now
   server settings (`GENESIS_STRING_REQUIRED_SCORE`, `GENESIS_STRING_NETWORK_LIMIT`) and
