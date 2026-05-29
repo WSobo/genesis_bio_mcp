@@ -1637,6 +1637,14 @@ class HPAExpression(BaseModel):
     subcellular_locations: list[str] = Field(
         default_factory=list, description="HPA subcellular localization (IHC-based) categories"
     )
+    protein_classes: list[str] = Field(
+        default_factory=list,
+        description="HPA protein-class annotations (e.g. 'Predicted membrane proteins', 'Enzymes')",
+    )
+    is_membrane: bool = Field(
+        False, description="True if HPA classifies the protein as membrane-associated"
+    )
+    is_secreted: bool = Field(False, description="True if HPA classifies the protein as secreted")
 
 
 class ProteinAtlasReport(BaseModel):
@@ -1672,6 +1680,22 @@ class ProteinAtlasReport(BaseModel):
                 lines.append("**Enhanced tissues:** " + ", ".join(exp.enhanced_tissues))
             if exp.subcellular_locations:
                 lines.append("**Subcellular:** " + ", ".join(exp.subcellular_locations))
+            if exp.is_membrane or exp.is_secreted:
+                tags = []
+                if exp.is_membrane:
+                    tags.append("membrane-associated")
+                if exp.is_secreted:
+                    tags.append("secreted")
+                lines.append(
+                    "**Target accessibility:** "
+                    + " / ".join(tags)
+                    + " — reachable by antibodies/biologics"
+                )
+            if exp.protein_classes:
+                shown = ", ".join(exp.protein_classes[:6])
+                if len(exp.protein_classes) > 6:
+                    shown += f" (+{len(exp.protein_classes) - 6} more)"
+                lines.append(f"**Protein class:** {shown}")
 
         if self.pathology:
             lines += [

@@ -3,12 +3,14 @@
 HPA exposes a per-gene download endpoint that returns a minimal JSON record:
 
     GET https://www.proteinatlas.org/api/search_download.php?search={symbol}
-        &format=json&columns=g,gs,eg,rnatsm,rnats,scml,scl,prognostic_cancer
+        &format=json&columns=g,gs,eg,pc,rnatsm,rnats,scml,scl,prognostic_cancer
 
 Columns:
 - g       — Ensembl gene ID
 - gs      — gene symbol
 - eg      — approved synonyms
+- pc      — protein class(es); carries the membrane/secreted classification
+            ('Predicted membrane proteins', 'Predicted secreted proteins', …)
 - rnatsm  — RNA tissue specificity category (e.g. 'Tissue enriched')
 - rnats   — RNA tissue specificity score (float)
 - scml    — subcellular main location
@@ -36,7 +38,7 @@ from genesis_bio_mcp.models import HPAExpression, HPAPathologyData, ProteinAtlas
 logger = logging.getLogger(__name__)
 
 _HPA_URL = "https://www.proteinatlas.org/api/search_download.php"
-_HPA_COLUMNS = "g,gs,eg,rnatsm,rnats,scml,scl,prognostic_cancer"
+_HPA_COLUMNS = "g,gs,eg,pc,rnatsm,rnats,scml,scl,prognostic_cancer"
 _SEMAPHORE = asyncio.Semaphore(2)
 
 
@@ -117,6 +119,22 @@ class HPAClient:
 _PROGNOSTIC_KEY = re.compile(r"^Pathology prognostics - (.+)$", re.IGNORECASE)
 
 
+def _as_str_list(value: object) -> list[str]:
+    """Normalize an HPA multi-value field (list or comma-separated string) to a list.
+
+    HPA's JSON download returns some columns as arrays and others as a single
+    comma-separated string; this collapses both into a clean, de-duplicated list.
+    """
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        items = [str(v).strip() for v in value]
+    else:
+        items = [s.strip() for s in str(value).split(",")]
+    seen: set[str] = set()
+    return [s for s in items if s and not (s in seen or seen.add(s))]
+
+
 def _parse_hpa(row: dict, symbol: str) -> ProteinAtlasReport:
     """Convert one HPA row into a :class:`ProteinAtlasReport`."""
     if not row:
@@ -146,6 +164,14 @@ def _parse_hpa(row: dict, symbol: str) -> ProteinAtlasReport:
     enhanced_raw = row.get("RNA tissue specific nTPM") or row.get("Tissue expression cluster") or ""
     enhanced_tissues = [t.strip() for t in str(enhanced_raw).split(";") if t.strip()]
 
+    # Protein class — HPA returns this as a list (JSON) or a comma-separated
+    # string. It carries the membrane/secreted classification, the strongest
+    # single signal for whether a target is reachable by antibodies/biologics.
+    protein_classes = _as_str_list(row.get("Protein class") or row.get("pc"))
+    pc_lower = " ".join(protein_classes).lower()
+    is_membrane = "membrane" in pc_lower
+    is_secreted = "secreted" in pc_lower
+
     expression = HPAExpression(
         gene_symbol=symbol,
         ensembl_id=str(ensembl_id) if ensembl_id else None,
@@ -153,6 +179,9 @@ def _parse_hpa(row: dict, symbol: str) -> ProteinAtlasReport:
         rna_tissue_specificity_score=spec_score_f,
         enhanced_tissues=enhanced_tissues,
         subcellular_locations=subcellular,
+        protein_classes=protein_classes,
+        is_membrane=is_membrane,
+        is_secreted=is_secreted,
     )
 
     pathology: list[HPAPathologyData] = []
