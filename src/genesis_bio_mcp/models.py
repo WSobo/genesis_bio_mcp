@@ -59,6 +59,19 @@ class ProteinInfo(BaseModel):
     protein_name: str = Field(description="Recommended protein name from UniProt")
     organism: str = Field(description="Source organism")
     function_summary: str = Field(description="Curated functional description (CC FUNCTION)")
+    sequence_length: int | None = Field(
+        None, description="Canonical sequence length in amino acids, if reported"
+    )
+    ec_number: str | None = Field(
+        None, description="Enzyme Commission number(s) from the recommended name, if any"
+    )
+    go_terms: list[str] = Field(
+        default_factory=list,
+        description="Gene Ontology terms, prefixed by aspect (F: function, P: process, C: component)",
+    )
+    keywords: list[str] = Field(
+        default_factory=list, description="UniProt controlled-vocabulary keywords"
+    )
     subcellular_locations: list[str] = Field(description="Annotated subcellular compartments")
     pathways: list[str] = Field(description="Reactome pathway names linked in UniProt")
     disease_associations: list[str] = Field(description="MIM disease entries linked in UniProt")
@@ -76,13 +89,32 @@ class ProteinInfo(BaseModel):
         reviewed_label = (
             "Swiss-Prot (manually reviewed)" if self.reviewed else "TrEMBL (unreviewed)"
         )
+        meta = f"**UniProt:** {self.uniprot_accession} — {reviewed_label}"
+        if self.sequence_length:
+            meta += f" | **Length:** {self.sequence_length} aa"
+        if self.ec_number:
+            meta += f" | **EC:** {self.ec_number}"
         lines = [
             f"## Protein: {self.protein_name} ({self.gene_symbol})",
-            f"**UniProt:** {self.uniprot_accession} — {reviewed_label}",
+            meta,
             "",
             "### Function",
             self.function_summary,
         ]
+        if self.go_terms:
+            lines += [
+                "",
+                f"**GO terms ({len(self.go_terms)}):** {', '.join(self.go_terms[:8])}",
+            ]
+            if len(self.go_terms) > 8:
+                lines[-1] += f" (+{len(self.go_terms) - 8} more)"
+        if self.keywords:
+            lines += [
+                "",
+                f"**Keywords:** {', '.join(self.keywords[:10])}",
+            ]
+            if len(self.keywords) > 10:
+                lines[-1] += f" (+{len(self.keywords) - 10} more)"
         if self.subcellular_locations:
             lines += [
                 "",

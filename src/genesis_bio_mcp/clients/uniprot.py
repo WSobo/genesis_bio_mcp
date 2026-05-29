@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://rest.uniprot.org/uniprotkb"
 _FIELDS = (
-    "accession,gene_names,protein_name,organism_name,"
-    "cc_function,cc_subcellular_location,cc_disease,"
+    "accession,gene_names,protein_name,organism_name,length,ec,"
+    "cc_function,cc_subcellular_location,cc_disease,go,keyword,"
     "xref_reactome,xref_pdb,ft_variant,ft_disulfid"
 )
 
@@ -165,6 +165,8 @@ def _parse_entry(entry: dict, gene_symbol: str) -> ProteinInfo:
     pn = entry.get("proteinDescription", {})
     rec = pn.get("recommendedName", {})
     protein_name = rec.get("fullName", {}).get("value", "") if rec else ""
+    ec_values = [ec.get("value", "") for ec in (rec.get("ecNumbers", []) if rec else [])]
+    ec_number = ", ".join(v for v in ec_values if v) or None
     if not protein_name:
         # Fall back to submitted name
         submitted = pn.get("submissionNames", [])
@@ -207,6 +209,7 @@ def _parse_entry(entry: dict, gene_symbol: str) -> ProteinInfo:
     xrefs = entry.get("uniProtKBCrossReferences", [])
     pdb_structures: list[str] = []
     pathways: list[str] = []
+    go_terms: list[str] = []
     for xref in xrefs:
         db = xref.get("database", "")
         xid = xref.get("id", "")
@@ -218,6 +221,12 @@ def _parse_entry(entry: dict, gene_symbol: str) -> ProteinInfo:
                 (p.get("value") for p in props if p.get("key") == "PathwayName"), xid
             )
             pathways.append(pathway_name)
+        elif db == "GO":
+            props = xref.get("properties", [])
+            # GoTerm values are aspect-prefixed, e.g. "F:protein kinase activity".
+            term = next((p.get("value") for p in props if p.get("key") == "GoTerm"), None)
+            if term:
+                go_terms.append(term)
 
     # Variants + disulfide-bond features
     features = entry.get("features", [])
@@ -246,12 +255,22 @@ def _parse_entry(entry: dict, gene_symbol: str) -> ProteinInfo:
                 if isinstance(v, int):
                     disulfide_bond_positions.append(v)
 
+    # Keywords (controlled vocabulary) + canonical sequence length.
+    keywords = [kw.get("name", "") for kw in entry.get("keywords", [])]
+    keywords = [k for k in keywords if k]
+    seq_meta = entry.get("sequence", {})
+    sequence_length = seq_meta.get("length") if isinstance(seq_meta, dict) else None
+
     return ProteinInfo(
         uniprot_accession=accession,
         gene_symbol=canonical_symbol,
         protein_name=protein_name,
         organism=organism,
         function_summary=function_summary,
+        sequence_length=sequence_length,
+        ec_number=ec_number,
+        go_terms=list(dict.fromkeys(go_terms)),
+        keywords=list(dict.fromkeys(keywords)),
         subcellular_locations=list(dict.fromkeys(subcellular_locations)),
         pathways=list(dict.fromkeys(pathways)),
         disease_associations=disease_associations,
