@@ -740,6 +740,14 @@ async def test_string_get_interactome(http_client):
     assert "RAF1" in symbols
     # Sorted descending by score
     assert result.top_interactors[0].score >= result.top_interactors[1].score
+    # Per-channel sub-scores are captured and the dominant channel is surfaced.
+    # MAP2K1 mock: escore=400 (0.4), dscore=900 (0.9) → dominant is "database".
+    map2k1 = next(i for i in result.top_interactors if i.gene_symbol == "MAP2K1")
+    assert map2k1.evidence_scores["experiments"] == pytest.approx(0.4)
+    assert map2k1.evidence_scores["database"] == pytest.approx(0.9)
+    assert map2k1.dominant_evidence == "database"
+    # Dominant channel + its sub-score render in the markdown table.
+    assert "database (0.90)" in result.to_markdown()
 
 
 @respx.mock

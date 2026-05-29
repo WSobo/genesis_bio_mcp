@@ -52,6 +52,15 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_protein_interactome` now surfaces each partner's dominant evidence channel.**
+  STRING returns seven per-channel sub-scores (experiments, database, coexpression,
+  textmining, homology, cooccurrence, gene fusion); the client previously computed them
+  only to derive a thresholded label list and then discarded the numbers. They are now
+  retained on `Interactor.evidence_scores` (full 0–1 breakdown) plus a `dominant_evidence`
+  field naming the single best-supported channel, rendered as a "Top evidence" table
+  column with its sub-score. This lets the reader tell trustworthy experimental/database
+  support apart from textmining co-mentions at the same combined score — a selectivity-
+  relevant distinction. (Tier-3 audit enrichment.)
 - **`get_pathway_context` now reports Benjamini-Hochberg FDR per pathway.** The Reactome
   analysis response already carries an `fdr` (multiple-testing-corrected p-value) in the
   same `entities` block as the raw p-value — it is now parsed onto a new `Pathway.fdr`
