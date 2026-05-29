@@ -6,7 +6,12 @@ import logging
 
 import httpx
 
-from genesis_bio_mcp.models import PDBStructure, ProteinStructure
+from genesis_bio_mcp.models import (
+    ConfidenceRegion,
+    PDBStructure,
+    ProteinStructure,
+    StructureConfidence,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +28,9 @@ class AlphaFoldClient:
         # Session-scoped cache keyed by (gene_symbol, uniprot_accession).
         # Structure data is stable within a session; PDB deposits don't change mid-run.
         self._cache: dict[tuple[str, str | None], ProteinStructure | None] = {}
+        # Separate cache for the heavier per-residue confidence profile (downloads
+        # and parses the full model PDB), keyed by (gene_symbol, accession).
+        self._confidence_cache: dict[tuple[str, str], StructureConfidence | None] = {}
 
     async def get_structure(
         self, gene_symbol: str, uniprot_accession: str | None = None
@@ -59,6 +67,47 @@ class AlphaFoldClient:
             best_resolution=best_res,
         )
         self._cache[cache_key] = result
+        return result
+
+    async def get_confidence(
+        self, gene_symbol: str, uniprot_accession: str | None = None
+    ) -> StructureConfidence | None:
+        """Return a per-residue pLDDT confidence profile from the AlphaFold model.
+
+        Downloads the AlphaFold model PDB and parses per-residue pLDDT from the
+        CA-atom B-factor column, then summarizes confidence bands and contiguous
+        low-confidence (likely flexible/disordered) regions.
+        """
+        if not uniprot_accession:
+            logger.warning("AlphaFold confidence: no UniProt accession for %s", gene_symbol)
+            return None
+
+        cache_key = (gene_symbol.upper(), uniprot_accession)
+        if cache_key in self._confidence_cache:
+            logger.debug("AlphaFold confidence cache hit: %s", gene_symbol)
+            return self._confidence_cache[cache_key]
+
+        _, pdb_url, version = await self._fetch_alphafold(uniprot_accession)
+        if not pdb_url:
+            logger.info("AlphaFold confidence: no model for %s", uniprot_accession)
+            self._confidence_cache[cache_key] = None
+            return None
+
+        try:
+            resp = await self._client.get(pdb_url, timeout=25.0)
+            resp.raise_for_status()
+            plddts = _parse_plddt_from_pdb(resp.text)
+        except Exception as exc:
+            logger.warning("AlphaFold model download failed for %s: %s", uniprot_accession, exc)
+            return None
+
+        if not plddts:
+            logger.warning("AlphaFold confidence: no CA pLDDT parsed for %s", uniprot_accession)
+            self._confidence_cache[cache_key] = None
+            return None
+
+        result = _build_confidence(gene_symbol, uniprot_accession, version, plddts)
+        self._confidence_cache[cache_key] = result
         return result
 
     async def _fetch_alphafold(
@@ -180,3 +229,88 @@ class AlphaFoldClient:
         except Exception as exc:
             logger.warning("RCSB entry fetch failed for %s: %s", pdb_id, exc)
             return None
+
+
+def _parse_plddt_from_pdb(pdb_text: str) -> list[tuple[int, float]]:
+    """Extract ordered (residue_number, pLDDT) from CA-atom B-factors of an AlphaFold PDB.
+
+    AlphaFold stores the per-residue pLDDT in the temperature-factor (B-factor)
+    column. Reads one value per residue (the CA atom), preserving sequence order.
+    """
+    out: list[tuple[int, float]] = []
+    seen: set[int] = set()
+    for line in pdb_text.splitlines():
+        if not line.startswith("ATOM"):
+            continue
+        if line[12:16].strip() != "CA":
+            continue
+        try:
+            res_num = int(line[22:26])
+            plddt = float(line[60:66])
+        except (ValueError, IndexError):
+            continue
+        if res_num in seen:
+            continue
+        seen.add(res_num)
+        out.append((res_num, plddt))
+    return out
+
+
+def _find_low_confidence_regions(
+    plddts: list[tuple[int, float]], threshold: float, min_length: int
+) -> list[ConfidenceRegion]:
+    """Group consecutive residues with pLDDT < threshold into regions (≥ min_length)."""
+    regions: list[ConfidenceRegion] = []
+    run: list[tuple[int, float]] = []
+
+    def flush() -> None:
+        nonlocal run
+        if len(run) >= min_length:
+            vals = [v for _, v in run]
+            regions.append(
+                ConfidenceRegion(
+                    start=run[0][0],
+                    end=run[-1][0],
+                    length=len(run),
+                    mean_plddt=round(sum(vals) / len(vals), 1),
+                )
+            )
+        run = []
+
+    for res_num, plddt in plddts:
+        if plddt < threshold:
+            if run and res_num != run[-1][0] + 1:
+                flush()
+            run.append((res_num, plddt))
+        else:
+            flush()
+    flush()
+    return regions
+
+
+def _build_confidence(
+    gene_symbol: str,
+    uniprot_accession: str,
+    version: str | None,
+    plddts: list[tuple[int, float]],
+) -> StructureConfidence:
+    """Summarize per-residue pLDDT into band fractions and low-confidence regions."""
+    values = [p for _, p in plddts]
+    n = len(values)
+    very_high = sum(1 for v in values if v >= 90)
+    confident = sum(1 for v in values if 70 <= v < 90)
+    low = sum(1 for v in values if 50 <= v < 70)
+    very_low = sum(1 for v in values if v < 50)
+
+    return StructureConfidence(
+        gene_symbol=gene_symbol,
+        uniprot_accession=uniprot_accession,
+        model_version=version,
+        residue_count=n,
+        mean_plddt=round(sum(values) / n, 2),
+        pct_very_high=round(100 * very_high / n, 1),
+        pct_confident=round(100 * confident / n, 1),
+        pct_low=round(100 * low / n, 1),
+        pct_very_low=round(100 * very_low / n, 1),
+        low_confidence_regions=_find_low_confidence_regions(plddts, threshold=70.0, min_length=3),
+    )

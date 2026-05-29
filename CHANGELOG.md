@@ -9,7 +9,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-Repo-hygiene pass. No changes to the public tool surface.
+v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
+
+### Added
+
+- **`get_structure_confidence` tool (M1, 28 tools total).** Downloads the AlphaFold
+  model and parses per-residue pLDDT from the CA-atom B-factor column, reporting
+  confidence-band fractions (≥90 / 70–90 / 50–70 / <50) and contiguous
+  low-confidence (pLDDT < 70) regions that typically correspond to flexible or
+  intrinsically disordered stretches — guidance for choosing mutation sites,
+  truncation boundaries, and rigid scaffolds. Extends `AlphaFoldClient`
+  (`get_confidence`); wired into `run_biology_workflow`. 3 new client tests.
 
 ### Changed
 

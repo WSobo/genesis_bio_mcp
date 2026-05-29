@@ -1300,6 +1300,74 @@ class ProteinStructure(BaseModel):
         return "\n".join(lines)
 
 
+class ConfidenceRegion(BaseModel):
+    """A contiguous run of residues below the pLDDT confidence threshold."""
+
+    start: int = Field(description="First residue number (1-based) in the region")
+    end: int = Field(description="Last residue number (1-based) in the region")
+    length: int = Field(description="Number of residues in the region")
+    mean_plddt: float = Field(description="Mean pLDDT across the region (0–100)")
+
+
+class StructureConfidence(BaseModel):
+    """Per-residue AlphaFold pLDDT confidence profile for a protein.
+
+    pLDDT bands (AlphaFold convention): ≥90 very high, 70–90 confident, 50–70 low,
+    <50 very low. Low/very-low stretches usually correspond to intrinsically
+    disordered or flexible regions — key for protein engineering: prefer
+    well-ordered (pLDDT ≥70) regions for mutation sites, truncation boundaries,
+    and rigid scaffolds.
+    """
+
+    gene_symbol: str
+    uniprot_accession: str = Field(description="UniProt accession of the AlphaFold model")
+    model_version: str | None = Field(None, description="AlphaFold model version, e.g. 'v4'")
+    residue_count: int = Field(description="Number of residues with a pLDDT value")
+    mean_plddt: float = Field(description="Mean per-residue pLDDT across the model (0–100)")
+    pct_very_high: float = Field(description="Percent of residues with pLDDT ≥ 90")
+    pct_confident: float = Field(description="Percent of residues with 70 ≤ pLDDT < 90")
+    pct_low: float = Field(description="Percent of residues with 50 ≤ pLDDT < 70")
+    pct_very_low: float = Field(description="Percent of residues with pLDDT < 50")
+    low_confidence_regions: list[ConfidenceRegion] = Field(
+        default_factory=list,
+        description="Contiguous stretches (≥3 residues) with pLDDT < 70 — likely flexible/disordered",
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## AlphaFold Per-Residue Confidence: {self.gene_symbol}",
+            f"**UniProt:** {self.uniprot_accession}"
+            + (f" | **Model:** {self.model_version}" if self.model_version else ""),
+            f"**Residues:** {self.residue_count} | **Mean pLDDT:** {self.mean_plddt:.1f}/100",
+            "",
+            "| Confidence band | % residues |",
+            "|---|---|",
+            f"| Very high (≥90) | {self.pct_very_high:.0f}% |",
+            f"| Confident (70–90) | {self.pct_confident:.0f}% |",
+            f"| Low (50–70) | {self.pct_low:.0f}% |",
+            f"| Very low (<50) | {self.pct_very_low:.0f}% |",
+            "",
+            f"**Well-ordered (pLDDT ≥70):** {self.pct_very_high + self.pct_confident:.0f}% of residues.",
+        ]
+        if self.low_confidence_regions:
+            lines += [
+                "",
+                "### Low-confidence regions (pLDDT < 70 — likely flexible/disordered)",
+                "| Residues | Length | Mean pLDDT |",
+                "|---|---|---|",
+            ]
+            for r in self.low_confidence_regions[:15]:
+                lines.append(f"| {r.start}–{r.end} | {r.length} | {r.mean_plddt:.1f} |")
+            if len(self.low_confidence_regions) > 15:
+                lines.append(f"\n_...and {len(self.low_confidence_regions) - 15} more regions_")
+        else:
+            lines += [
+                "",
+                "_No extended low-confidence regions — model is well-ordered throughout._",
+            ]
+        return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Protein interaction network (STRING)
 # ---------------------------------------------------------------------------

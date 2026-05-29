@@ -195,6 +195,14 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"No structural data found for '{gene_symbol}'."
         return result.to_markdown()
 
+    async def _get_structure_confidence_fn(gene_symbol: str) -> str:
+        protein = await state.uniprot.get_protein(gene_symbol)
+        accession = protein.uniprot_accession if protein else None
+        result = await state.alphafold.get_confidence(gene_symbol, uniprot_accession=accession)
+        if result is None:
+            return f"No AlphaFold per-residue confidence available for '{gene_symbol}'."
+        return result.to_markdown()
+
     async def _get_protein_interactome_fn(gene_symbol: str) -> str:
         result = await state.string_db.get_interactome(gene_symbol)
         if result is None or result.total_partners == 0:
@@ -626,6 +634,27 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="structure",
             use_when="Use to assess structural feasibility for drug design. Ligand-bound structures are critical for SBDD.",
             fn=_get_protein_structure_fn,
+        ),
+        "get_structure_confidence": ToolSpec(
+            name="get_structure_confidence",
+            description=(
+                "Retrieve the AlphaFold per-residue pLDDT confidence profile: percent of residues "
+                "in each confidence band and contiguous low-confidence (pLDDT < 70) regions that "
+                "are likely flexible or intrinsically disordered."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_symbol": {
+                        "type": "string",
+                        "description": "HGNC gene symbol. Example: 'BRAF'",
+                    }
+                },
+                "required": ["gene_symbol"],
+            },
+            tool_category="structure",
+            use_when="Use for protein engineering to find well-ordered vs flexible/disordered regions before choosing mutation sites, truncation boundaries, or scaffolds.",
+            fn=_get_structure_confidence_fn,
         ),
         "get_protein_interactome": ToolSpec(
             name="get_protein_interactome",
