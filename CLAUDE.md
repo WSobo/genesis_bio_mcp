@@ -12,12 +12,25 @@ NO built-in Read/Grep/Glob. NO raw ls/cat/git. MUST use bash `rtk <cmd>` (`rtk l
 ## Testing
 `uv run pytest tests/ -v`
 
-## Git
-- Use `rtk git` for ALL version control.
-- Commits MUST be atomic (one feature/fix per commit).
-- Conventional Commits ONLY (`feat:`, `fix:`, `refactor:`, `docs:`).
-- NEVER `git push` without explicit user permission.
-- NEVER track/commit `data/`, `.parquet`, or `.csv` files.
+## Git & Repo Hygiene
+- Use `rtk git` for ALL version control. NEVER `git push` without explicit user permission.
+- Commits MUST be atomic (one feature/fix per commit). Conventional Commits ONLY (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`).
+- One branch per change: `feat/…`, `fix/…`, `chore/…`, `docs/…`, `refactor/…`. DELETE a branch as soon as it merges — never let stale branches pile up (`git branch -d <name>`).
+- NEVER track/commit `data/`, `.parquet`, `.csv`, generated `examples/*.json`, or `.claude/worktrees/`. If a file slips into the index before `.gitignore` catches it, untrack with `git rm -r --cached <path>` — gitignore does NOT untrack already-tracked files.
+- Dependencies: review & merge Dependabot PRs promptly; verify with `uv sync` + full `uv run pytest tests/` BEFORE merging.
+
+## Repo Layout (where things go)
+- `tests/` — pytest unit/integration tests ONLY (auto-collected; `test_*.py` lives here, nowhere else).
+- `scripts/` — manual / live-API harnesses (e.g. `smoke_report.py`). NEVER leave a runnable script at repo root.
+- `examples/` — generated target reports (`.json` gitignored; `.md` committed for reference).
+- `data/` — local API caches (gitignored).
+
+## Docs & Counts — single source of truth
+- Tool count, data-source count, and test count are duplicated across docs. When ANY of them changes, update ALL of: `src/genesis_bio_mcp/server.py` module docstring, `README.md` (intro + tools table), `docs/architecture.md`, `docs/tools.md`, and the MCP registry resource docstring.
+- PREFER not hardcoding the test count in prose at all.
+
+## Before every PR
+`uv run ruff format . && uv run ruff check --fix .` → `uv run pytest tests/ -v` (all green) → update `CHANGELOG.md` `[Unreleased]` → bump `pyproject.toml` version if releasing → sync every count reference (see above). Full new-data-source recipe lives in `CONTRIBUTING.md`.
 
 ---
 

@@ -7,6 +7,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [Unreleased]
+
+Repo-hygiene pass. No changes to the public tool surface.
+
+### Changed
+
+- Untracked `.claude/worktrees/` from the git index (63 files committed before
+  `.gitignore` listed the path; gitignore does not untrack already-tracked files).
+- Relocated the live-API smoke harness `test_full.py` → `scripts/smoke_report.py`
+  (manual harnesses no longer live at repo root); updated its self-references and
+  the bug-report issue template.
+- Marked `evaluation.xml`'s documented runner (`scripts/evaluation.py`) as not yet
+  implemented.
+- Pruned six merged/superseded local branches.
+- Bumped dependencies via Dependabot (httpx `>=0.28.1`; `actions/checkout`,
+  `actions/setup-python`, `astral-sh/setup-uv`).
+
+### Docs
+
+- Corrected the stale unit-test count in `README.md` (192 → 218).
+- Hardened `CLAUDE.md` with git/branch-lifecycle, worktree-hygiene, repo-layout,
+  dependency-policy, doc/count single-source-of-truth, and pre-PR rules.
+
+---
+
 ## [0.3.5] — 2026-04-25
 
 Patch release. Fixes four bugs caught by a fifth-round live MCP smoke test
