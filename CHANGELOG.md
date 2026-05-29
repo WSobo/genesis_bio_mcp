@@ -9,7 +9,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
+_No unreleased changes._
+
+## [0.4.0] - 2026-05-29
+
+Protein-engineering milestones (M1–M4), the full per-tool audit enrichment pass
+(Tiers 1–3), and a repo-hygiene pass. **31 tools across 24 data sources.**
+Highlights: AlphaFold per-residue confidence, MaveDB DMS variant lookup, antibody
+CDR developability, and Foldseek structural-homolog search; plus Open Targets
+tractability, Reactome FDR, STRING evidence channels + configurable thresholds, an
+honest DepMap approximated-score caveat, GTEx tissue-specificity, and a dozen
+client/output enrichments across the existing tools.
 
 ### Added
 
