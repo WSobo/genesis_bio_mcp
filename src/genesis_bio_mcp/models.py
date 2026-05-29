@@ -31,6 +31,17 @@ class GeneResolution(BaseModel):
             parts.append(f"HGNC: {self.hgnc_id}")
         line = " | ".join(parts)
         syns = f"\nAliases: {', '.join(self.synonyms[:8])}" if self.synonyms else ""
+        # When resolution falls through to the raw-input fallback (no UniProt/
+        # NCBI/HGNC match), the "symbol" is just the echoed query. Flag it so a
+        # caller doesn't mistake an unrecognized input for a valid gene.
+        if self.source == "input" and not (
+            self.ncbi_gene_id or self.uniprot_accession or self.hgnc_id
+        ):
+            return (
+                f"## Gene: {self.hgnc_symbol} — _not resolved_\n\n"
+                f"⚠ Could not resolve '{self.hgnc_symbol}' to a known human gene "
+                "(no UniProt, NCBI, or HGNC match). Check the symbol or spelling."
+            )
         return f"## Gene: {line}{syns}"
 
 

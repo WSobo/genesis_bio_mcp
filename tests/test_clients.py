@@ -1243,6 +1243,29 @@ async def test_clinical_trials_returns_empty_on_error(http_client, monkeypatch):
     assert counts == {}
 
 
+def test_resolve_gene_flags_unresolved_input():
+    """A GeneResolution that fell through to the raw-input fallback (source='input'
+    with no external IDs) must render an explicit 'not resolved' warning rather than
+    echoing the query back as if it were a valid gene."""
+    from genesis_bio_mcp.models import GeneResolution
+
+    unresolved = GeneResolution(hgnc_symbol="ZZZ_NOT_A_GENE_42", source="input")
+    md = unresolved.to_markdown()
+    assert "not resolved" in md.lower()
+    assert "ZZZ_NOT_A_GENE_42" in md
+
+    # A genuinely resolved gene still renders the normal identifier line.
+    resolved = GeneResolution(
+        hgnc_symbol="BRAF",
+        ncbi_gene_id="673",
+        uniprot_accession="P15056",
+        source="uniprot",
+    )
+    md2 = resolved.to_markdown()
+    assert "not resolved" not in md2.lower()
+    assert "P15056" in md2 and "NCBI Gene: 673" in md2
+
+
 # ---------------------------------------------------------------------------
 # Foldseek client tests
 # ---------------------------------------------------------------------------

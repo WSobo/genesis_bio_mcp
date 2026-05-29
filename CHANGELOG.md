@@ -11,6 +11,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **`resolve_gene` no longer presents an unrecognized input as a valid gene.** When
+  resolution fell through to the raw-input fallback (no UniProt/NCBI/HGNC match), the
+  output echoed the uppercased query as `## Gene: **<input>**` with no IDs — reading as a
+  successful hit. `GeneResolution.to_markdown` now detects the fallback (`source='input'`
+  with no external IDs) and renders an explicit "not resolved" warning instead.
 - **`get_protein_atlas` (HPA) was returning "no data" for every gene.** HPA's
   `search_download.php` endpoint now serves a **gzip-compressed body**
   (`Content-Type: application/gzip`) — a file payload, not a `Content-Encoding`
