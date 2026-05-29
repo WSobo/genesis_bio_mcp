@@ -1002,7 +1002,9 @@ async def get_protein_interactome(params: GetProteinInteractomeInput) -> str:
 
     Returns:
         Markdown with top 20 interaction partners sorted by STRING confidence score,
-        evidence types (experiments, database, coexpression), and total partner count.
+        each partner's dominant evidence channel and its sub-score (so experimental /
+        database support can be told apart from textmining co-mentions at the same
+        combined score), the contributing evidence channels, and total partner count.
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.string_db.get_interactome(symbol)

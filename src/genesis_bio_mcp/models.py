@@ -1582,7 +1582,20 @@ class Interactor(BaseModel):
     )
     evidence_types: list[str] = Field(
         default_factory=list,
-        description="Evidence channels: experiments | database | coexpression | textmining | homology",
+        description="Evidence channels above the 0.15 reporting threshold: "
+        "experiments | database | coexpression | textmining | homology | "
+        "cooccurrence | gene_fusion",
+    )
+    evidence_scores: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-channel STRING sub-scores (0–1) for every non-zero evidence "
+        "channel — lets the reader weigh evidence quality, not just the combined score.",
+    )
+    dominant_evidence: str | None = Field(
+        None,
+        description="Highest-scoring evidence channel for this partner. Experimental / "
+        "database support is far more reliable than textmining co-mentions at the same "
+        "combined score, so this flags the basis of the interaction.",
     )
 
 
@@ -1601,11 +1614,26 @@ class ProteinInteractome(BaseModel):
             f"**{self.total_partners} interaction partners** (STRING confidence ≥ 0.7)",
         ]
         if self.top_interactors:
-            lines += ["", "| Partner | Score | Evidence |", "|---|---|---|"]
+            lines += [
+                "",
+                "| Partner | Score | Top evidence | Channels |",
+                "|---|---|---|---|",
+            ]
             for it in self.top_interactors[:15]:
                 ev = ", ".join(it.evidence_types[:4]) if it.evidence_types else "—"
+                if it.dominant_evidence:
+                    dom_score = it.evidence_scores.get(it.dominant_evidence)
+                    top = (
+                        f"{it.dominant_evidence} ({dom_score:.2f})"
+                        if dom_score is not None
+                        else it.dominant_evidence
+                    )
+                else:
+                    top = "—"
                 name = it.protein_name or it.gene_symbol
-                lines.append(f"| **{it.gene_symbol}** ({name[:30]}) | {it.score:.3f} | {ev} |")
+                lines.append(
+                    f"| **{it.gene_symbol}** ({name[:30]}) | {it.score:.3f} | {top} | {ev} |"
+                )
         return "\n".join(lines)
 
 

@@ -131,13 +131,24 @@ def _parse_interactions(
             score = raw / 1000.0 if raw > 1.0 else raw
 
             evidence: list[str] = []
+            evidence_scores: dict[str, float] = {}
             for key, label in _EVIDENCE_LABELS.items():
                 val = edge.get(key, 0)
                 if isinstance(val, (int, float)):
                     ev_raw = float(val)
                     ev_norm = ev_raw / 1000.0 if ev_raw > 1.0 else ev_raw
+                    if ev_norm > 0:
+                        evidence_scores[label] = round(ev_norm, 3)
                     if ev_norm > 0.15:
                         evidence.append(label)
+
+            # Dominant channel = the single best-supported evidence type. Experimental
+            # / database support at a given score is far more trustworthy than the same
+            # score earned purely from textmining co-mentions, so surfacing the basis
+            # of the edge is a selectivity-relevant signal.
+            dominant = (
+                max(evidence_scores, key=lambda k: evidence_scores[k]) if evidence_scores else None
+            )
 
             if name not in interactors or interactors[name].score < score:
                 interactors[name] = Interactor(
@@ -145,6 +156,8 @@ def _parse_interactions(
                     protein_name=name,
                     score=round(score, 3),
                     evidence_types=evidence,
+                    evidence_scores=evidence_scores,
+                    dominant_evidence=dominant,
                 )
 
     return sorted(interactors.values(), key=lambda x: x.score, reverse=True)
