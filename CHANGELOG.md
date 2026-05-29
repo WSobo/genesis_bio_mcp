@@ -52,6 +52,14 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_target_disease_association` now surfaces Open Targets tractability (druggability).**
+  The association GraphQL query now also fetches the target-level `tractability` buckets and
+  summarizes them per modality — Small molecule, Antibody, PROTAC/degrader — reporting the
+  highest-priority satisfied bucket (e.g. "Approved Drug", "High-Quality Pocket") and the
+  number of satisfied buckets for each. This is a high-value drug-discovery signal that was
+  previously surfaced by no tool. New `TargetTractability` model; modalities with no
+  satisfied bucket are omitted. Confirmed against the live OT v4 schema (`Tractability`
+  fields are `modality`/`label`/`value`, not `id`) (Tier-3 audit enrichment).
 - **`get_chembl_compounds` now reports mechanism of action + clinical phase.** Added a
   ChEMBL `/mechanism` lookup (run concurrently with the activity fetch) that surfaces the
   most advanced clinical phase (`max_clinical_phase`) of any drug acting on the target,

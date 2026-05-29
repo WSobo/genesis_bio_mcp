@@ -210,6 +210,36 @@ async def test_open_targets_association_braf_melanoma(http_client):
     assert result.animal_model_score == pytest.approx(0.18)
     assert result.evidence_count == 7  # All datatypeScores captured
     assert len(result.evidence_breakdown) == 7
+    # Tractability buckets are summarized per modality (satisfied buckets only).
+    tract = {t.modality: t for t in result.tractability}
+    assert tract["Small molecule"].top_bucket == "Approved Drug"
+    assert tract["Small molecule"].bucket_count == 3  # Approved Drug + Pocket + Druggable Family
+    assert tract["Antibody"].top_bucket == "UniProt loc high conf"
+    assert tract["Antibody"].bucket_count == 2
+    assert tract["PROTAC/degrader"].top_bucket == "Literature"
+    # OC modality has no satisfied bucket → omitted entirely.
+    assert "Other modalities" not in tract
+
+
+def test_open_targets_parse_tractability_keeps_satisfied_and_orders_by_priority():
+    """_parse_tractability drops unsatisfied buckets and picks the top-priority hit."""
+    from genesis_bio_mcp.clients.open_targets import _parse_tractability
+
+    raw = [
+        {"modality": "SM", "label": "Approved Drug", "value": False},
+        {"modality": "SM", "label": "Advanced Clinical", "value": True},
+        {"modality": "SM", "label": "High-Quality Pocket", "value": True},
+        {"modality": "AB", "label": "Approved Drug", "value": False},
+        {"modality": "OC", "label": "Phase 1 Clinical", "value": False},
+    ]
+    result = _parse_tractability(raw)
+    by_mod = {t.modality: t for t in result}
+    # SM: first satisfied (in OT priority order) is "Advanced Clinical", 2 buckets total.
+    assert by_mod["Small molecule"].top_bucket == "Advanced Clinical"
+    assert by_mod["Small molecule"].bucket_count == 2
+    # AB and OC have no satisfied buckets → not present.
+    assert "Antibody" not in by_mod
+    assert "Other modalities" not in by_mod
 
 
 @respx.mock

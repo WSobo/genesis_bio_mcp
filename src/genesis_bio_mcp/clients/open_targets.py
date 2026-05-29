@@ -7,7 +7,11 @@ import logging
 
 import httpx
 
-from genesis_bio_mcp.models import DiseaseLinkEvidence, TargetDiseaseAssociation
+from genesis_bio_mcp.models import (
+    DiseaseLinkEvidence,
+    TargetDiseaseAssociation,
+    TargetTractability,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +47,11 @@ query DiseaseSearch($name: String!) {
 _ASSOCIATION_QUERY = """
 query Association($ensemblId: String!, $efoIds: [String!]!) {
   target(ensemblId: $ensemblId) {
+    tractability {
+      modality
+      label
+      value
+    }
     associatedDiseases(Bs: $efoIds) {
       count
       rows {
@@ -69,6 +78,11 @@ query Association($ensemblId: String!, $efoIds: [String!]!) {
 _ASSOCIATION_QUERY_NO_FILTER = """
 query AssociationTopN($ensemblId: String!) {
   target(ensemblId: $ensemblId) {
+    tractability {
+      modality
+      label
+      value
+    }
     associatedDiseases(page: { index: 0, size: 100 }) {
       count
       rows {
@@ -193,6 +207,7 @@ class OpenTargetsClient:
             {"ensemblId": ensembl_id, "efoIds": [efo_id]},
         )
         row = _extract_row(data, efo_id)
+        tractability = _extract_tractability(data)
 
         if row is None:
             # Fallback: fetch top 100 and match by EFO ID client-side
@@ -203,6 +218,7 @@ class OpenTargetsClient:
             )
             data2 = await self._graphql(_ASSOCIATION_QUERY_NO_FILTER, {"ensemblId": ensembl_id})
             row = _extract_row(data2, efo_id)
+            tractability = _extract_tractability(data2)
 
         if row is None:
             logger.info(
@@ -213,7 +229,7 @@ class OpenTargetsClient:
             )
             return None
 
-        return _parse_row(row, gene_symbol, disease_name, efo_id, ensembl_id)
+        return _parse_row(row, gene_symbol, disease_name, efo_id, ensembl_id, tractability)
 
     async def _graphql(self, query: str, variables: dict) -> dict | None:
         for attempt in range(2):
@@ -487,12 +503,61 @@ def _extract_row(data: dict | None, efo_id: str) -> dict | None:
     return rows[0]  # Best available if exact match not in top 100
 
 
+# Open Targets tractability modality codes → human-readable labels. Buckets are
+# returned by OT grouped by modality and ordered by clinical/structural priority
+# (Approved Drug > Advanced Clinical > … > structural/pocket buckets), so the
+# first satisfied bucket per modality is the highest-confidence one.
+_MODALITY_LABELS: dict[str, str] = {
+    "SM": "Small molecule",
+    "AB": "Antibody",
+    "PR": "PROTAC/degrader",
+    "OC": "Other modalities",
+}
+
+
+def _extract_tractability(data: dict | None) -> list[TargetTractability]:
+    """Extract per-modality tractability buckets from a target GraphQL response."""
+    if data is None:
+        return []
+    raw = data.get("data", {}).get("target", {}).get("tractability") or []
+    return _parse_tractability(raw)
+
+
+def _parse_tractability(raw: list[dict]) -> list[TargetTractability]:
+    """Collapse OT's flat bucket list into one summary per modality.
+
+    Keeps only satisfied buckets (``value == True``); the first satisfied bucket
+    in OT's priority-ordered list becomes ``top_bucket``. Modalities with no
+    satisfied bucket are omitted.
+    """
+    by_modality: dict[str, list[str]] = {}
+    for item in raw:
+        if not item.get("value"):
+            continue
+        modality = item.get("modality", "")
+        by_modality.setdefault(modality, []).append(item.get("label", ""))
+
+    result: list[TargetTractability] = []
+    for code, label in _MODALITY_LABELS.items():
+        buckets = by_modality.get(code)
+        if buckets:
+            result.append(
+                TargetTractability(
+                    modality=label,
+                    top_bucket=buckets[0],
+                    bucket_count=len(buckets),
+                )
+            )
+    return result
+
+
 def _parse_row(
     row: dict,
     gene_symbol: str,
     disease_name: str,
     efo_id: str,
     ensembl_id: str,
+    tractability: list[TargetTractability] | None = None,
 ) -> TargetDiseaseAssociation:
     score = row.get("score", 0.0) or 0.0
     datatype_scores: dict[str, float] = {}
@@ -518,4 +583,5 @@ def _parse_row(
         animal_model_score=datatype_scores.get("animal_model"),
         evidence_count=len(evidence_breakdown),
         evidence_breakdown=evidence_breakdown,
+        tractability=tractability or [],
     )
