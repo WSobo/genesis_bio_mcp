@@ -195,6 +195,42 @@ class MaveDBClient:
             )
         return matches
 
+    async def get_variant_scores_for_gene(
+        self, gene_symbol: str, hgvs_pro: str, max_score_sets: int = 3
+    ) -> list[MaveDBVariantScore]:
+        """Return measured DMS scores for one protein variant across a gene's score sets.
+
+        Searches MaveDB for the gene's score sets, probes the top *max_score_sets*
+        (by variant count) for *hgvs_pro*, and aggregates the matching rows. Shared by
+        ``get_variant_effects`` and the standalone ``get_dms_variant_score`` tool.
+
+        Args:
+            gene_symbol: HGNC gene symbol, e.g. ``'TP53'``.
+            hgvs_pro: Canonical HGVS protein notation, e.g. ``'p.Arg175His'``.
+            max_score_sets: How many of the largest score sets (by variant count)
+                to probe. Default 3 — the largest sets are saturating, so raising it
+                roughly multiplies latency for marginal recall (genes like BRCA1 have
+                30+ sets); below 2 risks missing variants the largest set omits.
+
+        Returns:
+            List of :class:`MaveDBVariantScore` (possibly empty).
+        """
+        results = await self.get_dms_scores(gene_symbol)
+        if results is None or not results.score_sets:
+            return []
+        top = results.score_sets[:max_score_sets]
+        per_set = await asyncio.gather(
+            *[self.get_variant_score(ss.urn, hgvs_pro, ss.title) for ss in top],
+            return_exceptions=True,
+        )
+        flattened: list[MaveDBVariantScore] = []
+        for entry in per_set:
+            if isinstance(entry, Exception):
+                logger.warning("MaveDB per-variant probe failed: %s", entry)
+                continue
+            flattened.extend(entry)
+        return flattened
+
     async def _load_scores(self, urn: str) -> list[dict[str, str]]:
         if urn in self._scores_cache:
             logger.debug("MaveDB scores cache hit: %s", urn)

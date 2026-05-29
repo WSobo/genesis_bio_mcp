@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 28 tools for biomedical database queries:
+Exposes 29 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -23,6 +23,7 @@ Exposes 28 tools for biomedical database queries:
   - get_protein_atlas             HPA: tissue specificity, subcellular, pathology
   - get_domain_annotation         InterPro: domain boundaries, Pfam/SMART, GO terms
   - get_dms_scores                MaveDB: deep mutational scanning score sets
+  - get_dms_variant_score         MaveDB: measured DMS score for one specific variant
   - get_drug_history              DGIdb + ClinicalTrials.gov + OpenFDA: drugs, trials, safety
   - get_pathway_context           Reactome: pathway membership and enrichment for a gene
   - get_pathway_members           Reactome: enumerate all genes in a named pathway
@@ -77,6 +78,7 @@ from genesis_bio_mcp.config.efo_resolver import EFOResolver
 from genesis_bio_mcp.config.settings import settings
 from genesis_bio_mcp.models import (
     ComparisonReport,
+    DMSVariantLookup,
     DrugHistory,
     ProteinSequence,
     TargetComparisonRow,
@@ -90,6 +92,7 @@ from genesis_bio_mcp.tools.target_prioritization import (
 from genesis_bio_mcp.tools.target_prioritization import (
     prioritize_target as _prioritize_target,
 )
+from genesis_bio_mcp.tools.variant_parser import canonical_three_letter, parse_protein_change
 from genesis_bio_mcp.workflow_agent import (
     build_tool_registry,
     format_registry_docs,
@@ -295,6 +298,20 @@ class GetVariantEffectsInput(_GeneInput):
         ...,
         description=(
             "Protein change for the variant. Accepted forms: 'R175H', 'p.R175H', "
+            "'Arg175His', 'p.Arg175His'. Case-insensitive; whitespace stripped."
+        ),
+        min_length=3,
+        max_length=50,
+    )
+
+
+class GetDmsVariantScoreInput(_GeneInput):
+    """Input for get_dms_variant_score."""
+
+    mutation: str = Field(
+        ...,
+        description=(
+            "Protein change to look up. Accepted forms: 'R175H', 'p.R175H', "
             "'Arg175His', 'p.Arg175His'. Case-insensitive; whitespace stripped."
         ),
         min_length=3,
@@ -1375,6 +1392,46 @@ async def get_dms_scores(params: GetDMSScoresInput) -> str:
     return _fmt(
         result, params.response_format, f"No DMS score sets found in MaveDB for '{symbol}'."
     )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_dms_variant_score(params: GetDmsVariantScoreInput) -> str:
+    """Look up the measured deep-mutational-scanning (DMS) score for one specific variant from MaveDB.
+
+    Use this when you have a specific mutation and want the experimentally measured
+    functional/fitness score — the highest-resolution residue-level signal available.
+    This is more targeted than get_dms_scores (which lists the score-set catalog for a
+    gene) and lighter than get_variant_effects (which bundles ClinVar/AlphaMissense/
+    gnomAD/VEP around the DMS score). Probes the gene's largest MaveDB score sets and
+    returns the score from each one that measured this variant.
+
+    Args:
+        params (GetDmsVariantScoreInput): gene_symbol, mutation, response_format.
+
+    Returns:
+        Markdown with the canonical HGVS p. form and a table of measured DMS scores
+        (one row per score set), or a message if no DMS data covers the variant.
+    """
+    symbol, _ = await _resolve_symbol(params.gene_symbol)
+    try:
+        orig, pos, new = parse_protein_change(params.mutation)
+    except ValueError as exc:
+        return f"Could not parse mutation '{params.mutation}': {exc}"
+    hgvs_p = canonical_three_letter(orig, pos, new)
+    dms = await mcp.state.mavedb.get_dms_scores(symbol)
+    scores = await mcp.state.mavedb.get_variant_scores_for_gene(symbol, hgvs_p)
+    result = DMSVariantLookup(
+        gene_symbol=symbol,
+        mutation=params.mutation,
+        canonical_hgvs_protein=hgvs_p,
+        score_sets_available=dms.total_score_sets if dms else 0,
+        scores=scores,
+    )
+    return _fmt(result, params.response_format, "")
 
 
 @mcp.tool(

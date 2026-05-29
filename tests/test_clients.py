@@ -3030,6 +3030,32 @@ async def test_mavedb_get_variant_score_skips_NA(http_client):
     assert hits[0].score == 0.5
 
 
+@respx.mock
+async def test_mavedb_get_variant_scores_for_gene_aggregates(http_client):
+    respx.post(url__regex=r"api\.mavedb\.org/api/v1/score-sets/search").mock(
+        return_value=httpx.Response(200, json=_MOCK_MAVEDB_SEARCH)
+    )
+    respx.get(url__regex=r"api\.mavedb\.org/api/v1/score-sets/.*/scores").mock(
+        return_value=httpx.Response(200, text=MOCK_MAVEDB_BRCA1_SCORES_CSV)
+    )
+    client = MaveDBClient(http_client)
+    scores = await client.get_variant_scores_for_gene("BRCA1", "p.Arg175His")
+    # Each probed score set contributes the two R175H replicates from the mock CSV
+    assert len(scores) >= 2
+    assert all(s.hgvs_pro == "p.Arg175His" for s in scores)
+    assert all(s.title for s in scores)  # titles populated from score-set metadata
+
+
+@respx.mock
+async def test_mavedb_get_variant_scores_for_gene_no_data(http_client):
+    respx.post(url__regex=r"api\.mavedb\.org/api/v1/score-sets/search").mock(
+        return_value=httpx.Response(200, json={"scoreSets": []})
+    )
+    client = MaveDBClient(http_client)
+    scores = await client.get_variant_scores_for_gene("NOTAREALGENE", "p.Arg175His")
+    assert scores == []
+
+
 # ---------------------------------------------------------------------------
 # VariantEffectsClient aggregator tests
 # ---------------------------------------------------------------------------
