@@ -22,6 +22,7 @@ from genesis_bio_mcp.models import (
     ProteinInteractome,
     ProteinStructure,
     ScoreBreakdown,
+    TargetComparisonRow,
     TargetDiseaseAssociation,
     TargetPrioritizationReport,
 )
@@ -155,6 +156,49 @@ def _tokenize_for_relevance(text: str) -> set[str]:
 
     raw = re.split(r"[^a-z0-9]+", text.lower())
     return {t for t in raw if len(t) > 1 and t not in _TRAIT_STOPWORDS}
+
+
+def build_comparison_row(
+    gene_symbol: str,
+    report: TargetPrioritizationReport | BaseException,
+) -> TargetComparisonRow:
+    """Build one comparison-table row from a prioritization report.
+
+    Shared by ``compare_targets`` (server) and the workflow agent so the two
+    surfaces stay in lockstep. Accepts either a finished report or the
+    ``Exception`` returned by ``asyncio.gather(..., return_exceptions=True)``.
+
+    PubChem (chemical-space breadth) and ChEMBL (peak measured potency) are kept
+    as distinct fields rather than collapsed into a single "compounds" number.
+    """
+    if isinstance(report, BaseException):
+        return TargetComparisonRow(
+            gene_symbol=gene_symbol.upper(),
+            priority_score=0.0,
+            priority_tier="Error",
+            data_gaps=["all"],
+            evidence_summary=f"Query failed: {report}",
+        )
+
+    cd = report.cancer_dependency
+    depmap_pct = int(cd.fraction_dependent_lines * 100) if cd else None
+    depmap_real = cd is not None and "DepMap Chronos" in cd.data_source
+    chembl = report.chembl_compounds
+    return TargetComparisonRow(
+        gene_symbol=report.gene_symbol,
+        priority_score=report.priority_score,
+        priority_tier=report.priority_tier,
+        ot_score=report.disease_association.overall_score if report.disease_association else None,
+        depmap_pct=depmap_pct,
+        depmap_real_data=depmap_real,
+        compound_count=report.compounds.total_active_compounds if report.compounds else None,
+        chembl_count=chembl.total_active_compounds if chembl else None,
+        best_pchembl=chembl.best_pchembl if chembl else None,
+        gwas_count=report.gwas_evidence.total_associations if report.gwas_evidence else None,
+        data_gaps=report.data_gaps,
+        evidence_summary=report.evidence_summary,
+        score_breakdown=report.score_breakdown,
+    )
 
 
 async def prioritize_target(

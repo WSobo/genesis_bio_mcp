@@ -92,6 +92,9 @@ from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals as _attach_safety_signals,
 )
 from genesis_bio_mcp.tools.target_prioritization import (
+    build_comparison_row as _build_comparison_row,
+)
+from genesis_bio_mcp.tools.target_prioritization import (
     prioritize_target as _prioritize_target,
 )
 from genesis_bio_mcp.tools.variant_parser import canonical_three_letter, parse_protein_change
@@ -1726,42 +1729,7 @@ async def compare_targets(params: CompareTargetsInput) -> str:
     for sym, report in zip(gene_symbols, reports):
         if isinstance(report, Exception):
             logger.warning("compare_targets: failed for %s — %s", sym, report)
-            rows.append(
-                TargetComparisonRow(
-                    gene_symbol=sym.upper(),
-                    priority_score=0.0,
-                    priority_tier="Error",
-                    data_gaps=["all"],
-                    evidence_summary=f"Query failed: {report}",
-                )
-            )
-            continue
-
-        cd = report.cancer_dependency
-        depmap_pct = int(cd.fraction_dependent_lines * 100) if cd else None
-        depmap_real = cd is not None and "DepMap Chronos" in cd.data_source
-
-        rows.append(
-            TargetComparisonRow(
-                gene_symbol=report.gene_symbol,
-                priority_score=report.priority_score,
-                priority_tier=report.priority_tier,
-                ot_score=report.disease_association.overall_score
-                if report.disease_association
-                else None,
-                depmap_pct=depmap_pct,
-                depmap_real_data=depmap_real,
-                compound_count=report.compounds.total_active_compounds
-                if report.compounds
-                else None,
-                gwas_count=report.gwas_evidence.total_associations
-                if report.gwas_evidence
-                else None,
-                data_gaps=report.data_gaps,
-                evidence_summary=report.evidence_summary,
-                score_breakdown=report.score_breakdown,
-            )
-        )
+        rows.append(_build_comparison_row(sym, report))
 
     comparison = ComparisonReport(indication=params.indication, rows=rows)
     result = _fmt(comparison, params.response_format, "")

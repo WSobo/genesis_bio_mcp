@@ -1976,6 +1976,54 @@ def test_compounds_activity_falls_back_to_outcome():
     assert "| Active |" in md
 
 
+def test_build_comparison_row_splits_pubchem_and_chembl():
+    """Bug O: the comparison table must keep PubChem (breadth) and ChEMBL
+    (potency) as distinct columns rather than conflating them, and the shared
+    build_comparison_row helper must populate both from one report."""
+    from genesis_bio_mcp.models import (
+        ChEMBLCompounds,
+        ComparisonReport,
+        Compounds,
+        GeneResolution,
+        TargetPrioritizationReport,
+    )
+    from genesis_bio_mcp.tools.target_prioritization import build_comparison_row
+
+    report = TargetPrioritizationReport(
+        gene_symbol="BRAF",
+        indication="melanoma",
+        resolution=GeneResolution(hgnc_symbol="BRAF", source="input"),
+        compounds=Compounds(gene_symbol="BRAF", total_active_compounds=120, compounds=[]),
+        chembl_compounds=ChEMBLCompounds(
+            gene_symbol="BRAF", total_active_compounds=37, best_pchembl=9.2, compounds=[]
+        ),
+        priority_score=7.5,
+        priority_tier="High",
+        evidence_summary="strong",
+    )
+    row = build_comparison_row("BRAF", report)
+    # Distinct fields, not a single conflated count.
+    assert row.compound_count == 120  # PubChem breadth
+    assert row.chembl_count == 37  # ChEMBL potency-data count
+    assert row.best_pchembl == 9.2
+
+    md = ComparisonReport(indication="melanoma", rows=[row]).to_markdown()
+    assert "PubChem" in md and "ChEMBL (best pChEMBL)" in md
+    assert "120" in md
+    assert "37 (pChEMBL 9.2)" in md
+
+
+def test_build_comparison_row_handles_exception():
+    """The shared helper must turn a gathered Exception into an Error row."""
+    from genesis_bio_mcp.tools.target_prioritization import build_comparison_row
+
+    row = build_comparison_row("egfr", RuntimeError("boom"))
+    assert row.gene_symbol == "EGFR"
+    assert row.priority_tier == "Error"
+    assert row.data_gaps == ["all"]
+    assert "boom" in row.evidence_summary
+
+
 def test_score_breakdown_sums_to_priority_score():
     """_compute_score's breakdown contributions must sum (before 10.0 cap) to
     the reported priority_score. This is the auditability invariant that

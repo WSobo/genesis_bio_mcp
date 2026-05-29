@@ -2356,7 +2356,15 @@ class TargetComparisonRow(BaseModel):
     ot_score: float | None = None
     depmap_pct: int | None = None
     depmap_real_data: bool = False
-    compound_count: int | None = None
+    compound_count: int | None = Field(
+        default=None, description="PubChem active-compound count (chemical-space breadth)"
+    )
+    chembl_count: int | None = Field(
+        default=None, description="ChEMBL count of compounds with a quantitative pChEMBL value"
+    )
+    best_pchembl: float | None = Field(
+        default=None, description="ChEMBL best (highest) pChEMBL value — peak measured potency"
+    )
     gwas_count: int | None = None
     data_gaps: list[str] = Field(default_factory=list)
     evidence_summary: str = ""
@@ -2377,20 +2385,30 @@ class ComparisonReport(BaseModel):
         lines = [
             f"# Target Comparison: {self.indication}",
             "",
-            "| Rank | Gene | Score | Tier | OT Score | DepMap % | Compounds | GWAS Hits | Data Gaps |",
-            "|---|---|---|---|---|---|---|---|---|",
+            "| Rank | Gene | Score | Tier | OT Score | DepMap % | PubChem | ChEMBL (best pChEMBL) "
+            "| GWAS Hits | Data Gaps |",
+            "|---|---|---|---|---|---|---|---|---|---|",
         ]
         for i, row in enumerate(ranked, 1):
             ot = f"{row.ot_score:.2f}" if row.ot_score is not None else "—"
             dep = f"{row.depmap_pct}%" if row.depmap_pct is not None else "—"
             if row.depmap_pct is not None and not row.depmap_real_data:
                 dep += "*"
-            cpds = str(row.compound_count) if row.compound_count is not None else "—"
+            pubchem = str(row.compound_count) if row.compound_count is not None else "—"
+            # PubChem (breadth of chemical space) and ChEMBL (peak measured
+            # potency) answer different questions, so they get separate columns
+            # instead of one conflated "Compounds" cell.
+            if row.chembl_count is not None:
+                chembl = str(row.chembl_count)
+                if row.best_pchembl is not None:
+                    chembl += f" (pChEMBL {row.best_pchembl:.1f})"
+            else:
+                chembl = "—"
             gwas = str(row.gwas_count) if row.gwas_count is not None else "—"
             gaps = ", ".join(row.data_gaps) if row.data_gaps else "none"
             lines.append(
                 f"| {i} | **{row.gene_symbol}** | {row.priority_score:.1f}/10 | {row.priority_tier} "
-                f"| {ot} | {dep} | {cpds} | {gwas} | {gaps} |"
+                f"| {ot} | {dep} | {pubchem} | {chembl} | {gwas} | {gaps} |"
             )
 
         lines += [
