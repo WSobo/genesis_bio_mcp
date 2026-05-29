@@ -124,6 +124,7 @@ class PubChemClient:
             c.model_copy(
                 update={
                     "name": props.get(c.cid, {}).get("name") or c.name,
+                    "smiles": props.get(c.cid, {}).get("smiles"),
                     "molecular_formula": props.get(c.cid, {}).get("formula"),
                     "molecular_weight": props.get(c.cid, {}).get("weight"),
                 }
@@ -270,9 +271,12 @@ class PubChemClient:
         if not cids:
             return {}
         cid_str = ",".join(str(c) for c in cids)
+        # NOTE: PubChem deprecated `CanonicalSMILES`; the current property is
+        # `SMILES` (it also still returns `ConnectivitySMILES`). Confirmed
+        # against the live PUG REST schema.
         url = (
             f"{_PUG_BASE}/compound/cid/{cid_str}"
-            "/property/MolecularFormula,MolecularWeight,IUPACName/JSON"
+            "/property/MolecularFormula,MolecularWeight,IUPACName,SMILES/JSON"
         )
         try:
             data = await self._get(url)
@@ -296,10 +300,14 @@ class PubChemClient:
             except (TypeError, ValueError):
                 mw = None
             name = p.get("IUPACName")
+            # PubChem returns the structure under `SMILES`; older payloads used
+            # `CanonicalSMILES`. Accept either so the parser is release-robust.
+            smiles = p.get("SMILES") or p.get("CanonicalSMILES")
             out[cid] = {
                 "formula": p.get("MolecularFormula"),
                 "weight": mw,
                 "name": (name[:80] if isinstance(name, str) else None),
+                "smiles": smiles if isinstance(smiles, str) else None,
             }
         return out
 

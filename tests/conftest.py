@@ -393,12 +393,14 @@ MOCK_PUBCHEM_PROPERTIES = {
                 "MolecularFormula": "C23H18ClF2N3O3S",
                 "MolecularWeight": 489.9,
                 "IUPACName": "vemurafenib",
+                "SMILES": "CCCS(=O)(=O)Nc1ccc(F)c(C(=O)c2c[nH]c3ncc(Cl)cc23)c1F",
             },
             {
                 "CID": 11338033,
                 "MolecularFormula": "C23H20F3N5O2S2",
                 "MolecularWeight": 519.6,
                 "IUPACName": "dabrafenib",
+                "SMILES": "CC(C)(C)c1nc(-c2cccc(NS(=O)(=O)c3c(F)cccc3F)c2F)c(-c2ccnc(N)n2)s1",
             },
         ]
     }

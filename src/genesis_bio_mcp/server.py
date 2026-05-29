@@ -877,7 +877,9 @@ async def get_compounds(params: GetCompoundsInput) -> str:
         params (GetCompoundsInput): gene_symbol, response_format.
 
     Returns:
-        Markdown with total active compound count and top compounds by potency (IC50/EC50 in nM).
+        Markdown with total active compound count and top compounds by potency
+        (IC50/EC50 in nM), each with name, molecular formula/weight, and the
+        canonical SMILES structure string.
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.pubchem.get_compounds(symbol)

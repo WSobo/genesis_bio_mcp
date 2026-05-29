@@ -52,6 +52,12 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_compounds` (PubChem) now returns SMILES structures.** Added the canonical
+  `SMILES` property to the compound-enrichment batch and a `smiles` field on
+  `CompoundActivity`, rendered in the markdown tables — giving each active compound a
+  machine-readable structure (names/formula/MW were already fetched). Uses PubChem's
+  current `SMILES` property (the deprecated `CanonicalSMILES` is still accepted as a
+  fallback); confirmed against the live PUG REST schema (Tier-2 audit enrichment).
 - **`get_variant_effects` (MyVariant) now reports conservation + modern predictors.**
   Expanded the MyVariant field set to parse **gnomAD genome** allele frequency (with an
   exome→genome fallback so genome-only variants surface a frequency instead of dropping

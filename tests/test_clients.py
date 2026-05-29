@@ -353,9 +353,12 @@ async def test_pubchem_returns_compounds(http_client):
     assert by_cid[44462760].activity_value == pytest.approx(31.0)
     # Sorted by potency: dabrafenib (6 nM) before vemurafenib (31 nM)
     assert result.compounds[0].cid == 11338033
-    # Property enrichment populated names/formulae from the property batch
+    # Property enrichment populated names/formulae/SMILES from the property batch
     assert "dabrafenib" in by_cid[11338033].name.lower()
     assert by_cid[11338033].molecular_formula == "C23H20F3N5O2S2"
+    assert by_cid[11338033].smiles is not None and "S(=O)(=O)" in by_cid[11338033].smiles
+    # SMILES is rendered in the markdown table.
+    assert "SMILES" in result.to_markdown()
 
 
 @respx.mock
