@@ -751,6 +751,27 @@ async def test_string_get_interactome(http_client):
 
 
 @respx.mock
+async def test_string_required_score_is_configurable(http_client):
+    """An explicit required_score is sent to STRING and reflected in the output."""
+    resolve = respx.get(url__regex=r"string-db\.org/api/json/get_string_ids").mock(
+        return_value=httpx.Response(200, json=_MOCK_STRING_RESOLVE)
+    )
+    network = respx.get(url__regex=r"string-db\.org/api/json/network").mock(
+        return_value=httpx.Response(200, json=_MOCK_STRING_NETWORK)
+    )
+    client = StringDbClient(http_client)
+    result = await client.get_interactome("BRAF", required_score=400, limit=5)
+
+    assert result is not None
+    assert result.required_score == 400
+    # Threshold flows into the request and the rendered confidence line.
+    assert resolve.called and network.called
+    assert network.calls.last.request.url.params["required_score"] == "400"
+    assert network.calls.last.request.url.params["limit"] == "5"
+    assert "≥ 0.40" in result.to_markdown()
+
+
+@respx.mock
 async def test_string_returns_none_when_unresolvable(http_client):
     respx.get(url__regex=r"string-db\.org/api/json/get_string_ids").mock(
         return_value=httpx.Response(200, json=[])

@@ -1607,11 +1607,16 @@ class ProteinInteractome(BaseModel):
     top_interactors: list[Interactor] = Field(
         description="Top 20 interactors sorted by confidence score (descending)"
     )
+    required_score: int = Field(
+        default=700,
+        description="STRING combined-score threshold (0–1000) used for this query",
+    )
 
     def to_markdown(self) -> str:
         lines = [
             f"## Protein Interactome: {self.gene_symbol}",
-            f"**{self.total_partners} interaction partners** (STRING confidence ≥ 0.7)",
+            f"**{self.total_partners} interaction partners** "
+            f"(STRING confidence ≥ {self.required_score / 1000:.2f})",
         ]
         if self.top_interactors:
             lines += [
