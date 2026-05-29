@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
 
-An MCP server that gives AI agents structured access to **28 tools** across
+An MCP server that gives AI agents structured access to **29 tools** across
 **23 biomedical databases** for drug discovery target prioritization,
 experiment design, and protein engineering.
 
@@ -31,7 +31,7 @@ calls.
 
 | Doc | What it covers |
 |---|---|
-| **[docs/tools.md](docs/tools.md)** | Full catalog of all 28 tools grouped by category, input fields, and use cases |
+| **[docs/tools.md](docs/tools.md)** | Full catalog of all 29 tools grouped by category, input fields, and use cases |
 | **[docs/protein-engineering.md](docs/protein-engineering.md)** | v0.2.0 protein engineering workflows: sequence analysis, variant effects, T-cell immunogenicity, combined examples |
 | **[docs/architecture.md](docs/architecture.md)** | Directory layout, client/model patterns, design decisions, `prioritize_target` scoring model, per-database API reference |
 | **[docs/benchmark.md](docs/benchmark.md)** | 12-target benchmark matrix and example `prioritize_target` output |
@@ -99,7 +99,7 @@ configuration.
 
 ## Tools at a glance
 
-28 tools across 23 data sources, organized into 9 categories. Full details
+29 tools across 23 data sources, organized into 9 categories. Full details
 in [docs/tools.md](docs/tools.md).
 
 | Category | Tools | Data sources |
@@ -109,7 +109,7 @@ in [docs/tools.md](docs/tools.md).
 | **Druggability** | `get_compounds`, `get_chembl_compounds` | PubChem, ChEMBL |
 | **Structure & interactions** | `get_protein_structure`, `get_structure_confidence`, `get_protein_interactome`, `get_biogrid_interactions` | AlphaFold, RCSB PDB, STRING, BioGRID |
 | **Antibody & epitope** | `get_antibody_structures`, `get_epitope_data`, `get_mhc_binding` | SAbDab, IEDB, IEDB NextGen Tools |
-| **Protein engineering** | `get_protein_sequence`, `get_structure_confidence`, `get_variant_effects`, `get_variant_constraints`, `get_variant_consequences`, `get_domain_annotation`, `get_dms_scores`, `get_mhc_binding` | UniProt, AlphaFold, gnomAD, MyVariant.info, Ensembl/VEP, MaveDB, InterPro, IEDB |
+| **Protein engineering** | `get_protein_sequence`, `get_structure_confidence`, `get_variant_effects`, `get_variant_constraints`, `get_variant_consequences`, `get_domain_annotation`, `get_dms_scores`, `get_dms_variant_score`, `get_mhc_binding` | UniProt, AlphaFold, gnomAD, MyVariant.info, Ensembl/VEP, MaveDB, InterPro, IEDB |
 | **Expression** | `get_tissue_expression`, `get_protein_atlas` | GTEx, Human Protein Atlas |
 | **Pathways** | `get_pathway_context`, `get_pathway_members` | Reactome |
 | **Synthesis** | `get_drug_history`, `prioritize_target`, `compare_targets`, `run_biology_workflow` | DGIdb + ClinicalTrials.gov + OpenFDA + Claude |

@@ -28,16 +28,6 @@ from genesis_bio_mcp.tools.variant_parser import (
 
 logger = logging.getLogger(__name__)
 
-# How many DMS score sets to probe per-variant. The top-N by variant count
-# cover the high-coverage datasets; lower-coverage sets rarely include a
-# specific variant and cost one HTTP call each to check.
-#
-# Tuning note: raising this to 5 roughly doubles latency for genes with
-# many DMS datasets (e.g. BRCA1 has 30+), for marginal recall gain since
-# the largest sets are saturating. Lowering below 2 risks missing fitness
-# data for genes where the largest MaveDB entry doesn't cover the variant.
-_MAX_DMS_SCORESETS_TO_PROBE = 3
-
 
 class VariantEffectsClient:
     """Aggregator client — no state of its own beyond injected clients."""
@@ -131,22 +121,13 @@ class VariantEffectsClient:
         )
 
     async def _collect_dms_scores(self, gene_symbol: str, hgvs_p: str) -> list[MaveDBVariantScore]:
-        """Probe top DMS score sets for a per-variant fitness score."""
-        results = await self._mavedb.get_dms_scores(gene_symbol)
-        if results is None or not results.score_sets:
-            return []
-        top = results.score_sets[:_MAX_DMS_SCORESETS_TO_PROBE]
-        per_set = await asyncio.gather(
-            *[self._mavedb.get_variant_score(ss.urn, hgvs_p, ss.title) for ss in top],
-            return_exceptions=True,
-        )
-        flattened: list[MaveDBVariantScore] = []
-        for entry in per_set:
-            if isinstance(entry, Exception):
-                logger.warning("MaveDB per-variant probe failed: %s", entry)
-                continue
-            flattened.extend(entry)
-        return flattened
+        """Probe top DMS score sets for a per-variant fitness score.
+
+        Delegates to :meth:`MaveDBClient.get_variant_scores_for_gene` so the
+        gene→score-sets→per-variant probe logic lives in one place (also used by
+        the standalone ``get_dms_variant_score`` tool).
+        """
+        return await self._mavedb.get_variant_scores_for_gene(gene_symbol, hgvs_p)
 
 
 def _variant_id_to_hgvs_genomic(variant_id: str) -> str:

@@ -13,6 +13,14 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Added
 
+- **`get_dms_variant_score` tool (M2, 29 tools total).** Looks up the measured MaveDB
+  DMS functional score for one specific protein variant (gene + mutation), probing the
+  gene's largest score sets and returning each measured value — the highest-resolution
+  signal for whether a single mutation preserves function. More targeted than
+  `get_dms_scores` (catalog) and lighter than `get_variant_effects` (full bundle). New
+  `MaveDBClient.get_variant_scores_for_gene` (the gene→score-set→per-variant probe,
+  extracted so `get_variant_effects` and the new tool share one code path), new
+  `DMSVariantLookup` model, `run_biology_workflow` registration, 2 new client tests.
 - **`get_structure_confidence` tool (M1, 28 tools total).** Downloads the AlphaFold
   model and parses per-residue pLDDT from the CA-atom B-factor column, reporting
   confidence-band fractions (≥90 / 70–90 / 50–70 / <50) and contiguous

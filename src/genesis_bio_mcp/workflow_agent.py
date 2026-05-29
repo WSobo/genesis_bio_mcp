@@ -18,7 +18,12 @@ from typing import Any
 import anthropic
 
 from genesis_bio_mcp.config.settings import settings
-from genesis_bio_mcp.models import ComparisonReport, DrugHistory, TargetComparisonRow
+from genesis_bio_mcp.models import (
+    ComparisonReport,
+    DMSVariantLookup,
+    DrugHistory,
+    TargetComparisonRow,
+)
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals,
@@ -26,6 +31,7 @@ from genesis_bio_mcp.tools.target_prioritization import (
 from genesis_bio_mcp.tools.target_prioritization import (
     prioritize_target as _prioritize_target,
 )
+from genesis_bio_mcp.tools.variant_parser import canonical_three_letter, parse_protein_change
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +321,22 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
                 "DMS data is sparse — not all genes have been profiled."
             )
         return result.to_markdown()
+
+    async def _get_dms_variant_score_fn(gene_symbol: str, mutation: str) -> str:
+        try:
+            orig, pos, new = parse_protein_change(mutation)
+        except ValueError as exc:
+            return f"Could not parse mutation '{mutation}': {exc}"
+        hgvs_p = canonical_three_letter(orig, pos, new)
+        dms = await state.mavedb.get_dms_scores(gene_symbol)
+        scores = await state.mavedb.get_variant_scores_for_gene(gene_symbol, hgvs_p)
+        return DMSVariantLookup(
+            gene_symbol=gene_symbol,
+            mutation=mutation,
+            canonical_hgvs_protein=hgvs_p,
+            score_sets_available=dms.total_score_sets if dms else 0,
+            scores=scores,
+        ).to_markdown()
 
     async def _get_drug_history_fn(gene_symbol: str) -> str:
         drugs, ct_result = await asyncio.gather(
@@ -1010,6 +1032,39 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
                 "Returns empty result (not an error) when no DMS data exists for the gene."
             ),
             fn=_get_dms_scores_fn,
+        ),
+        "get_dms_variant_score": ToolSpec(
+            name="get_dms_variant_score",
+            description=(
+                "Look up the measured MaveDB DMS functional score for one specific protein "
+                "variant. Probes the gene's largest score sets and returns the experimental "
+                "score from each that measured the variant — the highest-resolution signal for "
+                "whether a single mutation preserves or disrupts function."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_symbol": {
+                        "type": "string",
+                        "description": "HGNC gene symbol. Example: 'TP53'",
+                    },
+                    "mutation": {
+                        "type": "string",
+                        "description": (
+                            "Protein change. Accepted forms: 'R175H', 'p.R175H', "
+                            "'Arg175His', 'p.Arg175His'. Example: 'R175H'"
+                        ),
+                    },
+                },
+                "required": ["gene_symbol", "mutation"],
+            },
+            tool_category="protein_engineering",
+            use_when=(
+                "Use when you have a specific mutation and want its experimentally measured DMS "
+                "score, rather than the score-set catalog (get_dms_scores) or the full "
+                "pathogenicity bundle (get_variant_effects)."
+            ),
+            fn=_get_dms_variant_score_fn,
         ),
         "get_drug_history": ToolSpec(
             name="get_drug_history",

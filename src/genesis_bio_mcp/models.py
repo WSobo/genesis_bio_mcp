@@ -324,6 +324,49 @@ class MaveDBVariantScore(BaseModel):
     epsilon: float | None = Field(default=None, description="Optional error estimate on the score")
 
 
+class DMSVariantLookup(BaseModel):
+    """Measured DMS functional score(s) for one specific protein variant from MaveDB."""
+
+    gene_symbol: str = Field(description="Gene symbol queried")
+    mutation: str = Field(description="Protein change as provided by the caller")
+    canonical_hgvs_protein: str = Field(description="Canonical HGVS p. form, e.g. 'p.Arg175His'")
+    score_sets_available: int = Field(
+        default=0, description="Number of MaveDB DMS score sets found for this gene"
+    )
+    scores: list[MaveDBVariantScore] = Field(
+        default_factory=list,
+        description="Measured DMS scores for this variant, one row per matching score set",
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## MaveDB DMS Variant Score: {self.gene_symbol} {self.mutation}",
+            f"_HGVS p._: `{self.canonical_hgvs_protein}` | "
+            f"DMS score sets for gene: {self.score_sets_available}",
+        ]
+        if not self.scores:
+            if self.score_sets_available == 0:
+                lines.append("\n_No MaveDB deep-mutational-scanning data found for this gene._")
+            else:
+                lines.append(
+                    f"\n_The gene has {self.score_sets_available} DMS score set(s), but none "
+                    "report a measured score for this specific variant._"
+                )
+            return "\n".join(lines)
+
+        lines += ["", "| Score | Score set | URN |", "|---|---|---|"]
+        for s in self.scores:
+            err = f" ± {s.epsilon:.3g}" if s.epsilon is not None else ""
+            lines.append(f"| {s.score:.4g}{err} | {s.title[:50]} | `{s.urn}` |")
+        lines += [
+            "",
+            "_DMS scores are assay-specific (no universal scale). Interpret each score "
+            "relative to its score set's wild-type / synonymous distribution; consult the "
+            "linked score set for assay details._",
+        ]
+        return "\n".join(lines)
+
+
 class MHCBindingHit(BaseModel):
     """One (peptide, HLA allele) predicted-binding row from IEDB NextGen Tools."""
 

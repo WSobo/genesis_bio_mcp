@@ -76,6 +76,7 @@ for end-to-end examples.
 | `get_variant_consequences` | Ensembl VEP | Splice / UTR / regulatory overlap and SIFT / PolyPhen for any HGVS or coordinate variant. Canonical-transcript by default; `include_all_transcripts` opt-in. Complements `get_variant_effects` (dbNSFP scores) with VEP's transcript-aware consequence calls |
 | `get_domain_annotation` | InterPro | Domain boundaries with Pfam/SMART/CDD/GO term annotation |
 | `get_dms_scores` | MaveDB | Available deep mutational scanning score-set metadata (URNs, variant counts, citations) |
+| `get_dms_variant_score` | MaveDB | Measured DMS functional score for one specific variant (gene + mutation) — probes the gene's largest score sets and returns each measured value; complements `get_dms_scores` (catalog) and `get_variant_effects` (full bundle) |
 | `get_mhc_binding` | IEDB NextGen Tools | MHC-I / II binding predictions for peptides or auto-windowed proteins against a configurable HLA panel |
 
 ## Expression
