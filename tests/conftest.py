@@ -150,6 +150,17 @@ MOCK_OT_DISEASE_SEARCH = {
 MOCK_OT_ASSOCIATION = {
     "data": {
         "target": {
+            "tractability": [
+                {"modality": "SM", "label": "Approved Drug", "value": True},
+                {"modality": "SM", "label": "Advanced Clinical", "value": False},
+                {"modality": "SM", "label": "High-Quality Pocket", "value": True},
+                {"modality": "SM", "label": "Druggable Family", "value": True},
+                {"modality": "AB", "label": "Approved Drug", "value": False},
+                {"modality": "AB", "label": "UniProt loc high conf", "value": True},
+                {"modality": "AB", "label": "GO CC high conf", "value": True},
+                {"modality": "PR", "label": "Literature", "value": True},
+                {"modality": "OC", "label": "Approved Drug", "value": False},
+            ],
             "associatedDiseases": {
                 "count": 1,
                 "rows": [
@@ -168,7 +179,7 @@ MOCK_OT_ASSOCIATION = {
                         "disease": {"id": "EFO_0000389", "name": "cutaneous melanoma"},
                     }
                 ],
-            }
+            },
         }
     }
 }

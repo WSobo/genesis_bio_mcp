@@ -846,6 +846,23 @@ class DiseaseLinkEvidence(BaseModel):
     score: float = Field(description="Evidence score 0–1 for this datatype")
 
 
+class TargetTractability(BaseModel):
+    """Open Targets tractability (druggability) assessment for one drug modality."""
+
+    modality: str = Field(
+        description="Drug modality: 'Small molecule' | 'Antibody' | 'PROTAC/degrader' | "
+        "'Other modalities'"
+    )
+    top_bucket: str = Field(
+        description="Highest-priority satisfied tractability bucket for this modality "
+        "(e.g. 'Approved Drug', 'High-Quality Pocket', 'UniProt loc high conf')"
+    )
+    bucket_count: int = Field(
+        description="Number of satisfied (clinical + structural/biological) tractability "
+        "buckets for this modality"
+    )
+
+
 class TargetDiseaseAssociation(BaseModel):
     """Open Targets evidence-based association between a gene target and a disease."""
 
@@ -883,6 +900,11 @@ class TargetDiseaseAssociation(BaseModel):
     evidence_breakdown: list[DiseaseLinkEvidence] = Field(
         default_factory=list, description="Per-datatype scores"
     )
+    tractability: list[TargetTractability] = Field(
+        default_factory=list,
+        description="Open Targets tractability (druggability) buckets per modality — "
+        "target-level signal independent of the disease",
+    )
 
     def to_markdown(self) -> str:
         strength = (
@@ -897,6 +919,11 @@ class TargetDiseaseAssociation(BaseModel):
             f"**Overall score:** {self.overall_score:.3f}/1.0 — {strength} evidence ({self.evidence_count} datatypes)",
             f"EFO: `{self.disease_efo_id}` | Ensembl: `{self.ensembl_id}`",
         ]
+        if self.tractability:
+            lines += ["", "**Tractability (druggability):**"]
+            for t in self.tractability:
+                plural = "s" if t.bucket_count != 1 else ""
+                lines.append(f"- {t.modality}: {t.top_bucket} ({t.bucket_count} bucket{plural})")
         if self.evidence_breakdown:
             lines += ["", "| Evidence Type | Score |", "|---|---|"]
             for e in sorted(self.evidence_breakdown, key=lambda x: x.score, reverse=True):
