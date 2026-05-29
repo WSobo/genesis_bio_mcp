@@ -906,8 +906,10 @@ async def get_chembl_compounds(params: GetChEMBLCompoundsInput) -> str:
         params (GetChEMBLCompoundsInput): gene_symbol, response_format.
 
     Returns:
-        Markdown with ChEMBL target ID, best pChEMBL value, compound count, and
-        a ranked table of top compounds with assay types and potency values.
+        Markdown with ChEMBL target ID, best pChEMBL value, compound count, the
+        most advanced clinical phase + mechanism(s) of action of drugs on this
+        target, and a ranked table of top compounds with assay types and potency
+        values.
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.chembl.get_compounds(symbol)

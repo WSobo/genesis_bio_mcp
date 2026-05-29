@@ -4087,6 +4087,24 @@ _MOCK_CHEMBL_ACTIVITIES = {
 }
 
 
+_MOCK_CHEMBL_MECHANISMS = {
+    "mechanisms": [
+        {
+            "molecule_chembl_id": "CHEMBL2028663",
+            "action_type": "INHIBITOR",
+            "mechanism_of_action": "Serine/threonine-protein kinase B-raf inhibitor",
+            "max_phase": 4,
+        },
+        {
+            "molecule_chembl_id": "CHEMBL1336",
+            "action_type": "INHIBITOR",
+            "mechanism_of_action": "Serine/threonine-protein kinase B-raf inhibitor",
+            "max_phase": 2,
+        },
+    ]
+}
+
+
 @respx.mock
 async def test_chembl_happy_path_with_assay_context(http_client):
     respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/target/search").mock(
@@ -4095,12 +4113,19 @@ async def test_chembl_happy_path_with_assay_context(http_client):
     respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/activity").mock(
         return_value=httpx.Response(200, json=_MOCK_CHEMBL_ACTIVITIES)
     )
+    respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/mechanism").mock(
+        return_value=httpx.Response(200, json=_MOCK_CHEMBL_MECHANISMS)
+    )
     client = ChEMBLClient(http_client)
     result = await client.get_compounds("BRAF")
 
     assert result is not None
     assert result.gene_symbol == "BRAF"
     assert result.target_chembl_id == "CHEMBL5145"  # human, not rat
+    # Mechanism endpoint: most advanced phase + MoA + action type.
+    assert result.max_clinical_phase == 4.0  # highest max_phase across mechanisms
+    assert "INHIBITOR" in result.action_types
+    assert any("B-raf inhibitor" in m for m in result.mechanisms_of_action)
     # 4 survive (one dup, one missing pchembl dropped); total_active_compounds
     # is the *surviving* count after dedup/filter — matches best_pchembl source.
     assert result.total_active_compounds == 4
@@ -4140,6 +4165,10 @@ async def test_chembl_happy_path_with_assay_context(http_client):
     # Table carries assay-type + organism columns
     assert "| Assay |" in md
     assert "A375" in md  # cell type surfaces in the label
+    # Mechanism / clinical-precedent line renders.
+    assert "Most advanced drug on target" in md
+    assert "approved" in md
+    assert "Mechanism(s) of action" in md
 
 
 @respx.mock
@@ -4173,6 +4202,9 @@ async def test_chembl_empty_activities_returns_zero_count(http_client):
     respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/activity").mock(
         return_value=httpx.Response(200, json={"activities": []})
     )
+    respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/mechanism").mock(
+        return_value=httpx.Response(200, json={"mechanisms": []})
+    )
     client = ChEMBLClient(http_client)
     result = await client.get_compounds("BRAF")
 
@@ -4180,6 +4212,7 @@ async def test_chembl_empty_activities_returns_zero_count(http_client):
     assert result.total_active_compounds == 0
     assert result.best_pchembl is None
     assert result.compounds == []
+    assert result.max_clinical_phase is None
 
 
 @respx.mock
@@ -4236,6 +4269,9 @@ async def test_chembl_target_organism_is_parsed_when_assay_organism_null(http_cl
                 ]
             },
         )
+    )
+    respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/mechanism").mock(
+        return_value=httpx.Response(200, json={"mechanisms": []})
     )
     client = ChEMBLClient(http_client)
     result = await client.get_compounds("BRAF")

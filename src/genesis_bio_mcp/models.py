@@ -1191,6 +1191,19 @@ class ChEMBLCompounds(BaseModel):
         "scoring axis applies a discount because binding-only data overestimates "
         "druggability for known undruggable / scaffold-binding targets.",
     )
+    max_clinical_phase: float | None = Field(
+        None,
+        description="Most advanced clinical phase (max_phase) of any drug with a known "
+        "mechanism of action on this target; 4 = approved, lower = investigational",
+    )
+    mechanisms_of_action: list[str] = Field(
+        default_factory=list,
+        description="Distinct ChEMBL mechanism-of-action descriptions for drugs on this target",
+    )
+    action_types: list[str] = Field(
+        default_factory=list,
+        description="Distinct ChEMBL action types (INHIBITOR, AGONIST, ...) for drugs on this target",
+    )
     compounds: list[ChEMBLActivity] = Field(
         description="Top 20 most potent compounds sorted by pChEMBL (descending)"
     )
@@ -1213,6 +1226,23 @@ class ChEMBLCompounds(BaseModel):
         ]
         if self.target_chembl_id:
             lines.append(f"Target: `{self.target_chembl_id}`")
+
+        # Clinical precedent: most advanced drug + mechanism on this target.
+        if self.max_clinical_phase is not None:
+            phase_label = (
+                "approved (Phase 4)"
+                if self.max_clinical_phase >= 4
+                else f"Phase {self.max_clinical_phase:g}"
+            )
+            line = f"**Most advanced drug on target:** {phase_label}"
+            if self.action_types:
+                line += f" | Action: {', '.join(self.action_types[:3])}"
+            lines.append(line)
+        if self.mechanisms_of_action:
+            shown = "; ".join(self.mechanisms_of_action[:3])
+            if len(self.mechanisms_of_action) > 3:
+                shown += f" (+{len(self.mechanisms_of_action) - 3} more)"
+            lines.append(f"**Mechanism(s) of action:** {shown}")
 
         # Assay-mix summary — distinguishes biochemical from cell-based data at
         # a glance. Counts over the full returned compound list (not the top 10

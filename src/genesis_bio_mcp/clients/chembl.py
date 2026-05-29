@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 _BASE = "https://www.ebi.ac.uk/chembl/api/data"
 _TARGET_SEARCH_URL = f"{_BASE}/target/search"
 _ACTIVITY_URL = f"{_BASE}/activity"
+_MECHANISM_URL = f"{_BASE}/mechanism"
 
 _SEMAPHORE = asyncio.Semaphore(settings.chembl_semaphore_limit)
 
@@ -38,13 +39,22 @@ class ChEMBLClient:
             logger.debug("ChEMBL: no human single-protein target found for %s", gene_symbol)
             return None
 
-        activities = await self._fetch_activities(target_id)
+        # Activities (potency) and mechanisms (clinical precedent) are
+        # independent endpoints — fetch them concurrently.
+        activities, mechanism = await asyncio.gather(
+            self._fetch_activities(target_id),
+            self._fetch_mechanisms(target_id),
+        )
+        max_phase, moas, action_types = mechanism
         if not activities:
             return ChEMBLCompounds(
                 gene_symbol=gene_symbol,
                 target_chembl_id=target_id,
                 total_active_compounds=0,
                 best_pchembl=None,
+                max_clinical_phase=max_phase,
+                mechanisms_of_action=moas,
+                action_types=action_types,
                 compounds=[],
             )
 
@@ -61,6 +71,9 @@ class ChEMBLClient:
             best_pchembl=round(best, 2),
             best_pchembl_functional=round(max(functional), 2) if functional else None,
             best_pchembl_binding=round(max(binding), 2) if binding else None,
+            max_clinical_phase=max_phase,
+            mechanisms_of_action=moas,
+            action_types=action_types,
             compounds=activities[:20],
         )
 
@@ -164,3 +177,47 @@ class ChEMBLClient:
         except Exception as exc:
             logger.warning("ChEMBL activity fetch failed for %s: %s", target_id, exc)
             return []
+
+    async def _fetch_mechanisms(self, target_id: str) -> tuple[float | None, list[str], list[str]]:
+        """Fetch mechanism-of-action records for the target.
+
+        Returns ``(max_clinical_phase, mechanisms_of_action, action_types)``.
+        The ChEMBL ``/mechanism`` endpoint carries ``max_phase`` inline, so the
+        most advanced clinical stage of any drug acting on this target comes
+        from a single call (no per-molecule fan-out). Never raises.
+        """
+        try:
+            async with _SEMAPHORE:
+                resp = await self._client.get(
+                    _MECHANISM_URL,
+                    params={
+                        "target_chembl_id": target_id,
+                        "limit": 100,
+                        "format": "json",
+                    },
+                    timeout=20.0,
+                )
+                resp.raise_for_status()
+            rows = resp.json().get("mechanisms") or []
+        except Exception as exc:
+            logger.warning("ChEMBL mechanism fetch failed for %s: %s", target_id, exc)
+            return None, [], []
+
+        max_phase: float | None = None
+        moas: list[str] = []
+        action_types: list[str] = []
+        for m in rows:
+            phase_raw = m.get("max_phase")
+            try:
+                phase = float(phase_raw) if phase_raw is not None else None
+            except (TypeError, ValueError):
+                phase = None
+            if phase is not None and (max_phase is None or phase > max_phase):
+                max_phase = phase
+            moa = m.get("mechanism_of_action")
+            if isinstance(moa, str) and moa and moa not in moas:
+                moas.append(moa)
+            at = m.get("action_type")
+            if isinstance(at, str) and at and at not in action_types:
+                action_types.append(at)
+        return max_phase, moas, action_types
