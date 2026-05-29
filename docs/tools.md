@@ -60,6 +60,7 @@ Jump to:
 | `get_antibody_structures` | SAbDab + RCSB FASTA + AbNum | Curated antibody/nanobody crystal structures with CDR annotation (Chothia scheme) for top results |
 | `get_epitope_data` | IEDB | Known B-cell epitope records with isotypes, linear sequences, and PDB structural evidence |
 | `get_mhc_binding` | IEDB NextGen Tools (NetMHCpan 4.1) | T-cell epitope / MHC-I/II binding prediction — see [Protein engineering](#protein-engineering) |
+| `get_cdr_developability` | AbNum (Chothia) + pure-Python biochem | Antibody CDR developability scan: auto-numbers VH/VL (or takes explicit CDRs), reports per-CDR charge/hydrophobicity + liability motifs (deamidation, isomerization, glycosylation, oxidation, cysteines) and flags hydrophobic / long CDR-H3 |
 
 ## Protein engineering
 

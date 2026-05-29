@@ -24,6 +24,7 @@ from genesis_bio_mcp.models import (
     DrugHistory,
     TargetComparisonRow,
 )
+from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals,
@@ -337,6 +338,26 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             score_sets_available=dms.total_score_sets if dms else 0,
             scores=scores,
         ).to_markdown()
+
+    async def _get_cdr_developability_fn(
+        vh: str | None = None, vl: str | None = None, cdrs: dict[str, str] | None = None
+    ) -> str:
+        cdr_map: dict[str, str] = {}
+        sources: list[str] = []
+        if vh or vl:
+            numbered = await state.sabdab.number_chains(vh, vl)
+            auto = {k: v for k, v in numbered.items() if v}
+            if auto:
+                cdr_map.update(auto)
+                sources.append("AbNum (Chothia)")
+        if cdrs:
+            explicit = {k: v for k, v in cdrs.items() if v}
+            if explicit:
+                cdr_map.update(explicit)
+                sources.append("user-provided")
+        if not cdr_map:
+            return "No CDR sequences could be determined; provide VH/VL or explicit cdrs."
+        return assess_cdr_developability(cdr_map, " + ".join(sources)).to_markdown()
 
     async def _get_drug_history_fn(gene_symbol: str) -> str:
         drugs, ct_result = await asyncio.gather(
@@ -1065,6 +1086,40 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
                 "pathogenicity bundle (get_variant_effects)."
             ),
             fn=_get_dms_variant_score_fn,
+        ),
+        "get_cdr_developability": ToolSpec(
+            name="get_cdr_developability",
+            description=(
+                "Assess antibody/nanobody CDR developability. Accepts VH/VL sequences "
+                "(auto-numbered to the six CDRs via AbNum, Chothia) and/or explicit CDR "
+                "sequences, then reports per-CDR charge, hydrophobicity, and liability motifs "
+                "(deamidation, isomerization, glycosylation, oxidation, cysteines) with flags."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "vh": {
+                        "type": "string",
+                        "description": "Heavy-chain variable domain (VH) sequence to auto-number.",
+                    },
+                    "vl": {
+                        "type": "string",
+                        "description": "Light-chain variable domain (VL) sequence to auto-number.",
+                    },
+                    "cdrs": {
+                        "type": "object",
+                        "description": "Explicit CDRs keyed by field (vh_cdr1..vl_cdr3).",
+                        "additionalProperties": {"type": "string"},
+                    },
+                },
+            },
+            tool_category="protein_engineering",
+            use_when=(
+                "Use to flag antibody CDR developability liabilities (deamidation, "
+                "isomerization, glycosylation, oxidation, hydrophobic or long CDR-H3) when "
+                "engineering or triaging an antibody/nanobody candidate."
+            ),
+            fn=_get_cdr_developability_fn,
         ),
         "get_drug_history": ToolSpec(
             name="get_drug_history",

@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 29 tools for biomedical database queries:
+Exposes 30 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -16,6 +16,7 @@ Exposes 29 tools for biomedical database queries:
   - get_antibody_structures       SAbDab: antibody/nanobody structures for an antigen
   - get_epitope_data              IEDB: known B-cell epitopes for an antigen
   - get_mhc_binding                IEDB NextGen: MHC-I/II binding prediction (T-cell epitopes)
+  - get_cdr_developability        Antibody CDR liability scan (AbNum CDRs + biochem)
   - get_variant_constraints       gnomAD: gene-level LoF and missense constraint metrics
   - get_variant_effects           MyVariant + gnomAD + MaveDB + Ensembl VEP: pathogenicity + VEP
   - get_variant_consequences      Ensembl VEP: splice/UTR/regulatory + SIFT/PolyPhen
@@ -85,6 +86,7 @@ from genesis_bio_mcp.models import (
     VariantEffects,
 )
 from genesis_bio_mcp.tools.biochem import compute_features, scan_liabilities
+from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals as _attach_safety_signals,
@@ -371,6 +373,37 @@ class GetVariantConsequencesInput(BaseModel):
                 "Provide exactly one of: (gene_symbol + mutation), hgvs_genomic, "
                 "or (chrom + pos + ref + alt)."
             )
+        return self
+
+
+class GetCDRDevelopabilityInput(BaseModel):
+    """Input for get_cdr_developability.
+
+    Provide at least one of:
+      - ``vh`` and/or ``vl`` variable-domain sequences (auto-numbered to CDRs via AbNum, Chothia)
+      - ``cdrs`` — explicit mapping of CDR field → sequence, e.g. ``{"vh_cdr3": "ARDYW"}``
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+
+    vh: str | None = Field(
+        default=None,
+        description="Heavy-chain variable domain (VH) sequence; auto-numbered to CDRs via AbNum (Chothia).",
+    )
+    vl: str | None = Field(
+        default=None,
+        description="Light-chain variable domain (VL) sequence; auto-numbered to CDRs via AbNum (Chothia).",
+    )
+    cdrs: dict[str, str] | None = Field(
+        default=None,
+        description="Explicit CDR sequences keyed by field: 'vh_cdr1','vh_cdr2','vh_cdr3','vl_cdr1','vl_cdr2','vl_cdr3'.",
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+    @model_validator(mode="after")
+    def _at_least_one_input(self) -> GetCDRDevelopabilityInput:
+        if not (self.vh or self.vl or self.cdrs):
+            raise ValueError("Provide at least one of: vh, vl, or cdrs.")
         return self
 
 
@@ -1432,6 +1465,51 @@ async def get_dms_variant_score(params: GetDmsVariantScoreInput) -> str:
         scores=scores,
     )
     return _fmt(result, params.response_format, "")
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_cdr_developability(params: GetCDRDevelopabilityInput) -> str:
+    """Assess antibody CDR developability liabilities.
+
+    Use this when engineering or triaging an antibody/nanobody. Provide VH and/or VL
+    variable-domain sequences (auto-numbered to the six CDRs via AbNum, Chothia scheme)
+    and/or explicit CDR sequences. For each CDR it reports net charge, hydrophobicity
+    (GRAVY), and sequence-motif liabilities (deamidation NG/NS, isomerization DG/DS,
+    N-glycosylation sequons, Met/Trp oxidation, cysteines), then flags the high-priority
+    developability risks (CDR motif chemistry, hydrophobic/long CDR-H3). Complements
+    get_antibody_structures (structural templates) and get_mhc_binding (immunogenicity).
+
+    Args:
+        params (GetCDRDevelopabilityInput): vh and/or vl sequences, or explicit cdrs;
+            response_format.
+
+    Returns:
+        Markdown with a per-CDR table and a list of flagged developability liabilities.
+    """
+    cdr_map: dict[str, str] = {}
+    sources: list[str] = []
+    if params.vh or params.vl:
+        numbered = await mcp.state.sabdab.number_chains(params.vh, params.vl)
+        auto = {k: v for k, v in numbered.items() if v}
+        if auto:
+            cdr_map.update(auto)
+            sources.append("AbNum (Chothia)")
+    if params.cdrs:
+        explicit = {k: v for k, v in params.cdrs.items() if v}
+        if explicit:
+            cdr_map.update(explicit)
+            sources.append("user-provided")
+    if not cdr_map:
+        return (
+            "No CDR sequences could be determined. If you supplied VH/VL, AbNum numbering "
+            "may have failed or timed out — provide explicit CDRs via `cdrs` instead."
+        )
+    report = assess_cdr_developability(cdr_map, numbering_source=" + ".join(sources))
+    return _fmt(report, params.response_format, "")
 
 
 @mcp.tool(

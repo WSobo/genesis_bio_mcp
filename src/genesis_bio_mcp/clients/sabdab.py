@@ -382,6 +382,33 @@ class SAbDabClient:
             logger.warning("SAbDab: AbNum failed for chain %s: %s", chain_prefix, exc)
             return {field: None for field, _, _ in cdr_ranges}
 
+    async def number_chains(
+        self, vh: str | None = None, vl: str | None = None
+    ) -> dict[str, str | None]:
+        """Number VH/VL variable-domain sequences (Chothia) via AbNum → six CDR fields.
+
+        Public entry point used by the CDR-developability tool. VH and VL are
+        numbered concurrently; a chain that is absent or that AbNum fails on simply
+        contributes no CDRs.
+
+        Args:
+            vh: Heavy-chain variable-domain amino-acid sequence (or None).
+            vl: Light-chain variable-domain amino-acid sequence (or None).
+
+        Returns:
+            Mapping with keys ``vh_cdr1``..``vh_cdr3`` / ``vl_cdr1``..``vl_cdr3``;
+            values are CDR sequences, or None where unavailable.
+        """
+        vh_task = self._run_abnum(vh, "H") if vh else asyncio.sleep(0)
+        vl_task = self._run_abnum(vl, "L") if vl else asyncio.sleep(0)
+        vh_cdrs_raw, vl_cdrs_raw = await asyncio.gather(vh_task, vl_task)
+        out: dict[str, str | None] = {}
+        if isinstance(vh_cdrs_raw, dict):
+            out.update(vh_cdrs_raw)
+        if isinstance(vl_cdrs_raw, dict):
+            out.update(vl_cdrs_raw)
+        return out
+
     # ------------------------------------------------------------------
     # Internal: cache management
     # ------------------------------------------------------------------
