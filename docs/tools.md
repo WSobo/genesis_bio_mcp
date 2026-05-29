@@ -49,6 +49,7 @@ Jump to:
 | Tool | Data source | Purpose |
 |---|---|---|
 | `get_protein_structure` | AlphaFold + RCSB PDB | pLDDT confidence, experimental resolution, ligand-bound structures |
+| `get_structure_confidence` | AlphaFold | Per-residue pLDDT profile: confidence-band fractions + contiguous low-confidence (<70) regions likely to be flexible/disordered — see [Protein engineering](#protein-engineering) |
 | `get_protein_interactome` | STRING | High-confidence (score ≥700) binding partners with evidence-channel breakdown |
 | `get_biogrid_interactions` | BioGRID | Curated literature PPI with experimental method annotation. Requires `BIOGRID_ACCESS_KEY` env var |
 
@@ -69,6 +70,7 @@ for end-to-end examples.
 | Tool | Data source | Purpose |
 |---|---|---|
 | `get_protein_sequence` | UniProt FASTA + pure-Python biochem | FASTA + molecular weight, theoretical pI, GRAVY, net charge, ε₂₈₀ reduced/oxidized + liability-motif scan (deamidation NG/NS, isomerization DG/DS, N-glycosylation NXS/NXT, oxidation M/W, free cysteines via UniProt DISULFID annotation) |
+| `get_structure_confidence` | AlphaFold | Per-residue pLDDT confidence profile: % residues per band + contiguous low-confidence (<70) regions — identify well-ordered vs flexible/disordered stretches before choosing mutation sites, truncation boundaries, or scaffolds |
 | `get_variant_effects` | gnomAD + MyVariant.info + MaveDB + Ensembl VEP | Mutation-level pathogenicity: ClinVar submissions, AlphaMissense class + score, REVEL, CADD-Phred, SIFT, PolyPhen-2, gnomAD allele frequency, DMS fitness scores from MaveDB, plus VEP splice/UTR/regulatory consequences |
 | `get_variant_constraints` | gnomAD v4 | Gene-level pLI, LOEUF, oe_lof, oe_mis, Z-scores — tolerance-to-mutation pre-filter |
 | `get_variant_consequences` | Ensembl VEP | Splice / UTR / regulatory overlap and SIFT / PolyPhen for any HGVS or coordinate variant. Canonical-transcript by default; `include_all_transcripts` opt-in. Complements `get_variant_effects` (dbNSFP scores) with VEP's transcript-aware consequence calls |

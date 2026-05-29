@@ -410,7 +410,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.94.0" },
     { name = "curl-cffi", specifier = ">=0.15.0" },
-    { name = "httpx", specifier = ">=0.27.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.6.0" },
     { name = "pydantic", specifier = ">=2.11.0" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },

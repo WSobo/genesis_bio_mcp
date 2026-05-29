@@ -555,6 +555,75 @@ async def test_alphafold_handles_404(http_client):
     assert result.total_pdb_structures == 0
 
 
+def _af_ca_line(serial: int, resseq: int, bf: float) -> str:
+    """Build a column-accurate AlphaFold CA ATOM record with pLDDT in the B-factor."""
+    return (
+        "ATOM  "  # 1-6
+        + f"{serial:>5}"  # 7-11 serial
+        + " "  # 12
+        + " CA "  # 13-16 atom name
+        + " "  # 17 altLoc
+        + "ALA"  # 18-20 resName
+        + " "  # 21
+        + "A"  # 22 chain
+        + f"{resseq:>4}"  # 23-26 resSeq
+        + " "  # 27 iCode
+        + "   "  # 28-30
+        + f"{11.0:>8.3f}{22.0:>8.3f}{33.0:>8.3f}"  # 31-54 xyz
+        + f"{1.0:>6.2f}"  # 55-60 occupancy
+        + f"{bf:>6.2f}"  # 61-66 tempFactor (pLDDT)
+        + "          C  "
+    )
+
+
+# residues 1-10 spanning every confidence band, with one low-confidence run (4-6)
+_MOCK_AF_PLDDTS = [95.0, 92.0, 80.0, 60.0, 55.0, 40.0, 75.0, 88.0, 30.0, 95.0]
+_MOCK_AF_PDB = "\n".join(_af_ca_line(i + 1, i + 1, bf) for i, bf in enumerate(_MOCK_AF_PLDDTS))
+
+
+@respx.mock
+async def test_alphafold_get_confidence(http_client):
+    respx.get(url__regex=r"alphafold\.ebi\.ac\.uk/api/prediction").mock(
+        return_value=httpx.Response(200, json=_MOCK_ALPHAFOLD_RESPONSE)
+    )
+    respx.get(url__regex=r"alphafold\.ebi\.ac\.uk/files/.*\.pdb").mock(
+        return_value=httpx.Response(200, text=_MOCK_AF_PDB)
+    )
+    client = AlphaFoldClient(http_client)
+    result = await client.get_confidence("BRAF", uniprot_accession="P15056")
+
+    assert result is not None
+    assert result.residue_count == 10
+    assert result.mean_plddt == pytest.approx(71.0)
+    assert result.pct_very_high == pytest.approx(30.0)
+    assert result.pct_confident == pytest.approx(30.0)
+    assert result.pct_low == pytest.approx(20.0)
+    assert result.pct_very_low == pytest.approx(20.0)
+    assert result.model_version == "v4"
+    # one contiguous low-confidence region (residues 4-6); residue 9 is isolated
+    assert len(result.low_confidence_regions) == 1
+    region = result.low_confidence_regions[0]
+    assert (region.start, region.end, region.length) == (4, 6, 3)
+    assert "Per-Residue Confidence" in result.to_markdown()
+
+
+@respx.mock
+async def test_alphafold_confidence_no_accession(http_client):
+    client = AlphaFoldClient(http_client)
+    result = await client.get_confidence("BRAF", uniprot_accession=None)
+    assert result is None
+
+
+@respx.mock
+async def test_alphafold_confidence_no_model(http_client):
+    respx.get(url__regex=r"alphafold\.ebi\.ac\.uk/api/prediction").mock(
+        return_value=httpx.Response(404)
+    )
+    client = AlphaFoldClient(http_client)
+    result = await client.get_confidence("UNKNOWNGENE", uniprot_accession="Q99999")
+    assert result is None
+
+
 # ---------------------------------------------------------------------------
 # STRING client tests
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 27 tools for biomedical database queries:
+Exposes 28 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -10,6 +10,7 @@ Exposes 27 tools for biomedical database queries:
   - get_compounds                 PubChem: active small molecules against a target
   - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
+  - get_structure_confidence      AlphaFold: per-residue pLDDT profile + disordered regions
   - get_protein_interactome       STRING: binding partners and selectivity risks
   - get_biogrid_interactions      BioGRID: curated literature PPI network
   - get_antibody_structures       SAbDab: antibody/nanobody structures for an antigen
@@ -269,6 +270,10 @@ class GetChEMBLCompoundsInput(_GeneInput):
 
 class GetProteinStructureInput(_GeneInput):
     """Input for get_protein_structure."""
+
+
+class GetStructureConfidenceInput(_GeneInput):
+    """Input for get_structure_confidence."""
 
 
 class GetProteinInteractomeInput(_GeneInput):
@@ -881,6 +886,40 @@ async def get_protein_structure(params: GetProteinStructureInput) -> str:
         result,
         params.response_format,
         f"No structural data found for '{symbol}'. Ensure the gene symbol is correct.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_structure_confidence(params: GetStructureConfidenceInput) -> str:
+    """Retrieve the AlphaFold per-residue pLDDT confidence profile for a protein.
+
+    Use this for protein engineering and construct design. It downloads the AlphaFold
+    model and reports the fraction of residues in each confidence band plus a table of
+    contiguous low-confidence (pLDDT < 70) stretches, which usually correspond to
+    flexible or intrinsically disordered regions. Prefer well-ordered (pLDDT ≥ 70)
+    regions when choosing mutation sites, truncation boundaries, or rigid scaffolds.
+    Complements get_protein_structure, which reports only the mean pLDDT.
+
+    Args:
+        params (GetStructureConfidenceInput): gene_symbol, response_format.
+
+    Returns:
+        Markdown with mean pLDDT, per-band residue percentages, and a table of
+        low-confidence regions.
+    """
+    symbol, _ = await _resolve_symbol(params.gene_symbol)
+    protein = await mcp.state.uniprot.get_protein(symbol)
+    accession = protein.uniprot_accession if protein else None
+    result = await mcp.state.alphafold.get_confidence(symbol, uniprot_accession=accession)
+    return _fmt(
+        result,
+        params.response_format,
+        f"No AlphaFold per-residue confidence available for '{symbol}'. "
+        "The protein may lack an AlphaFold model.",
     )
 
 
