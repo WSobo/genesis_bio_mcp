@@ -297,6 +297,12 @@ async def test_depmap_returns_essentiality(http_client):
     assert len(result.cell_lines) > 0
     assert result.cell_lines[0].is_dependent is True
     assert "Open Targets" in result.data_source
+    # The OT-proxy mean score is approximated, not a measured CERES/Chronos value —
+    # this must be flagged on the model and called out explicitly in the markdown.
+    assert result.ceres_is_approximated is True
+    md = result.to_markdown()
+    assert "approximated proxy" in md
+    assert "NOT a measured CERES/Chronos score" in md
 
 
 @respx.mock
@@ -4976,6 +4982,8 @@ def test_depmap_pan_essential_cap_fires_at_95_percent_dependency():
     assert result.pan_essential is True, (
         "95% dependency must trip the pan-essential cap regardless of common_essential"
     )
+    # The cache path derives mean_ceres_score from the fraction — flag it as a proxy.
+    assert result.ceres_is_approximated is True
 
     # Below 95% with common_essential=False → not flagged
     entry_low = {

@@ -354,6 +354,9 @@ class DepMapClient:
             top_dependent_lineages=top_lineages,
             cell_lines=cell_lines,
             data_source=source,
+            # The gene_dep_summary endpoint reports counts, not per-line CERES
+            # scores, so mean_ceres_score here is a fraction-derived proxy.
+            ceres_is_approximated=True,
         )
 
     async def _resolve_gene(self, symbol: str) -> str | None:
@@ -442,6 +445,9 @@ class DepMapClient:
                 "Open Targets Platform v4 — somatic mutation evidence (proxy; "
                 "DepMap gene not found in Chronos Combined summary)"
             ),
+            # OT-proxy scores are mapped from somatic-mutation evidence, not
+            # measured CRISPR essentiality.
+            ceres_is_approximated=True,
         )
 
     async def _graphql(self, query: str, variables: dict) -> dict | None:

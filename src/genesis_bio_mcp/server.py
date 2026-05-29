@@ -841,12 +841,20 @@ async def get_cancer_dependency(params: GetCancerDependencyInput) -> str:
     Pan-essential genes (common_essential=True) are core cellular machinery and may
     have narrow therapeutic windows.
 
+    Note: the DepMap summary endpoint reports per-gene dependency *counts*, not raw
+    per-cell-line scores, so the reported mean dependency score is an approximated
+    proxy (derived from the dependent-line fraction, or from OT somatic-mutation
+    evidence on the fallback path) — NOT a measured CERES/Chronos value. The output
+    labels this explicitly. The dependent-line fraction and pan-essential flag are
+    the reliable signals.
+
     Args:
         params (GetCancerDependencyInput): gene_symbol, response_format.
 
     Returns:
         Markdown with fraction of dependent lines, pan-essential flag, top lineages,
-        and the data source (real DepMap or OT proxy).
+        an explicitly-labeled approximated mean dependency score, and the data source
+        (real DepMap counts or OT proxy).
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.depmap.get_essentiality(symbol)
