@@ -9,7 +9,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **`get_protein_atlas` (HPA) was returning "no data" for every gene.** HPA's
+  `search_download.php` endpoint now serves a **gzip-compressed body**
+  (`Content-Type: application/gzip`) — a file payload, not a `Content-Encoding`
+  transport that httpx auto-decodes — so the raw response began with the gzip magic
+  bytes and `resp.json()` threw, which the client swallowed into an empty result.
+  `HPAClient._fetch` now detects the gzip magic bytes (`0x1f 0x8b`) and inflates the
+  body before parsing. This restores the entire HPA tool and the Tier-1
+  membrane/secreted target-accessibility classification (verified live: PCSK9 →
+  secreted, EGFR → membrane, BRAF → intracellular). Added a regression test that mocks
+  a gzip-compressed response (the existing tests mocked plain JSON and so never
+  exercised this path).
 
 ## [0.4.0] - 2026-05-29
 

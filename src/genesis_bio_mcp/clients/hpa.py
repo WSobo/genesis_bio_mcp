@@ -24,6 +24,7 @@ matching the SAbDab pattern.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 import logging
 import re
@@ -101,7 +102,15 @@ class HPAClient:
             if resp.status_code == 404:
                 return None
             resp.raise_for_status()
-            data = resp.json()
+            # HPA's search_download.php returns a gzip-compressed body
+            # (Content-Type: application/gzip) — a file payload, NOT a
+            # Content-Encoding transport that httpx would auto-decode. So the
+            # raw body starts with the gzip magic bytes (0x1f 0x8b) and
+            # resp.json() would fail. Detect and inflate before parsing.
+            content = resp.content
+            if content[:2] == b"\x1f\x8b":
+                content = gzip.decompress(content)
+            data = json.loads(content)
         except Exception as exc:
             logger.warning("HPA fetch failed for %s: %s", symbol, exc)
             return None

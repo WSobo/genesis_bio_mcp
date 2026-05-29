@@ -3961,6 +3961,34 @@ async def test_hpa_happy_path(http_client, tmp_path, monkeypatch):
 
 
 @respx.mock
+async def test_hpa_handles_gzip_response(http_client, tmp_path, monkeypatch):
+    """HPA's search_download.php returns a gzip-compressed body (Content-Type
+    application/gzip) that httpx does NOT auto-decode. The client must detect the
+    gzip magic bytes and inflate before parsing — otherwise resp.json() throws and
+    every gene silently returns 'no data' (the live regression this guards)."""
+    import gzip
+    import json as _json
+
+    monkeypatch.setattr(
+        "genesis_bio_mcp.config.settings.settings.hpa_cache_path",
+        tmp_path / "hpa.json",
+    )
+    gzipped = gzip.compress(_json.dumps(_MOCK_HPA_BRAF).encode())
+    respx.get(url__regex=r"proteinatlas\.org/api/search_download\.php").mock(
+        return_value=httpx.Response(
+            200, content=gzipped, headers={"content-type": "application/gzip"}
+        )
+    )
+    client = HPAClient(http_client)
+    report = await client.get_report("BRAF")
+
+    assert report is not None
+    assert report.expression is not None
+    assert report.expression.rna_tissue_specificity_category == "Low tissue specificity"
+    assert "Enzymes" in report.expression.protein_classes
+
+
+@respx.mock
 async def test_hpa_membrane_classification(http_client, tmp_path, monkeypatch):
     monkeypatch.setattr(
         "genesis_bio_mcp.config.settings.settings.hpa_cache_path",
