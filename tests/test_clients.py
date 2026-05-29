@@ -1222,12 +1222,12 @@ _MOCK_REACTOME_TOKEN_RESPONSE = {
         {
             "stId": "R-HSA-5673001",
             "name": "RAF/MAP kinase cascade",
-            "entities": {"pValue": 1.2e-15, "total": 42},
+            "entities": {"pValue": 1.2e-15, "fdr": 3.4e-13, "total": 42},
         },
         {
             "stId": "R-HSA-162582",
             "name": "Signal Transduction",
-            "entities": {"pValue": 0.0023, "total": 512},
+            "entities": {"pValue": 0.0023, "fdr": 0.08, "total": 512},
         },
     ],
 }
@@ -1248,6 +1248,13 @@ async def test_reactome_get_pathway_context(http_client):
     assert result.top_pathway_name is not None
     names = [p.display_name for p in result.pathways]
     assert any("kinase" in n.lower() or "signal" in n.lower() for n in names)
+    # FDR (BH-corrected) is parsed alongside the raw p-value.
+    top = result.pathways[0]
+    assert top.fdr == pytest.approx(3.4e-13)
+    # FDR < 0.05 is marked significant in the rendered table.
+    md = result.to_markdown()
+    assert "FDR" in md
+    assert "✓" in md  # at least one FDR-significant hit flagged
 
 
 @respx.mock

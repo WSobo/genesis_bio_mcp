@@ -348,8 +348,10 @@ def _parse_pathways(pathways_data: list[dict]) -> list[Pathway]:
             continue
         seen_ids.add(reactome_id)
 
-        p_value = p.get("entities", {}).get("pValue")
-        gene_count = p.get("entities", {}).get("total")
+        entities = p.get("entities", {})
+        p_value = entities.get("pValue")
+        fdr = entities.get("fdr")
+        gene_count = entities.get("total")
         name = p.get("name", "")
         category = _infer_category(name)
 
@@ -357,12 +359,17 @@ def _parse_pathways(pathways_data: list[dict]) -> list[Pathway]:
             p_float = float(p_value) if p_value is not None else None
         except (ValueError, TypeError):
             p_float = None
+        try:
+            fdr_float = float(fdr) if fdr is not None else None
+        except (ValueError, TypeError):
+            fdr_float = None
 
         parsed.append(
             Pathway(
                 reactome_id=reactome_id,
                 display_name=name,
                 p_value=p_float,
+                fdr=fdr_float,
                 gene_count=int(gene_count) if gene_count is not None else None,
                 category=category,
             )

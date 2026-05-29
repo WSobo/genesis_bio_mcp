@@ -52,6 +52,14 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Enhanced
 
+- **`get_pathway_context` now reports Benjamini-Hochberg FDR per pathway.** The Reactome
+  analysis response already carries an `fdr` (multiple-testing-corrected p-value) in the
+  same `entities` block as the raw p-value — it is now parsed onto a new `Pathway.fdr`
+  field and rendered as a dedicated table column, with FDR < 0.05 hits flagged (✓) so the
+  reader can distinguish genuine enrichment from multiple-testing noise. No extra API call.
+  (Top-level parent-pathway labeling is deferred — it would require a per-pathway
+  `/ancestors` fan-out; the existing keyword-inferred `category` already gives a coarse
+  parent grouping.) (Tier-3 audit enrichment.)
 - **`get_target_disease_association` now surfaces Open Targets tractability (druggability).**
   The association GraphQL query now also fetches the target-level `tractability` buckets and
   summarizes them per modality — Small molecule, Antibody, PROTAC/degrader — reporting the
