@@ -100,7 +100,8 @@ configuration.
 ## Tools at a glance
 
 31 tools across 24 data sources, organized into 9 categories. Full details
-in [docs/tools.md](docs/tools.md).
+in [docs/tools.md](docs/tools.md); live output samples of the headline tools in
+[examples/v0.4.0_tool_showcase.md](examples/v0.4.0_tool_showcase.md).
 
 | Category | Tools | Data sources |
 |---|---|---|
