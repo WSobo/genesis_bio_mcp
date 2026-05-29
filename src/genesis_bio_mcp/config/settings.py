@@ -40,6 +40,10 @@ class Settings(BaseSettings):
         GENESIS_REACTOME_SEMAPHORE_LIMIT — int (default 3)
         GENESIS_STRING_REQUIRED_SCORE — int 0–1000 (default 700)
         GENESIS_STRING_NETWORK_LIMIT  — int (default 20)
+        GENESIS_FOLDSEEK_DATABASE     — string (default afdb-swissprot)
+        GENESIS_FOLDSEEK_POLL_TIMEOUT_SECS  — float (default 120.0)
+        GENESIS_FOLDSEEK_POLL_INTERVAL_SECS — float (default 3.0)
+        GENESIS_FOLDSEEK_MAX_HITS     — int (default 20)
         GENESIS_SABDAB_CACHE_PATH     — path string (default data/sabdab_cache.tsv)
         GENESIS_SABDAB_CACHE_TTL_SECS — int, seconds (default 604800 = 7 days)
         GENESIS_CLAUDE_MODEL          — string (default claude-sonnet-4-6)
@@ -145,6 +149,32 @@ class Settings(BaseSettings):
         description="Default maximum number of STRING interaction partners to return.",
         gt=0,
         le=200,
+    )
+
+    # ---------------------------------------------------------------------------
+    # Foldseek structural-similarity search server
+    # ---------------------------------------------------------------------------
+
+    foldseek_database: str = Field(
+        default="afdb-swissprot",
+        description="Default Foldseek target database path (e.g. 'afdb-swissprot', 'pdb', "
+        "'afdb-proteome'). See https://search.foldseek.com/api/databases.",
+    )
+    foldseek_poll_timeout_secs: float = Field(
+        default=120.0,
+        description="Max seconds to poll a Foldseek search ticket before giving up.",
+        gt=0,
+    )
+    foldseek_poll_interval_secs: float = Field(
+        default=3.0,
+        description="Seconds between Foldseek ticket status polls.",
+        gt=0,
+    )
+    foldseek_max_hits: int = Field(
+        default=20,
+        description="Default maximum number of structural-homolog hits to return.",
+        gt=0,
+        le=100,
     )
 
     # ---------------------------------------------------------------------------

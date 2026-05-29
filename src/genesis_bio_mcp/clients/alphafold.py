@@ -110,6 +110,27 @@ class AlphaFoldClient:
         self._confidence_cache[cache_key] = result
         return result
 
+    async def get_model_pdb(self, uniprot_accession: str) -> str | None:
+        """Return the raw AlphaFold model PDB text for a UniProt accession.
+
+        Used by structural-search tooling (e.g. Foldseek) that needs the actual
+        coordinate file rather than a parsed summary. Returns ``None`` when the
+        protein has no AlphaFold model or the download fails.
+        """
+        if not uniprot_accession:
+            return None
+        _, pdb_url, _ = await self._fetch_alphafold(uniprot_accession)
+        if not pdb_url:
+            logger.info("AlphaFold: no model PDB URL for %s", uniprot_accession)
+            return None
+        try:
+            resp = await self._client.get(pdb_url, timeout=25.0)
+            resp.raise_for_status()
+            return resp.text
+        except Exception as exc:
+            logger.warning("AlphaFold model download failed for %s: %s", uniprot_accession, exc)
+            return None
+
     async def _fetch_alphafold(
         self, uniprot_id: str
     ) -> tuple[float | None, str | None, str | None]:

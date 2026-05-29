@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 30 tools for biomedical database queries:
+Exposes 31 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -11,6 +11,7 @@ Exposes 30 tools for biomedical database queries:
   - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_structure_confidence      AlphaFold: per-residue pLDDT profile + disordered regions
+  - get_structural_homologs       Foldseek: proteins with a similar 3D fold (structural search)
   - get_protein_interactome       STRING: binding partners and selectivity risks
   - get_biogrid_interactions      BioGRID: curated literature PPI network
   - get_antibody_structures       SAbDab: antibody/nanobody structures for an antigen
@@ -58,6 +59,7 @@ from genesis_bio_mcp.clients.clinical_trials import ClinicalTrialsClient
 from genesis_bio_mcp.clients.depmap import DepMapClient, load_depmap_cache
 from genesis_bio_mcp.clients.dgidb import DGIdbClient
 from genesis_bio_mcp.clients.ensembl import EnsemblClient
+from genesis_bio_mcp.clients.foldseek import FoldseekClient
 from genesis_bio_mcp.clients.gnomad import GnomADClient
 from genesis_bio_mcp.clients.gtex import GTExClient
 from genesis_bio_mcp.clients.gwas import GwasClient
@@ -139,6 +141,7 @@ async def lifespan(server: FastMCP):
         server.state.pubchem = PubChemClient(client)
         server.state.chembl = ChEMBLClient(client)
         server.state.alphafold = AlphaFoldClient(client)
+        server.state.foldseek = FoldseekClient(client, alphafold=server.state.alphafold)
         server.state.string_db = StringDbClient(client)
         server.state.biogrid = BioGRIDClient(client)
         server.state.sabdab = SAbDabClient(client)
@@ -282,6 +285,26 @@ class GetProteinStructureInput(_GeneInput):
 
 class GetStructureConfidenceInput(_GeneInput):
     """Input for get_structure_confidence."""
+
+
+class GetStructuralHomologsInput(_GeneInput):
+    """Input for get_structural_homologs."""
+
+    database: Literal["afdb-swissprot", "afdb-proteome", "pdb"] = Field(
+        "afdb-swissprot",
+        description=(
+            "Foldseek target database: 'afdb-swissprot' (AlphaFold Swiss-Prot, curated, "
+            "default) | 'afdb-proteome' (AlphaFold reference proteomes, broader) | 'pdb' "
+            "(experimental PDB structures)."
+        ),
+    )
+    max_hits: int | None = Field(
+        None,
+        ge=1,
+        le=100,
+        description="Maximum number of structural homologs to return. Omit for the server "
+        "default (20).",
+    )
 
 
 class GetProteinInteractomeInput(_GeneInput):
@@ -1010,6 +1033,46 @@ async def get_structure_confidence(params: GetStructureConfidenceInput) -> str:
         params.response_format,
         f"No AlphaFold per-residue confidence available for '{symbol}'. "
         "The protein may lack an AlphaFold model.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def get_structural_homologs(params: GetStructuralHomologsInput) -> str:
+    """Find proteins with a similar 3D fold via a Foldseek structural search.
+
+    Submits the gene's AlphaFold model to the Foldseek web server and returns the
+    most structurally-similar proteins. Unlike sequence search, this surfaces
+    distant structural relatives whose sequence has diverged — useful for finding
+    candidate scaffolds, inferring function for poorly-annotated targets, spotting
+    structurally-similar off-target folds, and identifying fold families.
+
+    Note: this runs an asynchronous remote search (submit → poll → fetch) and can
+    take tens of seconds to a couple of minutes. The query's own AlphaFold model is
+    excluded from the results.
+
+    Args:
+        params (GetStructuralHomologsInput): gene_symbol, database (afdb-swissprot |
+            afdb-proteome | pdb), max_hits, response_format.
+
+    Returns:
+        Markdown table of structural homologs sorted by E-value: target id,
+        description, E-value, bit score, match probability, and sequence identity.
+    """
+    symbol, _ = await _resolve_symbol(params.gene_symbol)
+    protein = await mcp.state.uniprot.get_protein(symbol)
+    accession = protein.uniprot_accession if protein else None
+    result = await mcp.state.foldseek.search(
+        symbol, accession, database=params.database, max_hits=params.max_hits
+    )
+    return _fmt(
+        result,
+        params.response_format,
+        f"No structural homologs found for '{symbol}'. The protein may lack an "
+        "AlphaFold model, or the Foldseek search did not complete.",
     )
 
 

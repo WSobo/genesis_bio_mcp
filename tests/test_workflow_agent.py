@@ -33,6 +33,7 @@ def _mock_state() -> MagicMock:
         "pubchem",
         "chembl",
         "alphafold",
+        "foldseek",
         "string_db",
         "dgidb",
         "clinical_trials",
@@ -61,6 +62,7 @@ def _mock_state() -> MagicMock:
             "get_compounds",
             "get_structure",
             "get_confidence",
+            "search",
             "get_interactome",
             "get_interactions",
             "get_drug_interactions",
@@ -84,6 +86,7 @@ def _mock_state() -> MagicMock:
             mock_result.to_markdown.return_value = f"## Mock {attr}.{method}\n\nData here."
             mock_result.pathways = ["pathway1"]  # for reactome non-empty check
             mock_result.total_partners = 5  # for string_db non-empty check
+            mock_result.hits = ["hit1"]  # for foldseek non-empty check
             async_method = AsyncMock(return_value=mock_result)
             setattr(client, method, async_method)
         setattr(state, attr, client)
@@ -144,6 +147,7 @@ def test_build_tool_registry_has_all_tools():
         "get_chembl_compounds",
         "get_protein_structure",
         "get_structure_confidence",
+        "get_structural_homologs",
         "get_protein_interactome",
         "get_biogrid_interactions",
         "get_epitope_data",

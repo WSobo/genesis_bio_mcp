@@ -1585,6 +1585,82 @@ class StructureConfidence(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Foldseek structural-similarity search
+# ---------------------------------------------------------------------------
+
+
+class StructuralHomolog(BaseModel):
+    """A single structurally-similar protein returned by a Foldseek search."""
+
+    target_id: str = Field(
+        description="Foldseek target identifier (e.g. 'AF-P15056-F1-model_v4' or a PDB chain id)"
+    )
+    description: str | None = Field(
+        None, description="Target description / protein name parsed from the Foldseek header"
+    )
+    database: str = Field(description="Foldseek target database the hit came from")
+    uniprot_accession: str | None = Field(
+        None, description="UniProt accession parsed from AlphaFold-DB target ids, when present"
+    )
+    evalue: float | None = Field(
+        None, description="Foldseek E-value (lower = more significant structural match)"
+    )
+    bit_score: float | None = Field(
+        None, description="Foldseek alignment bit score (higher = better)"
+    )
+    probability: float | None = Field(
+        None, description="Foldseek match probability 0–1 (confidence the hit is a true homolog)"
+    )
+    seq_identity: float | None = Field(
+        None, description="Sequence identity over the structural alignment (percent)"
+    )
+    aln_length: int | None = Field(
+        None, description="Length of the structural alignment in residues"
+    )
+
+
+class StructuralHomologs(BaseModel):
+    """Foldseek structural-similarity search results for a query protein.
+
+    Foldseek finds proteins with similar 3D folds even when sequence identity is
+    low — surfacing distant structural relatives, candidate scaffolds, and
+    potential off-target folds that sequence search alone would miss.
+    """
+
+    gene_symbol: str
+    uniprot_accession: str = Field(description="UniProt accession of the query (AlphaFold model)")
+    database: str = Field(description="Foldseek target database searched")
+    hits: list[StructuralHomolog] = Field(
+        default_factory=list,
+        description="Structural homologs sorted by E-value (most significant first); the "
+        "query's own model is excluded",
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Structural homologs (Foldseek): {self.gene_symbol}",
+            f"**Query:** AlphaFold model of `{self.uniprot_accession}` | "
+            f"**Database:** {self.database} | **{len(self.hits)} hits**",
+        ]
+        if not self.hits:
+            lines += ["", "_No structural homologs found (excluding the query's own model)._"]
+            return "\n".join(lines)
+        lines += [
+            "",
+            "| Target | Description | E-value | Bit score | Prob | % id |",
+            "|---|---|---:|---:|---:|---:|",
+        ]
+        for h in self.hits[:20]:
+            ev = f"{h.evalue:.1e}" if h.evalue is not None else "—"
+            bs = f"{h.bit_score:.0f}" if h.bit_score is not None else "—"
+            pr = f"{h.probability:.2f}" if h.probability is not None else "—"
+            sid = f"{h.seq_identity:.0f}" if h.seq_identity is not None else "—"
+            desc = (h.description or "")[:40]
+            lines.append(f"| `{h.target_id}` | {desc} | {ev} | {bs} | {pr} | {sid} |")
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Protein interaction network (STRING)
 # ---------------------------------------------------------------------------
 
