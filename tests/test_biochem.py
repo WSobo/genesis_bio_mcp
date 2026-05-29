@@ -20,6 +20,7 @@ from genesis_bio_mcp.tools.biochem import (
     scan_liabilities,
     theoretical_pi,
 )
+from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 
 # ---------------------------------------------------------------------------
 # Reference sequences
@@ -215,3 +216,46 @@ def test_liability_hit_schema():
     h = LiabilityHit(motif_type="deamidation", position=1, residues="NG", context="NGAAA")
     assert h.motif_type == "deamidation"
     assert h.position == 1
+
+
+# ---------------------------------------------------------------------------
+# CDR developability assessment
+# ---------------------------------------------------------------------------
+
+
+def test_cdr_developability_flags_motifs_and_properties():
+    # vh_cdr3: NG (deamidation) + a Cys + a long, hydrophobic loop.
+    cdr_map = {
+        "vh_cdr1": "GYTFTNYG",
+        "vh_cdr3": "ARNGCWWLLVVIIFFYYWWAR",  # NG motif, Cys, very hydrophobic, long
+        "vl_cdr1": "RASQDISNYLA",
+    }
+    report = assess_cdr_developability(cdr_map, numbering_source="user-provided")
+
+    assert report.numbering_source == "user-provided"
+    assert len(report.cdrs) == 3
+    # canonical ordering: vh_cdr1 before vh_cdr3 before vl_cdr1
+    assert [c.cdr for c in report.cdrs] == ["vh_cdr1", "vh_cdr3", "vl_cdr1"]
+
+    flags = " ".join(report.risk_flags)
+    assert "deamidation" in flags
+    assert "cysteine" in flags.lower()
+    assert "CDR-H3" in flags  # long CDR-H3 flag
+    assert "hydrophobicity" in flags
+    assert report.total_liabilities > 0
+    assert "Developability" in report.to_markdown()
+
+
+def test_cdr_developability_clean_cdrs_no_flags():
+    # A short, polar, motif-free CDR set should raise no flags.
+    cdr_map = {"vh_cdr1": "GYTFTSYA", "vl_cdr2": "DASSLES"}
+    report = assess_cdr_developability(cdr_map, numbering_source="user-provided")
+    assert report.risk_flags == []
+    assert report.total_liabilities == 0
+
+
+def test_cdr_developability_skips_empty():
+    cdr_map = {"vh_cdr1": "", "vh_cdr3": "  ", "vl_cdr1": "ARDY"}
+    report = assess_cdr_developability(cdr_map, numbering_source="user-provided")
+    assert len(report.cdrs) == 1
+    assert report.cdrs[0].cdr == "vl_cdr1"

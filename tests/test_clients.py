@@ -2253,6 +2253,39 @@ async def test_sabdab_cdr_annotation_happy_path(http_client, tmp_path, monkeypat
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_sabdab_number_chains(http_client):
+    """number_chains numbers VH+VL via AbNum and returns the six CDR fields."""
+
+    def _abnum_side_effect(request, **kwargs):
+        aaseq = dict(request.url.params).get("aaseq", "")
+        return httpx.Response(200, text=_MOCK_ABNUM_VH if "EVQL" in aaseq else _MOCK_ABNUM_VL)
+
+    respx.get(url__regex=r"bioinf\.org\.uk.*abnum").mock(side_effect=_abnum_side_effect)
+
+    client = SAbDabClient(http_client)
+    cdrs = await client.number_chains(vh="EVQLVESGGG", vl="DIQMTQSPSS")
+
+    assert cdrs["vh_cdr1"] == "GFNIKDT"
+    assert cdrs["vh_cdr3"] == "RWGGDGFYA"
+    assert cdrs["vl_cdr1"] == "RASQSISSYLS"
+    assert cdrs["vl_cdr3"] == "QQSYSTPPT"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_sabdab_number_chains_vh_only(http_client):
+    """Only VH provided → VH CDRs populated, VL keys absent."""
+    respx.get(url__regex=r"bioinf\.org\.uk.*abnum").mock(
+        return_value=httpx.Response(200, text=_MOCK_ABNUM_VH)
+    )
+    client = SAbDabClient(http_client)
+    cdrs = await client.number_chains(vh="EVQLVESGGG")
+    assert cdrs["vh_cdr1"] == "GFNIKDT"
+    assert "vl_cdr1" not in cdrs
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_sabdab_cdr_annotation_fasta_failure(http_client, tmp_path, monkeypatch):
     """When RCSB FASTA fails, structures are returned with CDR fields as None."""
     monkeypatch.setattr(

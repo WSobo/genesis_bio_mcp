@@ -13,6 +13,15 @@ v0.4.0 in progress (protein-engineering milestones) + a prior repo-hygiene pass.
 
 ### Added
 
+- **`get_cdr_developability` tool (M3, 30 tools total).** Assesses antibody/nanobody
+  CDR developability. Accepts VH/VL variable-domain sequences (auto-numbered to the six
+  CDRs via AbNum, Chothia — reusing the SAbDab integration via a new
+  `SAbDabClient.number_chains`) and/or explicit CDR sequences, then reports per-CDR net
+  charge, hydrophobicity (GRAVY), and liability motifs (deamidation, isomerization,
+  N-glycosylation, Met/Trp oxidation, cysteines) and flags the high-priority risks
+  (CDR motif chemistry, hydrophobic / long CDR-H3). New pure-Python
+  `tools/cdr_developability.py` (layered on `tools/biochem.py`), `run_biology_workflow`
+  registration, 5 new tests.
 - **`get_dms_variant_score` tool (M2, 29 tools total).** Looks up the measured MaveDB
   DMS functional score for one specific protein variant (gene + mutation), probing the
   gene's largest score sets and returning each measured value — the highest-resolution
