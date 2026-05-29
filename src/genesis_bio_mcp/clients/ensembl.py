@@ -27,6 +27,7 @@ from genesis_bio_mcp.models import (
     VEPConsequence,
     VEPConsequenceReport,
 )
+from genesis_bio_mcp.tools.variant_parser import canonical_three_letter, parse_protein_change
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +149,20 @@ class EnsemblClient:
         gene = await self.lookup_gene(gene_symbol)
         if gene is None or not gene.canonical_transcript_id:
             return None
-        hgvs = f"{gene.canonical_transcript_id}:{mutation}"
+        # VEP's HGVS endpoint requires canonical protein HGVS
+        # (``ENST…:p.Val600Glu``); a bare ``V600E`` is rejected and yields no
+        # consequences. Normalize any accepted shorthand ("V600E", "p.V600E",
+        # "Val600Glu") — idempotent for callers that already pass "p.Val600Glu".
+        try:
+            hgvs_p = canonical_three_letter(*parse_protein_change(mutation))
+        except ValueError:
+            logger.warning(
+                "VEP: unparsable protein change '%s' for %s — cannot build HGVS",
+                mutation,
+                gene_symbol,
+            )
+            return None
+        hgvs = f"{gene.canonical_transcript_id}:{hgvs_p}"
         return await self.get_vep_by_hgvs(hgvs, include_all_transcripts=include_all_transcripts)
 
     async def _get_json(self, url: str, params: dict | None = None) -> list | dict | None:

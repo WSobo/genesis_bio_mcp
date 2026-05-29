@@ -9,8 +9,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.4.1] - 2026-05-29
+
+Patch release: production-hardening fixes found during a live MCP probe of the toolset,
+plus a tool-output showcase. No new tools (still 31).
+
 ### Fixed
 
+- **`get_variant_consequences` returned no VEP consequences for a bare protein change.**
+  The standalone tool (and the workflow path) passed the mutation through verbatim, so
+  `get_vep_consequences` built an invalid HGVS like `ENST…:V600E` that Ensembl VEP rejects —
+  yielding "no consequences" even though `get_variant_effects` (which pre-normalizes)
+  handled the same variant. `get_vep_consequences` now normalizes any accepted shorthand
+  ("V600E" / "p.V600E" / "Val600Glu") to canonical `p.Val600Glu` before querying, fixing all
+  three call sites; unparsable input returns `None` instead of a malformed query.
+- **`get_antibody_structures` rendered sub-nanomolar affinities as "0.0 nM".** A fixed
+  `%.1f` format collapsed tight binders (e.g. 0.04 nM = 40 pM) to `0.0`, which reads as "no
+  affinity" — the opposite of the truth, and exactly wrong for the best antibodies. Affinity
+  now uses precision that scales with magnitude (sub-nM keeps its significant digits), in
+  both the per-structure table and the "Best measured affinity" insight line.
 - **`get_protein_atlas` (HPA) leaked Python list/dict reprs into its output.** With live
   data flowing again (see the gzip fix), HPA returns subcellular locations as JSON arrays
   and `RNA tissue specific nTPM` as a JSON object, but the parser stringified them directly
