@@ -1217,8 +1217,10 @@ async def get_variant_effects(params: GetVariantEffectsInput) -> str:
       - **gnomAD v4** resolves the protein change to a canonical variant_id and
         returns population allele frequency.
       - **MyVariant.info** returns ClinVar submissions (clinical significance,
-        review stars, conditions), AlphaMissense (am_pathogenicity + class),
-        REVEL, CADD, SIFT, and PolyPhen-2 predictions.
+        review stars, conditions), gnomAD exome + genome allele frequency, the
+        AlphaMissense (am_pathogenicity + class), REVEL, CADD, SIFT, PolyPhen-2,
+        ESM1b, and EVE pathogenicity predictors, plus GERP++/phyloP evolutionary
+        conservation.
       - **MaveDB** probes the top 3 DMS score sets for the gene for a
         per-variant fitness score.
 

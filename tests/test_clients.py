@@ -2961,8 +2961,13 @@ MOCK_MYVARIANT_TP53_R175H = {
         "cadd": {"phred": 25.9, "raw_score": 4.598},
         "sift": {"score": [0.08, 0.07]},
         "polyphen2": {"score": [0.704]},
+        "esm1b": {"pred": ["D", "D", "T"], "score": [-12.5, -12.1, -6.0]},
+        "eve": {"class75_pred": "P", "score": [0.91, 0.89]},
+        "gerp++": {"nr": 5.08, "rs": 5.08, "rs_rankscore": 0.68},
+        "phylop": {"100way_vertebrate": {"score": 8.1, "rankscore": 0.95}},
     },
     "gnomad_exome": {"af": {"af": 3.98e-6, "af_nfe": 8.80e-6, "af_afr": 0.0}},
+    "gnomad_genome": {"af": {"af": 5.10e-6, "af_nfe": 9.20e-6}},
 }
 
 
@@ -2984,9 +2989,36 @@ async def test_myvariant_parses_clinvar_and_alphamissense(http_client):
     assert result.in_silico.alphamissense_class == "likely_pathogenic"
     assert result.in_silico.revel_score == pytest.approx(0.922, abs=0.001)
     assert result.in_silico.cadd_phred == 25.9
+    # New conservation + modern predictors.
+    assert result.in_silico.esm1b_score == pytest.approx((-12.5 - 12.1 - 6.0) / 3, abs=0.01)
+    assert result.in_silico.esm1b_class == "damaging"  # majority of D,D,T
+    assert result.in_silico.eve_score == pytest.approx(0.90, abs=0.01)
+    assert result.in_silico.eve_class == "pathogenic"
+    assert result.in_silico.gerp_rs == pytest.approx(5.08)
+    assert result.in_silico.phylop_score == pytest.approx(8.1)
     assert result.gnomad is not None
-    assert result.gnomad.overall_af == pytest.approx(3.98e-6)
+    assert result.gnomad.overall_af == pytest.approx(3.98e-6)  # exome preferred
+    assert result.gnomad.genome_af == pytest.approx(5.10e-6)  # genome surfaced too
     assert "af_nfe" in result.gnomad.by_population
+
+
+@respx.mock
+async def test_myvariant_genome_only_frequency_fallback(http_client):
+    """A variant present only in gnomAD genomes (no exome record) must still
+    surface a frequency via the genome fallback rather than dropping to None."""
+    payload = {
+        "_id": "chr1:g.100A>T",
+        "gnomad_genome": {"af": {"af": 1.2e-4, "af_eas": 3.3e-4}},
+    }
+    respx.get("https://myvariant.info/v1/variant/chr1:g.100A>T").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    client = MyVariantClient(http_client)
+    result = await client.get_annotation("chr1:g.100A>T")
+    assert result is not None and result.gnomad is not None
+    assert result.gnomad.overall_af == pytest.approx(1.2e-4)  # genome used as overall
+    assert result.gnomad.genome_af == pytest.approx(1.2e-4)
+    assert "af_eas" in result.gnomad.by_population
 
 
 @respx.mock

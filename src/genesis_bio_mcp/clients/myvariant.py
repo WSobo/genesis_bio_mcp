@@ -36,7 +36,8 @@ _SEMAPHORE = asyncio.Semaphore(3)
 _FIELDS = (
     "clinvar.hgvs,clinvar.rsid,clinvar.variant_id,clinvar.rcv,"
     "dbnsfp.alphamissense,dbnsfp.revel,dbnsfp.cadd,dbnsfp.sift,dbnsfp.polyphen2,"
-    "gnomad_exome.af"
+    "dbnsfp.esm1b,dbnsfp.eve,dbnsfp.gerp++,dbnsfp.phylop,"
+    "gnomad_exome.af,gnomad_genome.af"
 )
 
 
@@ -149,7 +150,14 @@ class MyVariantClient:
 
 def _parse_annotation(hgvs: str, data: dict[str, Any]) -> VariantAnnotation:
     clinvar = _parse_clinvar(data.get("clinvar"))
-    pops = _parse_frequency(data.get("gnomad_exome"))
+    # Prefer the exome frequency but fall back to genome so variants observed
+    # only in the genome callset (gnomAD genomes cover non-coding + some coding
+    # sites the exome misses) still surface a frequency instead of None.
+    exome = _parse_frequency(data.get("gnomad_exome"))
+    genome = _parse_frequency(data.get("gnomad_genome"))
+    pops = exome or genome
+    if pops is not None:
+        pops.genome_af = genome.overall_af if genome is not None else None
     in_silico = _parse_in_silico(data.get("dbnsfp"))
     return VariantAnnotation(
         query=hgvs,
@@ -281,14 +289,39 @@ def _parse_in_silico(raw: Any) -> InSilicoPredictions | None:
 
     am_pred = None
     am_pred_raw = am.get("pred") if isinstance(am, dict) else None
-    if isinstance(am_pred_raw, list) and am_pred_raw:
-        # pred codes: 'P' = likely pathogenic, 'B' = likely benign, 'A' = ambiguous
-        majority = max(set(am_pred_raw), key=am_pred_raw.count)
-        am_pred = {"P": "likely_pathogenic", "B": "likely_benign", "A": "ambiguous"}.get(majority)
-    elif isinstance(am_pred_raw, str):
-        am_pred = {"P": "likely_pathogenic", "B": "likely_benign", "A": "ambiguous"}.get(
-            am_pred_raw
-        )
+    am_map = {"P": "likely_pathogenic", "B": "likely_benign", "A": "ambiguous"}
+    am_majority = _majority(am_pred_raw)
+    if am_majority is not None:
+        am_pred = am_map.get(am_majority)
+
+    # Conservation + modern predictors (dbNSFP 4.x). Field paths confirmed
+    # against the live MyVariant schema:
+    #   dbnsfp.gerp++           -> {"rs": <rejected-substitutions score>, ...}
+    #   dbnsfp.phylop           -> {"100way_vertebrate": {"score": ...}, ...}
+    #   dbnsfp.esm1b            -> {"score": float|list, "pred": "D"/"T"|list}
+    #   dbnsfp.eve              -> {"score": float|list, "class75_pred": "P"/"B"/"U"|list}
+    esm1b = raw.get("esm1b") or {}
+    eve = raw.get("eve") or {}
+    gerp = raw.get("gerp++") or {}
+    phylop = raw.get("phylop") or {}
+
+    gerp_rs = gerp.get("rs") if isinstance(gerp.get("rs"), (int, float)) else None
+    phylop_100 = phylop.get("100way_vertebrate") if isinstance(phylop, dict) else None
+    phylop_score = None
+    if isinstance(phylop_100, dict) and isinstance(phylop_100.get("score"), (int, float)):
+        phylop_score = float(phylop_100["score"])
+
+    esm1b_majority = _majority(esm1b.get("pred") if isinstance(esm1b, dict) else None)
+    esm1b_class = (
+        {"D": "damaging", "T": "tolerated"}.get(esm1b_majority) if esm1b_majority else None
+    )
+
+    eve_majority = _majority(eve.get("class75_pred") if isinstance(eve, dict) else None)
+    eve_class = (
+        {"P": "pathogenic", "B": "benign", "U": "uncertain"}.get(eve_majority)
+        if eve_majority
+        else None
+    )
 
     return InSilicoPredictions(
         alphamissense_score=_score_mean(am),
@@ -297,4 +330,26 @@ def _parse_in_silico(raw: Any) -> InSilicoPredictions | None:
         cadd_phred=cadd.get("phred") if isinstance(cadd.get("phred"), (int, float)) else None,
         sift_score=_score_mean(sift),
         polyphen_score=_score_mean(polyphen),
+        esm1b_score=_score_mean(esm1b),
+        esm1b_class=esm1b_class,
+        eve_score=_score_mean(eve),
+        eve_class=eve_class,
+        gerp_rs=gerp_rs,
+        phylop_score=phylop_score,
     )
+
+
+def _majority(value: Any) -> str | None:
+    """Return the majority string from a per-transcript pred list, or the scalar.
+
+    MyVariant returns dbNSFP prediction codes either as a single string or as a
+    per-transcript list; this collapses both to one representative code.
+    """
+    if isinstance(value, list) and value:
+        codes = [v for v in value if isinstance(v, str)]
+        if not codes:
+            return None
+        return max(set(codes), key=codes.count)
+    if isinstance(value, str):
+        return value
+    return None
