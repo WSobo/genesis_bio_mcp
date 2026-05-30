@@ -18,6 +18,12 @@ import respx
 
 from genesis_bio_mcp import server
 from genesis_bio_mcp.corpus import create_corpus_pool
+from genesis_bio_mcp.ingest.chembl import (
+    _parse_activity,
+    build_compound_record,
+    fetch_activities_for_target,
+    resolve_chembl_target,
+)
 from genesis_bio_mcp.ingest.embed import EMBED_DIM, _mean_pool, embed_sequences
 from genesis_bio_mcp.ingest.kinome import (
     TargetRecord,
@@ -25,8 +31,13 @@ from genesis_bio_mcp.ingest.kinome import (
     _parse_entry,
     fetch_kinome_targets,
 )
-from genesis_bio_mcp.ingest.load import load_targets
-from genesis_bio_mcp.server import CorpusDescribeInput, corpus_describe
+from genesis_bio_mcp.ingest.load import load_activities, load_compounds, load_targets
+from genesis_bio_mcp.server import (
+    CorpusDescribeInput,
+    CorpusFindSimilarCompoundsInput,
+    corpus_describe,
+    corpus_find_similar_compounds,
+)
 
 
 def test_mean_pool_excludes_bos_and_eos():
@@ -130,5 +141,165 @@ async def test_integration_load_targets_and_manifest():
         assert "ESM-2-150M" in env["data"]["protein_embedding_model"]
     finally:
         async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM targets")
+        await pool.close()
+
+
+# ---------------------------------------------------------------------------
+# ChEMBL compound/activity fetch + transform — unit tests (network mocked)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_resolve_chembl_target_filters_human_single_protein():
+    payload = {
+        "targets": [
+            {
+                "target_chembl_id": "CHEMBL_X",
+                "target_type": "PROTEIN COMPLEX",
+                "organism": "Homo sapiens",
+            },
+            {
+                "target_chembl_id": "CHEMBL5145",
+                "target_type": "SINGLE PROTEIN",
+                "organism": "Homo sapiens",
+            },
+        ]
+    }
+    respx.get(url__startswith="https://www.ebi.ac.uk/chembl/api/data/target").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    async with httpx.AsyncClient() as client:
+        assert await resolve_chembl_target(client, "P15056") == "CHEMBL5145"
+
+
+def test_parse_activity_extracts_fields_and_drops_incomplete():
+    row = {
+        "activity_id": 1234,
+        "molecule_chembl_id": "CHEMBL25",
+        "target_chembl_id": "CHEMBL5145",
+        "standard_type": "IC50",
+        "standard_value": "12.0",
+        "standard_units": "nM",
+        "pchembl_value": "7.92",
+        "assay_chembl_id": "CHEMBL_A1",
+        "confidence_score": "9",
+        "document_chembl_id": "CHEMBL_D1",
+    }
+    rec = _parse_activity(row, "P15056")
+    assert rec is not None
+    assert rec.activity_id == 1234
+    assert rec.uniprot_accession == "P15056"
+    assert rec.pchembl_value == 7.92
+    assert rec.assay_confidence_score == 9
+    # Missing molecule/target id → dropped.
+    assert _parse_activity({"activity_id": 1}, "P15056") is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_activities_returns_records_and_smiles():
+    payload = {
+        "activities": [
+            {
+                "activity_id": 1,
+                "molecule_chembl_id": "CHEMBL25",
+                "target_chembl_id": "CHEMBL5145",
+                "standard_type": "IC50",
+                "pchembl_value": "7.9",
+                "canonical_smiles": "CC(=O)Oc1ccccc1C(=O)O",
+            }
+        ],
+        "page_meta": {"next": None},
+    }
+    respx.get(url__startswith="https://www.ebi.ac.uk/chembl/api/data/activity").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    async with httpx.AsyncClient() as client:
+        records, smiles = await fetch_activities_for_target(client, "CHEMBL5145", "P15056")
+    assert len(records) == 1
+    assert smiles["CHEMBL25"] == "CC(=O)Oc1ccccc1C(=O)O"
+
+
+def test_build_compound_record_from_smiles():
+    rec = build_compound_record("CHEMBL25", "CC(=O)Oc1ccccc1C(=O)O")
+    assert rec.molecule_chembl_id == "CHEMBL25"
+    assert rec.canonical_smiles == "CC(=O)Oc1ccccc1C(=O)O"
+    assert rec.inchikey is not None
+    assert rec.morgan_fp_bits is not None and len(rec.morgan_fp_bits) == 2048
+    # Unparseable SMILES → record with null chem fields (still loadable for FK integrity).
+    bad = build_compound_record("CHEMBL_BAD", "not_a_smiles!!!")
+    assert bad.morgan_fp_bits is None
+
+
+@_skip_no_db
+@pytest.mark.asyncio
+async def test_integration_load_activities_links_compounds_and_targets():
+    pool = await create_corpus_pool()
+    assert pool is not None
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM activities")
+            await conn.execute("DELETE FROM compounds")
+            await conn.execute("DELETE FROM targets")
+        # A target (FK), a compound (FK), then an activity linking them.
+        await load_targets(
+            pool,
+            [TargetRecord("P15056", "BRAF", "BRAF", "Homo sapiens", "MAAL")],
+            [[0.1] * EMBED_DIM],
+            source_version="UniProt test",
+        )
+        await load_compounds(
+            pool,
+            [build_compound_record("CHEMBL25", "CC(=O)Oc1ccccc1C(=O)O")],
+            source_version="ChEMBL test",
+        )
+        from genesis_bio_mcp.ingest.load import ActivityRecord
+
+        n = await load_activities(
+            pool,
+            [
+                ActivityRecord(
+                    activity_id=999,
+                    molecule_chembl_id="CHEMBL25",
+                    uniprot_accession="P15056",
+                    target_chembl_id="CHEMBL5145",
+                    standard_type="IC50",
+                    standard_value=12.0,
+                    standard_units="nM",
+                    pchembl_value=7.92,
+                    assay_chembl_id="CHEMBL_A1",
+                    assay_confidence_score=9,
+                    doc_chembl_id="CHEMBL_D1",
+                )
+            ],
+            source_version="ChEMBL test",
+        )
+        assert n == 1
+
+        server.mcp.state = SimpleNamespace(corpus_pool=pool)
+        # Manifest counts reflect the activity; the target's ChEMBL id was backfilled.
+        env = json.loads(await corpus_describe(CorpusDescribeInput(response_format="json")))
+        assert env["data"]["activity_count"] == 1
+        assert env["data"]["compound_count"] == 1
+        # The compound similarity tool now reports the linked activity count.
+        comp = json.loads(
+            await corpus_find_similar_compounds(
+                CorpusFindSimilarCompoundsInput(
+                    smiles="CC(=O)Oc1ccccc1C(=O)O", response_format="json"
+                )
+            )
+        )
+        assert comp["data"]["hits"][0]["activity_count"] == 1
+        async with pool.acquire() as conn:
+            tid = await conn.fetchval(
+                "SELECT target_chembl_id FROM targets WHERE uniprot_accession = 'P15056'"
+            )
+        assert tid == "CHEMBL5145"  # backfilled from the activity
+    finally:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM activities")
+            await conn.execute("DELETE FROM compounds")
             await conn.execute("DELETE FROM targets")
         await pool.close()

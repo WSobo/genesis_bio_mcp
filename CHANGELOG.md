@@ -13,6 +13,22 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **ChEMBL compound/activity ingester (v0.6.0 M2 — offline ETL).** Fills the corpus's
+  `compounds` + `activities` so the target↔chemistry links exist: for each corpus target
+  (UniProt accession) it resolves the ChEMBL target id, pulls IC50/Ki/Kd/EC50 activities with a
+  pChEMBL value (paged), and — since each activity row carries the molecule's `canonical_smiles`
+  — builds compounds in the same pass (RDKit canonical SMILES + InChIKey + MW + Morgan FP via the
+  shared `standardized_compound_fields`). Activities are keyed on **UniProt accession** (FK) +
+  `molecule_chembl_id` (FK), and the run backfills `targets.target_chembl_id`. New
+  `genesis_bio_mcp/ingest/chembl.py` (`resolve_chembl_target`, `fetch_activities_for_target`,
+  `build_compound_record`), `ActivityRecord` + `load_activities` in the loader, and a CLI command:
+  `uv run python -m genesis_bio_mcp.ingest activities [LIMIT]`. **This step needs only the core
+  deps (RDKit + httpx + asyncpg) — no `torch`/`ingest` extras** (only target embedding does).
+  Tests: ChEMBL target/activity parse (respx), compound-record building, and a CI integration
+  test that loads a target+compound+activity and verifies the FK links, manifest counts, the
+  `target_chembl_id` backfill, and that `corpus_find_similar_compounds` now reports the linked
+  activity count. No new MCP tool (count stays 41). For a full kinome build the EBI ChEMBL dump
+  is faster; this bounded REST path is the accessible default for a partial/demo build.
 - **`corpus_find_similar_compounds` (v0.6.0 M2 — compound similarity search).** Closed-world
   chemical-similarity search over the corpus: the query SMILES is fingerprinted locally with
   RDKit (ECFP4 Morgan — no ML model) and matched by Tanimoto using **pgvector's native bit-vector

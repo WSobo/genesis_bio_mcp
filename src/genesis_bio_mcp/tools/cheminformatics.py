@@ -29,6 +29,29 @@ logger = logging.getLogger(__name__)
 _MORGAN_GEN = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
 
 
+def standardized_compound_fields(
+    smiles: str,
+) -> tuple[str, str | None, str | None, float, str] | None:
+    """Derive corpus-ingestion fields for a compound SMILES, or None if unparseable.
+
+    Returns ``(canonical_smiles, inchi, inchikey, mol_weight, morgan_fp_bits)`` — everything
+    the ``compounds`` table needs — computed with the same RDKit primitives the corpus query
+    side uses, so stored and queried fingerprints are identical.
+    """
+    mol = Chem.MolFromSmiles((smiles or "").strip())
+    if mol is None:
+        return None
+    canonical = Chem.MolToSmiles(mol)
+    try:
+        inchi = Chem.MolToInchi(mol) or None
+        inchikey = Chem.MolToInchiKey(mol) or None
+    except Exception:
+        inchi, inchikey = None, None
+    mw = round(Descriptors.MolWt(mol), 2)
+    fp_bits = _MORGAN_GEN.GetFingerprint(mol).ToBitString()
+    return canonical, inchi, inchikey, mw, fp_bits
+
+
 def morgan_fp_bits(smiles: str) -> str | None:
     """Return the ECFP4 Morgan fingerprint as a 2048-char '0'/'1' bitstring, or None.
 
