@@ -136,5 +136,6 @@ async def search_similar_compounds(pool: asyncpg.Pool, fp_bits: str, top_k: int)
     by descending Tanimoto; empty if the corpus has no fingerprinted compounds.
     """
     async with pool.acquire() as conn:
-        rows = await conn.fetch(_COMPOUND_SQL, fp_bits, top_k)
+        # asyncpg's bit codec needs an asyncpg.BitString, not a plain '0'/'1' str.
+        rows = await conn.fetch(_COMPOUND_SQL, asyncpg.BitString(fp_bits), top_k)
     return [dict(r) for r in rows]

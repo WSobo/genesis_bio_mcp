@@ -142,6 +142,8 @@ async def load_compounds(
     now = datetime.now(UTC)
     async with pool.acquire() as conn, conn.transaction():
         for rec in records:
+            # asyncpg's bit codec needs an asyncpg.BitString, not a plain '0'/'1' str.
+            fp = asyncpg.BitString(rec.morgan_fp_bits) if rec.morgan_fp_bits else None
             await conn.execute(
                 _UPSERT_COMPOUND,
                 rec.molecule_chembl_id,
@@ -149,7 +151,7 @@ async def load_compounds(
                 rec.inchi,
                 rec.inchikey,
                 rec.mol_weight,
-                rec.morgan_fp_bits,
+                fp,
                 "ChEMBL",
                 source_version,
                 now,
