@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-30
+
+Bug-fix release — three latent issues surfaced by stress-testing the new v0.6.0 corpus/ChEMBL
+paths against **live APIs** (they were invisible to the mocked unit tests). All in the corpus
+ingestion / ChEMBL data layer; no API or tool-count change (42 tools).
+
 ### Fixed
 
 - **Corpus compounds weren't actually standardized — salts/charges polluted dedup + similarity.**
