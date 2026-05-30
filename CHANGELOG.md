@@ -9,7 +9,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-_No unreleased changes._
+v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.md).
+
+### Added
+
+- **`health://status` MCP resource (v0.5.0 M7 — observability).** A live health/observability
+  surface (mirroring the served model's own `/health`): reports overall status, server version,
+  tool count, uptime, the DepMap cache size, and a per-service **upstream-reachability** table —
+  probing a representative set of critical upstreams (UniProt, Open Targets, AlphaFold, PubChem,
+  Reactome, STRING, UMA-Inverse) concurrently with short timeouts. Lets a client, orchestrator,
+  or ops process verify the server and its dependencies before relying on them. New
+  `tools/health.py` (testable helpers) + 3 tests. (Per-tool latency/error metrics are deferred —
+  the official-SDK FastMCP has no middleware hook, so that needs per-tool instrumentation.)
 
 ## [0.5.0] - 2026-05-30
 
