@@ -206,9 +206,11 @@ async def test_fetch_activities_returns_records_and_smiles():
                 "activity_id": 1,
                 "molecule_chembl_id": "CHEMBL25",
                 "target_chembl_id": "CHEMBL5145",
+                "assay_chembl_id": "CHEMBL_A1",
                 "standard_type": "IC50",
                 "pchembl_value": "7.9",
                 "canonical_smiles": "CC(=O)Oc1ccccc1C(=O)O",
+                # NOTE: ChEMBL /activity rows carry NO confidence_score — it comes from /assay.
             }
         ],
         "page_meta": {"next": None},
@@ -216,10 +218,17 @@ async def test_fetch_activities_returns_records_and_smiles():
     respx.get(url__startswith="https://www.ebi.ac.uk/chembl/api/data/activity").mock(
         return_value=httpx.Response(200, json=payload)
     )
+    # Assay-confidence enrichment: /assay supplies the confidence_score that /activity lacks.
+    respx.get(url__startswith="https://www.ebi.ac.uk/chembl/api/data/assay").mock(
+        return_value=httpx.Response(
+            200, json={"assays": [{"assay_chembl_id": "CHEMBL_A1", "confidence_score": 9}]}
+        )
+    )
     async with httpx.AsyncClient() as client:
         records, smiles = await fetch_activities_for_target(client, "CHEMBL5145", "P15056")
     assert len(records) == 1
     assert smiles["CHEMBL25"] == "CC(=O)Oc1ccccc1C(=O)O"
+    assert records[0].assay_confidence_score == 9  # enriched from /assay, not /activity
 
 
 def test_build_compound_record_from_smiles():

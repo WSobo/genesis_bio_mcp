@@ -9,6 +9,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Corpus `assay_confidence_score` was always null (v0.6.0 follow-up).** A live-API stress test
+  of the ChEMBL ingester revealed the `/activity` endpoint carries **no** `confidence_score`
+  field — it lives on `/assay` — so the assay-confidence signal (one of the corpus's three
+  honestly-separated confidence signals) was null for every compound. The ingester now enriches
+  activities with a batched `/assay` lookup (`assay_chembl_id__in`, chunked) so the score is
+  actually populated. Caught against real ChEMBL data; the respx test now covers the enrichment.
+
 ## [0.6.0] - 2026-05-30
 
 Two themes since v0.5.0. **Agent-contract & observability hardening:** a provenance envelope and
