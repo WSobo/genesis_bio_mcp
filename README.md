@@ -131,9 +131,13 @@ unchanged. To build it locally (free, no API keys, CPU-only):
 docker compose up -d                  # local Postgres + pgvector
 export GENESIS_CORPUS_DSN="postgresql://genesis:genesis@localhost:5432/genesis_corpus"
 
-uv sync --group ingest                # ML extras (torch + fair-esm) — ONLY for ingestion
-uv run python -m genesis_bio_mcp.ingest targets   # fetch kinome → ESM-2-150M embeddings (CPU) → load
+uv sync --group ingest                # ML extras (torch + fair-esm) — ONLY for target embedding
+uv run python -m genesis_bio_mcp.ingest targets        # kinome → ESM-2-150M embeddings (CPU) → load
+uv run python -m genesis_bio_mcp.ingest activities 25  # ChEMBL compounds + activities (RDKit only)
 ```
+
+`targets` needs the `ingest` extras (ESM-2); `activities` needs only the core deps (RDKit). Pass
+a number to either command to cap how many targets are processed — handy for a quick partial build.
 
 The heavy ML (ESM-2) is used only by the offline ingestion step; the MCP server never loads
 it. See [docs/ROADMAP.md](docs/ROADMAP.md) (v0.6.0) for the full design.
