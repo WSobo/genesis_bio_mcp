@@ -17,14 +17,25 @@ import pytest
 from genesis_bio_mcp import server
 from genesis_bio_mcp.corpus import create_corpus_pool, fetch_manifest
 from genesis_bio_mcp.corpus import db as corpus_db
-from genesis_bio_mcp.ingest.load import CompoundRecord, load_compounds
+from genesis_bio_mcp.ingest.chembl import build_compound_record
+from genesis_bio_mcp.ingest.embed import EMBED_DIM
+from genesis_bio_mcp.ingest.kinome import TargetRecord
+from genesis_bio_mcp.ingest.load import (
+    ActivityRecord,
+    CompoundRecord,
+    load_activities,
+    load_compounds,
+    load_targets,
+)
 from genesis_bio_mcp.models import CorpusManifest
 from genesis_bio_mcp.server import (
     CorpusDescribeInput,
     CorpusFindSimilarCompoundsInput,
+    CorpusSearchCompoundsInput,
     CorpusSearchTargetsInput,
     corpus_describe,
     corpus_find_similar_compounds,
+    corpus_search_compounds,
     corpus_search_targets_by_sequence,
 )
 from genesis_bio_mcp.tools.cheminformatics import morgan_fp_bits
@@ -238,6 +249,73 @@ async def test_find_similar_compounds_returns_hits(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# corpus_search_compounds (hybrid) — unit tests (DB mocked / RDKit real)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_unconfigured():
+    server.mcp.state = SimpleNamespace(corpus_pool=None)
+    out = await corpus_search_compounds(
+        CorpusSearchCompoundsInput(target="BRAF", response_format="json")
+    )
+    assert json.loads(out)["error"]["status"] == "UpstreamUnavailable"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_invalid_smiles():
+    server.mcp.state = SimpleNamespace(corpus_pool=object())
+    out = await corpus_search_compounds(
+        CorpusSearchCompoundsInput(similar_to_smiles="not_a_smiles!!!", response_format="json")
+    )
+    assert json.loads(out)["error"]["status"] == "InvalidInput"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_target_not_in_corpus(monkeypatch):
+    server.mcp.state = SimpleNamespace(corpus_pool=object())
+
+    async def _none(_pool, _q):
+        return None
+
+    monkeypatch.setattr(server, "resolve_target_accession", _none)
+    out = await corpus_search_compounds(
+        CorpusSearchCompoundsInput(target="NOTAKINASE", response_format="json")
+    )
+    assert json.loads(out)["error"]["status"] == "NotFound"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_returns_hits(monkeypatch):
+    server.mcp.state = SimpleNamespace(corpus_pool=object())
+
+    async def _rows(_pool, **_kw):
+        return [
+            {
+                "molecule_chembl_id": "CHEMBL25",
+                "canonical_smiles": "CC(=O)Oc1ccccc1C(=O)O",
+                "inchikey": "X",
+                "mol_weight": 180.16,
+                "pchembl_value": 8.1,
+                "standard_type": "IC50",
+                "standard_units": "nM",
+                "standard_value": 7.9,
+                "assay_confidence_score": 9,
+                "tanimoto": None,
+            }
+        ]
+
+    monkeypatch.setattr(server, "hybrid_search_compounds", _rows)
+    out = await corpus_search_compounds(
+        CorpusSearchCompoundsInput(min_pchembl=8.0, response_format="json")
+    )
+    env = json.loads(out)
+    assert env["provenance"]["source"] == "genesis-bio-mcp corpus (Postgres + pgvector)"
+    assert env["data"]["hits"][0]["pchembl_value"] == 8.1
+    assert env["data"]["total"] == 1
+
+
+# ---------------------------------------------------------------------------
 # Integration: real Postgres + pgvector. Runs only when GENESIS_CORPUS_DSN is set
 # (the CI job provides one; local runs without Docker skip these).
 # ---------------------------------------------------------------------------
@@ -354,4 +432,107 @@ async def test_integration_compound_tanimoto_knn_ranks_by_similarity():
     finally:
         async with pool.acquire() as conn:
             await conn.execute("DELETE FROM compounds")
+        await pool.close()
+
+
+@_skip_no_db
+@pytest.mark.asyncio
+async def test_integration_hybrid_search_filters_and_ranks():
+    # End-to-end check of the headline hybrid query: SQL filters + Tanimoto ranking together.
+    pool = await create_corpus_pool()
+    assert pool is not None
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM activities")
+            await conn.execute("DELETE FROM compounds")
+            await conn.execute("DELETE FROM targets")
+        await load_targets(
+            pool,
+            [TargetRecord("P15056", "BRAF", "BRAF", "Homo sapiens", "MAAL")],
+            [[0.1] * EMBED_DIM],
+            source_version="UniProt test",
+        )
+        aspirin = "CC(=O)Oc1ccccc1C(=O)O"
+        await load_compounds(
+            pool,
+            [
+                build_compound_record("CHEMBL_ASA", aspirin),  # MW 180
+                build_compound_record("CHEMBL_SAL", "O=C(O)c1ccccc1O"),  # salicylic, MW 138
+                build_compound_record("CHEMBL_ETOH", "CCO"),  # MW 46
+            ],
+            source_version="ChEMBL test",
+        )
+
+        def _act(aid, mol, stype, pchembl):
+            return ActivityRecord(
+                activity_id=aid,
+                molecule_chembl_id=mol,
+                uniprot_accession="P15056",
+                target_chembl_id="CHEMBL5145",
+                standard_type=stype,
+                standard_value=None,
+                standard_units="nM",
+                pchembl_value=pchembl,
+                assay_chembl_id="A",
+                assay_confidence_score=9,
+                doc_chembl_id="D",
+            )
+
+        await load_activities(
+            pool,
+            [
+                _act(1, "CHEMBL_ASA", "IC50", 8.5),
+                _act(2, "CHEMBL_SAL", "Ki", 6.0),
+                _act(3, "CHEMBL_ETOH", "IC50", 5.0),
+            ],
+            source_version="ChEMBL test",
+        )
+        server.mcp.state = SimpleNamespace(corpus_pool=pool)
+
+        # 1) Potency filter: only the high-pChEMBL compound survives.
+        env = json.loads(
+            await corpus_search_compounds(
+                CorpusSearchCompoundsInput(target="BRAF", min_pchembl=8.0, response_format="json")
+            )
+        )
+        assert [h["molecule_chembl_id"] for h in env["data"]["hits"]] == ["CHEMBL_ASA"]
+
+        # 2) Assay-type filter: only IC50 (drops the Ki compound).
+        env = json.loads(
+            await corpus_search_compounds(
+                CorpusSearchCompoundsInput(
+                    target="BRAF", standard_type="IC50", response_format="json"
+                )
+            )
+        )
+        mids = {h["molecule_chembl_id"] for h in env["data"]["hits"]}
+        assert mids == {"CHEMBL_ASA", "CHEMBL_ETOH"} and "CHEMBL_SAL" not in mids
+
+        # 3) MW filter: only the small molecule.
+        env = json.loads(
+            await corpus_search_compounds(
+                CorpusSearchCompoundsInput(
+                    target="BRAF", max_mol_weight=100.0, response_format="json"
+                )
+            )
+        )
+        assert [h["molecule_chembl_id"] for h in env["data"]["hits"]] == ["CHEMBL_ETOH"]
+
+        # 4) Hybrid: filter by target AND rank by Tanimoto to aspirin → aspirin first w/ Tanimoto.
+        env = json.loads(
+            await corpus_search_compounds(
+                CorpusSearchCompoundsInput(
+                    target="BRAF", similar_to_smiles=aspirin, response_format="json"
+                )
+            )
+        )
+        hits = env["data"]["hits"]
+        assert hits[0]["molecule_chembl_id"] == "CHEMBL_ASA"
+        assert hits[0]["tanimoto"] == pytest.approx(1.0, abs=1e-6)
+        assert hits[0]["pchembl_value"] == 8.5  # potency still surfaced alongside similarity
+    finally:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM activities")
+            await conn.execute("DELETE FROM compounds")
+            await conn.execute("DELETE FROM targets")
         await pool.close()

@@ -14,6 +14,8 @@ from __future__ import annotations
 from genesis_bio_mcp.corpus.db import (
     create_corpus_pool,
     fetch_manifest,
+    hybrid_search_compounds,
+    resolve_target_accession,
     search_similar_compounds,
     search_similar_targets,
 )
@@ -21,6 +23,8 @@ from genesis_bio_mcp.corpus.db import (
 __all__ = [
     "create_corpus_pool",
     "fetch_manifest",
+    "hybrid_search_compounds",
+    "resolve_target_accession",
     "search_similar_compounds",
     "search_similar_targets",
 ]

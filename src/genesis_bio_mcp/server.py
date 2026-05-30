@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 41 tools for biomedical database queries:
+Exposes 42 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -41,6 +41,7 @@ Exposes 41 tools for biomedical database queries:
   - corpus_describe                Corpus (Postgres+pgvector): manifest — coverage + provenance
   - corpus_search_targets_by_sequence Corpus: ESM-2 embedding kNN — targets similar to a query
   - corpus_find_similar_compounds  Corpus: Morgan/Tanimoto kNN — compounds similar to a SMILES
+  - corpus_search_compounds        Corpus: HYBRID SQL filter + Tanimoto over bioactive compounds
   - run_biology_workflow          AI agent: dynamic tool selection for multi-step questions
 
 All tools return Markdown strings for direct LLM consumption.
@@ -95,6 +96,8 @@ from genesis_bio_mcp.config.settings import settings
 from genesis_bio_mcp.corpus import (
     create_corpus_pool,
     fetch_manifest,
+    hybrid_search_compounds,
+    resolve_target_accession,
     search_similar_targets,
 )
 from genesis_bio_mcp.corpus import (
@@ -106,6 +109,8 @@ from genesis_bio_mcp.models import (
     BatchMolecularProperties,
     ComparisonReport,
     CorpusCompoundHit,
+    CorpusCompoundSearchHit,
+    CorpusCompoundSearchResults,
     CorpusManifest,
     CorpusSimilarCompounds,
     CorpusTargetHit,
@@ -292,6 +297,7 @@ _SOURCE_BY_MODEL: dict[str, str] = {
     "CorpusManifest": "genesis-bio-mcp corpus (Postgres + pgvector)",
     "CorpusTargetNeighbors": "genesis-bio-mcp corpus (Postgres + pgvector)",
     "CorpusSimilarCompounds": "genesis-bio-mcp corpus (Postgres + pgvector)",
+    "CorpusCompoundSearchResults": "genesis-bio-mcp corpus (Postgres + pgvector)",
 }
 
 # Attribute names a result model may expose for each provenance field, in priority
@@ -304,6 +310,7 @@ _QUERY_ATTRS = (
     "query_smiles",
     "input_smiles",
     "antigen_query",
+    "target",
 )
 _VERSION_ATTRS = ("dataset_version", "release", "data_version", "source_version", "model_version")
 _CONFIDENCE_ATTRS = ("confidence", "mean_confidence", "priority_score")
@@ -2463,6 +2470,36 @@ class CorpusFindSimilarCompoundsInput(BaseModel):
     response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
 
 
+class CorpusSearchCompoundsInput(BaseModel):
+    """Input for corpus_search_compounds (hybrid relational + similarity search)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    target: str | None = Field(
+        None,
+        description="Restrict to compounds active against this target — gene symbol or UniProt "
+        "accession in the corpus (e.g. 'BRAF'). Omit to search across all targets.",
+        max_length=50,
+    )
+    standard_type: Literal["IC50", "Ki", "Kd", "EC50"] | None = Field(
+        None, description="Filter to a single assay endpoint."
+    )
+    min_pchembl: float | None = Field(
+        None, ge=0, le=15, description="Minimum pChEMBL (−log10 molar potency); 6 ≈ 1 µM, 9 ≈ 1 nM."
+    )
+    max_mol_weight: float | None = Field(
+        None, gt=0, description="Maximum molecular weight (Da), e.g. 500 for a lead-like filter."
+    )
+    similar_to_smiles: str | None = Field(
+        None,
+        description="Optional query SMILES — when given, results are ranked by ECFP4 Tanimoto "
+        "to it (computed locally with RDKit); otherwise ranked by potency.",
+        max_length=2000,
+    )
+    limit: int = Field(default=25, ge=1, le=100, description="Max compounds to return (page size).")
+    offset: int = Field(default=0, ge=0, description="Pagination offset.")
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
 @mcp.tool(
     annotations=ToolAnnotations(
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
@@ -2620,6 +2657,85 @@ async def corpus_find_similar_compounds(params: CorpusFindSimilarCompoundsInput)
     result = CorpusSimilarCompounds(
         query_smiles=params.smiles,
         hits=[CorpusCompoundHit(**row) for row in rows],
+    )
+    return _fmt(result, params.response_format, "")
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+    )
+)
+async def corpus_search_compounds(params: CorpusSearchCompoundsInput) -> str:
+    """Hybrid search of the corpus: relational filters + optional structural similarity, in one query.
+
+    The headline corpus tool. Combine SQL-style filters — target (gene/UniProt), assay type,
+    minimum pChEMBL potency, maximum molecular weight — with optional Morgan/Tanimoto similarity
+    to a query SMILES, and get back bioactive compounds ranked by similarity (if a query molecule
+    is given) or by potency. This answers questions neither a database nor a vector index can
+    alone, e.g. "compounds structurally like this hit that ALSO have sub-µM measured activity
+    against this kinase". Each hit carries three honestly-separate signals: Tanimoto (retrieval
+    closeness), assay confidence (data quality), and pChEMBL (potency). Closed-world over the
+    corpus; the query fingerprint is computed locally with RDKit (no ML model).
+
+    Args:
+        params (CorpusSearchCompoundsInput): target, standard_type, min_pchembl, max_mol_weight,
+            similar_to_smiles, limit, offset, response_format.
+
+    Returns:
+        Markdown table of matching compounds with potency, assay confidence, MW (and Tanimoto in
+        similarity mode). Errors if the corpus is unconfigured, the query SMILES is invalid, or
+        the named target is not in the corpus. Similarity is a retrieval signal, not a validated
+        activity prediction.
+    """
+    pool = getattr(mcp.state, "corpus_pool", None)
+    if pool is None:
+        return _fmt(
+            None,
+            params.response_format,
+            "Corpus store is not configured. Set GENESIS_CORPUS_DSN and build the corpus "
+            "(see docs/ROADMAP.md v0.6.0).",
+            error_status="UpstreamUnavailable",
+        )
+    fp_bits: str | None = None
+    if params.similar_to_smiles:
+        fp_bits = _morgan_fp_bits(params.similar_to_smiles)
+        if fp_bits is None:
+            return _fmt(
+                None,
+                params.response_format,
+                f"Invalid SMILES: '{params.similar_to_smiles}' could not be parsed by RDKit.",
+                error_status="InvalidInput",
+            )
+    accession: str | None = None
+    if params.target:
+        accession = await resolve_target_accession(pool, params.target)
+        if accession is None:
+            return _fmt(
+                None,
+                params.response_format,
+                f"Target '{params.target}' is not in the indexed corpus (the human kinome). "
+                "Use corpus_describe to see coverage.",
+                error_status="NotFound",
+            )
+    rows = await hybrid_search_compounds(
+        pool,
+        uniprot_accession=accession,
+        standard_type=params.standard_type,
+        min_pchembl=params.min_pchembl,
+        max_mol_weight=params.max_mol_weight,
+        query_fp_bits=fp_bits,
+        limit=params.limit,
+        offset=params.offset,
+    )
+    result = CorpusCompoundSearchResults(
+        target=params.target,
+        standard_type=params.standard_type,
+        min_pchembl=params.min_pchembl,
+        max_mol_weight=params.max_mol_weight,
+        similar_to_smiles=params.similar_to_smiles,
+        total=len(rows),
+        hits=[CorpusCompoundSearchHit(**row) for row in rows],
     )
     return _fmt(result, params.response_format, "")
 
