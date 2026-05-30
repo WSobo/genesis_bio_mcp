@@ -1,7 +1,7 @@
 # Tool catalog
 
-genesis-bio-mcp exposes **31 MCP tools** across **24 biomedical data sources**
-(plus local RDKit cheminformatics, and `run_biology_workflow`, the 32nd, which
+genesis-bio-mcp exposes **32 MCP tools** across **24 biomedical data sources**
+(plus local RDKit cheminformatics, and `run_biology_workflow`, the 33rd, which
 chains the others with Claude).
 
 All tools return Markdown strings by default and accept
@@ -44,6 +44,7 @@ Jump to:
 |---|---|---|
 | `get_compounds` | PubChem | Active small molecules with bioactivity hit counts (quick tractability check) |
 | `compute_molecular_properties` | RDKit (local) | SMILES → MW, logP, TPSA, HBD/HBA, rotatable bonds, QED, Lipinski/Veber checks, PAINS alert, Bemis-Murcko scaffold. Deterministic offline compute for any structure |
+| `standardize_structure` | RDKit (local) | SMILES → salt/solvent-stripped, neutralized, canonical-tautomer SMILES + InChI/InChIKey for exact-structure matching and cross-source deduplication |
 | `get_chembl_compounds` | ChEMBL | Quantitative potency (IC50 / Ki / Kd) with pChEMBL values and confidence scores |
 
 ## Structure & interactions

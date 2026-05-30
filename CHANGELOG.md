@@ -13,6 +13,14 @@ v0.5.0 in progress — cheminformatics core (RDKit) + agent/ops hardening (see d
 
 ### Added
 
+- **`standardize_structure` tool (v0.5.0 M2, 33 tools total).** RDKit structure
+  normalization: strips salts/solvents (keeps the largest organic fragment), neutralizes
+  charges, and canonicalizes the tautomer, returning a registration-ready canonical SMILES
+  plus InChI and **InChIKey** for exact-structure matching and cross-source deduplication —
+  the data-readiness primitive to run before comparing or joining compounds. Flags whether a
+  salt/solvent was removed or the structure otherwise changed. New `StandardizedStructure`
+  model, `run_biology_workflow` registration, 3 tests. Local/deterministic
+  (`openWorldHint=False`).
 - **`compute_molecular_properties` tool (v0.5.0 M1, 32 tools total).** The first
   *computed-method* tool (RDKit, local, deterministic, no network): given a SMILES, returns
   molecular formula/weight, logP, TPSA, H-bond donors/acceptors, rotatable bonds, aromatic

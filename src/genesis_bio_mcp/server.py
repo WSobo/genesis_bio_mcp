@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 32 tools for biomedical database queries:
+Exposes 33 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -9,6 +9,7 @@ Exposes 32 tools for biomedical database queries:
   - get_gwas_evidence             GWAS Catalog: genetic associations for a trait
   - get_compounds                 PubChem: active small molecules against a target
   - compute_molecular_properties  RDKit: physicochemical + drug-likeness from a SMILES (local)
+  - standardize_structure         RDKit: salt-strip/neutralize/canonical-tautomer + InChIKey (local)
   - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_structure_confidence      AlphaFold: per-residue pLDDT profile + disordered regions
@@ -92,6 +93,9 @@ from genesis_bio_mcp.tools.biochem import compute_features, scan_liabilities
 from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 from genesis_bio_mcp.tools.cheminformatics import (
     compute_molecular_properties as _compute_molecular_properties,
+)
+from genesis_bio_mcp.tools.cheminformatics import (
+    standardize_structure as _standardize_structure,
 )
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
@@ -286,6 +290,19 @@ class ComputeMolecularPropertiesInput(BaseModel):
     smiles: str = Field(
         ...,
         description="SMILES string of the molecule, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin).",
+        min_length=1,
+        max_length=2000,
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class StandardizeStructureInput(BaseModel):
+    """Input for standardize_structure."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    smiles: str = Field(
+        ...,
+        description="SMILES string to standardize (salts/solvents stripped, charges neutralized).",
         min_length=1,
         max_length=2000,
     )
@@ -982,6 +999,34 @@ async def compute_molecular_properties(params: ComputeMolecularPropertiesInput) 
         and the Bemis-Murcko scaffold. Returns an error if the SMILES cannot be parsed.
     """
     result = _compute_molecular_properties(params.smiles)
+    return _fmt(
+        result,
+        params.response_format,
+        f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+    )
+)
+async def standardize_structure(params: StandardizeStructureInput) -> str:
+    """Standardize a molecule from its SMILES — salt/solvent strip, neutralize, canonical tautomer.
+
+    Locally computed with RDKit (deterministic, offline). Produces a registration-ready
+    canonical SMILES plus InChI / InChIKey for exact-structure matching and cross-source
+    deduplication — the data-readiness primitive to run before comparing or joining compounds.
+
+    Args:
+        params (StandardizeStructureInput): smiles, response_format.
+
+    Returns:
+        Markdown with the standardized SMILES, InChIKey/InChI, molecular formula, and flags
+        for whether a salt/solvent was removed or the structure otherwise changed. Returns an
+        error if the SMILES cannot be parsed.
+    """
+    result = _standardize_structure(params.smiles)
     return _fmt(
         result,
         params.response_format,

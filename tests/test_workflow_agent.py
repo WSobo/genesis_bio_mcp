@@ -145,6 +145,7 @@ def test_build_tool_registry_has_all_tools():
         "get_gwas_evidence",
         "get_compounds",
         "compute_molecular_properties",
+        "standardize_structure",
         "get_chembl_compounds",
         "get_protein_structure",
         "get_structure_confidence",

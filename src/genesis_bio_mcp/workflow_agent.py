@@ -28,6 +28,9 @@ from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 from genesis_bio_mcp.tools.cheminformatics import (
     compute_molecular_properties as _compute_molecular_properties,
 )
+from genesis_bio_mcp.tools.cheminformatics import (
+    standardize_structure as _standardize_structure,
+)
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals,
@@ -202,6 +205,12 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
 
     async def _compute_molecular_properties_fn(smiles: str) -> str:
         result = _compute_molecular_properties(smiles)
+        if result is None:
+            return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
+        return result.to_markdown()
+
+    async def _standardize_structure_fn(smiles: str) -> str:
+        result = _standardize_structure(smiles)
         if result is None:
             return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
         return result.to_markdown()
@@ -647,6 +656,27 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="druggability",
             use_when="Use to profile the drug-likeness of a specific molecule given its SMILES (Lipinski/Veber/QED/PAINS), independent of any database.",
             fn=_compute_molecular_properties_fn,
+        ),
+        "standardize_structure": ToolSpec(
+            name="standardize_structure",
+            description=(
+                "Standardize a molecule from its SMILES (RDKit, local): strip salts/solvents, "
+                "neutralize charges, canonical tautomer; returns canonical SMILES + InChIKey for "
+                "exact-structure matching and cross-source deduplication."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "smiles": {
+                        "type": "string",
+                        "description": "SMILES string to standardize. Example: 'CC(=O)[O-].[Na+]'",
+                    }
+                },
+                "required": ["smiles"],
+            },
+            tool_category="druggability",
+            use_when="Use to normalize a molecule (salt-strip, neutralize, canonical tautomer) and get its InChIKey before comparing or deduplicating compounds across sources.",
+            fn=_standardize_structure_fn,
         ),
         "get_chembl_compounds": ToolSpec(
             name="get_chembl_compounds",

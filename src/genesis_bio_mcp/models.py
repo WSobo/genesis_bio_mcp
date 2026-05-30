@@ -1186,6 +1186,47 @@ class MolecularProperties(BaseModel):
         return "\n".join(lines)
 
 
+class StandardizedStructure(BaseModel):
+    """A normalized molecule: salt-stripped, neutralized, canonical-tautomer form.
+
+    Registration-ready output for deduplicating and joining compounds across sources.
+    """
+
+    input_smiles: str = Field(description="The SMILES string as provided")
+    standardized_smiles: str = Field(
+        description="Canonical SMILES after salt/solvent removal, neutralization, tautomer canon."
+    )
+    inchi: str | None = Field(None, description="Standard InChI of the standardized molecule")
+    inchikey: str | None = Field(
+        None, description="Standard InChIKey — a hashed identifier for exact-structure matching"
+    )
+    molecular_formula: str = Field(description="Molecular formula of the standardized parent")
+    salt_or_solvent_removed: bool = Field(
+        description="True if a salt counter-ion or solvent fragment was stripped"
+    )
+    changed: bool = Field(
+        description="True if standardization changed the structure vs. the canonicalized input"
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Standardized Structure: `{self.standardized_smiles}`",
+            f"**Formula:** {self.molecular_formula}",
+        ]
+        if self.inchikey:
+            lines.append(f"**InChIKey:** `{self.inchikey}`")
+        if self.inchi:
+            lines.append(f"**InChI:** `{self.inchi}`")
+        notes = []
+        if self.salt_or_solvent_removed:
+            notes.append("salt/solvent stripped")
+        notes.append(
+            "structure changed during standardization" if self.changed else "already standard"
+        )
+        lines += ["", f"_Input:_ `{self.input_smiles}` — {'; '.join(notes)}."]
+        return "\n".join(lines)
+
+
 class CompoundActivity(BaseModel):
     """A small molecule with measured bioactivity against the target."""
 

@@ -18,9 +18,10 @@ import logging
 from rdkit import Chem
 from rdkit.Chem import QED, Crippen, Descriptors, Lipinski, rdMolDescriptors
 from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
+from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.Chem.Scaffolds import MurckoScaffold
 
-from genesis_bio_mcp.models import MolecularProperties
+from genesis_bio_mcp.models import MolecularProperties, StandardizedStructure
 
 logger = logging.getLogger(__name__)
 
@@ -77,4 +78,49 @@ def compute_molecular_properties(smiles: str) -> MolecularProperties | None:
         passes_veber=(rot <= 10 and tpsa <= 140),
         pains_alert=_PAINS_CATALOG.HasMatch(mol),
         murcko_scaffold=scaffold,
+    )
+
+
+def standardize_structure(smiles: str) -> StandardizedStructure | None:
+    """Normalize a molecule: strip salts/solvents, neutralize charges, canonical tautomer.
+
+    Produces a registration-ready canonical form plus InChI / InChIKey — the
+    data-readiness primitive for deduplicating and joining compounds across sources.
+    Returns ``None`` if RDKit cannot parse the SMILES.
+    """
+    if not smiles or not smiles.strip():
+        return None
+    cleaned = smiles.strip()
+    mol = Chem.MolFromSmiles(cleaned)
+    if mol is None:
+        logger.debug("RDKit could not parse SMILES for standardization: %s", cleaned)
+        return None
+
+    try:
+        sanitized = rdMolStandardize.Cleanup(mol)
+        # Largest organic fragment — strips salt counter-ions and solvents.
+        parent = rdMolStandardize.FragmentParent(sanitized)
+        # Neutralize charges where chemically sensible.
+        neutral = rdMolStandardize.Uncharger().uncharge(parent)
+        # Canonical tautomer for consistent registration.
+        canonical = rdMolStandardize.TautomerEnumerator().Canonicalize(neutral)
+    except Exception as exc:  # RDKit can raise on pathological inputs
+        logger.warning("RDKit standardization failed for %s: %s", cleaned, exc)
+        return None
+
+    std_smiles = Chem.MolToSmiles(canonical)
+    try:
+        inchi = Chem.MolToInchi(canonical) or None
+        inchikey = Chem.MolToInchiKey(canonical) or None
+    except Exception:
+        inchi, inchikey = None, None
+
+    return StandardizedStructure(
+        input_smiles=cleaned,
+        standardized_smiles=std_smiles,
+        inchi=inchi,
+        inchikey=inchikey,
+        molecular_formula=rdMolDescriptors.CalcMolFormula(canonical),
+        salt_or_solvent_removed=canonical.GetNumAtoms() < sanitized.GetNumAtoms(),
+        changed=std_smiles != Chem.MolToSmiles(mol),
     )
