@@ -140,11 +140,15 @@ families, and per-residue embeddings are explicitly **out of scope for v1**.
    computed once in the ingestion tier. The serving tier never loads a model. Packaging enforces
    this: ML deps (`torch`, `fair-esm`/`transformers`) live in an **optional `ingest` dependency
    group**, never in the core/serving install.
-   - **Zero-cost, keyless.** The one-time ~500-protein embedding batch runs anywhere with a GPU
-     *or* on CPU — a free Colab/Kaggle GPU or a local CPU run, no paid service required. ESM-2
-     weights download from a public URL (HuggingFace `transformers` / `fair-esm`) with **no API
-     key or account**. The whole v0.6.0 path — local Docker Postgres, public model + ChEMBL/
-     UniProt downloads — needs no money and no secrets.
+   - **CPU-only, zero-cost, keyless.** The one-time ~500-protein embedding batch runs **on CPU** —
+     a plain `uv run` ingest step, no GPU, no notebook, no cloud. We deliberately do *not* bake in
+     a GPU/Colab workflow: GPU access is environment-specific, and a CPU batch over ~500 proteins
+     is a reasonable one-time wait that runs anywhere `uv` runs. ESM-2 weights download from a
+     public URL (HuggingFace `transformers` / `fair-esm`) with **no API key or account**. The
+     whole v0.6.0 path — local Docker Postgres, public model + ChEMBL/UniProt downloads — needs no
+     money and no secrets. *(Model size sets the CPU runtime and the schema vector dim — decided at
+     M1; the schema currently reserves `vector(1280)` for ESM-2-650M but the corpus is empty, so a
+     smaller/faster variant can still be chosen.)*
 2. **Chemical similarity = Morgan/Tanimoto (primary), ChemBERTa = stretch + measured baseline.**
    Reuse the existing `tanimoto_similarity` (Morgan radius-2) and InChIKey standardization from
    v0.5.0 — CPU, in-process, no GPU, no request-path model load. This removes the larger GPU
@@ -180,8 +184,8 @@ families, and per-residue embeddings are explicitly **out of scope for v1**.
 - **Ingestion (offline)** — `genesis_bio_mcp.ingest` CLI (or `scripts/`), not on the request
   path. Extract (kinase targets+sequences via UniProt/ChEMBL; bioactivities via the ChEMBL
   dump) → Transform (RDKit canonical SMILES + InChIKey + Morgan FP; ESM-2 mean-pooled protein
-  vectors, computed once on a free GPU notebook or local CPU) → Load (rows + vectors → Postgres;
-  write the `corpus_manifest`). Idempotent and re-runnable.
+  vectors, computed once on CPU) → Load (rows + vectors → Postgres; write the `corpus_manifest`).
+  Idempotent and re-runnable.
 - **Serving (FastMCP)** — read-only `corpus_*` tools query the store at request time via an
   async driver (`asyncpg`), DSN from env. Same Pydantic V2 / `uv` / `ruff` / markdown-out /
   provenance+typed-error conventions.
@@ -216,9 +220,10 @@ no live network). Existing respx-mocked suite is untouched because the corpus la
 - **M0 — Schema + infra.** ✅ *shipped (PR #48):* dockerized pgvector (`docker compose`), schema,
   manifest table, optional async DB pool wired into the lifespan (degrades gracefully when
   unset), `asyncpg`/`pgvector` deps, CI Postgres+pgvector service, `corpus_describe`.
-- **M1 — Ingest targets.** Kinase targets + sequences → ESM-2 mean-pool (free GPU notebook or
-  local CPU, public weights, no key) → load `targets`; implement
-  `corpus_search_targets_by_sequence`.
+- **M1 — Ingest targets.** Kinase targets + sequences → ESM-2 mean-pool **on CPU** (public
+  weights, no key, no GPU) → load `targets`; implement `corpus_search_targets_by_sequence`.
+  Decide the ESM-2 variant here (650M/1280-dim vs a smaller, faster one) to balance CPU runtime
+  against embedding quality — that choice sets the `targets.sequence_embedding` dimension.
 - **M2 — Ingest compounds + activities.** ChEMBL dump slice → RDKit canonical SMILES + InChIKey
   + Morgan FP → load `compounds`/`activities`; implement `corpus_find_similar_compounds`.
 - **M3 — Headline hybrid tool.** `corpus_search_compounds` (SQL filter + Tanimoto kNN),
