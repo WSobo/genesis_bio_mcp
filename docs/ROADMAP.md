@@ -107,7 +107,7 @@ Touches all tools, so do it once, early.
 2. **M3** (similarity/substructure — most-requested chem capability)
 3. **M4** (UMA-Inverse integration — closes the structure→score→redesign loop; the marquee
    "served model" capability)
-4. **M5** + **M6** (agent contract; cross-cutting, do once)
+4. **M5** + **M6** (agent contract; cross-cutting, do once) — *shipped: M5 provenance envelope*
 5. **M7** + **M8** (ops/agent-readiness) — *shipped: M7 `health://status`, M8 batch tools*
 6. `analyze_sar` stretch if time permits
 

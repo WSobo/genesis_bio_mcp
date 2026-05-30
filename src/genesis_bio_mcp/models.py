@@ -7,6 +7,37 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 from genesis_bio_mcp.tools.biochem import BiochemFeatures, LiabilityHit
 
 # ---------------------------------------------------------------------------
+# Provenance envelope (agent contract)
+# ---------------------------------------------------------------------------
+
+
+class Provenance(BaseModel):
+    """Provenance metadata attached to every ``response_format="json"`` result.
+
+    A consistent, machine-readable block so an agent or pipeline knows *where* a
+    result came from, *when* it was produced, and *what resolved query* it answers —
+    without parsing prose. Surfaced only in JSON output; Markdown is unchanged.
+    """
+
+    source: str = Field(
+        description="Upstream data source(s) this result was assembled from, e.g. 'UniProt'"
+    )
+    source_version: str | None = Field(
+        None, description="Upstream DB / dataset / API version, when the source reports one"
+    )
+    retrieved_at: str = Field(
+        description="ISO-8601 UTC timestamp marking when this result was produced"
+    )
+    query: str | None = Field(
+        None,
+        description="The resolved query this result answers (canonical gene symbol, SMILES, etc.)",
+    )
+    confidence: float | None = Field(
+        None, description="Overall confidence/quality score for the result, when one applies"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Gene resolution
 # ---------------------------------------------------------------------------
 
