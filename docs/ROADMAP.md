@@ -220,16 +220,16 @@ no live network). Existing respx-mocked suite is untouched because the corpus la
 - **M0 — Schema + infra.** ✅ *shipped (PR #48):* dockerized pgvector (`docker compose`), schema,
   manifest table, optional async DB pool wired into the lifespan (degrades gracefully when
   unset), `asyncpg`/`pgvector` deps, CI Postgres+pgvector service, `corpus_describe`.
-- **M1 — Ingest targets.** Kinase targets + sequences → ESM-2 mean-pool **on CPU** (public
-  weights, no key, no GPU) → load `targets`; implement `corpus_search_targets_by_sequence`.
-  Decide the ESM-2 variant here (650M/1280-dim vs a smaller, faster one) to balance CPU runtime
-  against embedding quality — that choice sets the `targets.sequence_embedding` dimension.
-- **M2 — Ingest compounds + activities.** ChEMBL dump slice → RDKit canonical SMILES + InChIKey
-  + Morgan FP → load `compounds`/`activities`; implement `corpus_find_similar_compounds`.
-- **M3 — Headline hybrid tool.** `corpus_search_compounds` (SQL filter + Tanimoto kNN),
-  pagination, error handling, MCP Inspector verification.
-- **M4 — Eval + docs.** 10 evaluation QA pairs (independent, read-only, multi-call, verifiable);
-  README + docs/tools.md sections; demo script.
+- **M1 — Ingest targets.** ✅ *shipped (PRs #51, #52):* chose **ESM-2-150M (640-dim)** for CPU
+  runtime; `corpus_search_targets_by_sequence` (stored-vector cosine kNN) + the CPU kinome
+  ingester (UniProt KW-0418 → ESM-2 mean-pool → load). `targets` keyed on UniProt accession.
+- **M2 — Ingest compounds + activities.** ✅ *shipped (PRs #53, #54):* `corpus_find_similar_compounds`
+  (Morgan/Tanimoto via pgvector bit-Jaccard) + the ChEMBL compound/activity ingester (REST,
+  bounded). Activities keyed on UniProt accession + molecule id.
+- **M3 — Headline hybrid tool.** ✅ *shipped (PR #55):* `corpus_search_compounds` — SQL filters +
+  optional Tanimoto in one query, paginated, three separate confidence signals.
+- **M4 — Eval + docs.** ✅ *shipped:* `docs/corpus-eval.md` (10 verifiable QA pairs) + a runnable
+  `scripts/corpus_demo.py`; README/docs sections.
 - **Stretch.** ChemBERTa embeddings + a Tanimoto-vs-ChemBERTa retrieval-quality comparison.
   (A hosted free-tier demo, e.g. Neon, is *optional* — local Docker Postgres is the default and
   needs no account; only pursue a hosted demo if an always-on live demo is wanted.)
