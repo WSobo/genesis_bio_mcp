@@ -260,6 +260,27 @@ class Settings(BaseSettings):
         description="Claude model ID used by run_biology_workflow.",
     )
 
+    # ---------------------------------------------------------------------------
+    # Corpus store (v0.6.0 hybrid retrieval) — Postgres + pgvector
+    # ---------------------------------------------------------------------------
+
+    corpus_dsn: str | None = Field(
+        default=None,
+        description="Postgres DSN for the embedding-backed corpus store, e.g. "
+        "'postgresql://user:pass@host:5432/genesis_corpus'. When unset, the corpus_* "
+        "tools report the store as unconfigured and the rest of the server runs normally.",
+    )
+    corpus_pool_min_size: int = Field(
+        default=1,
+        description="Minimum asyncpg connection pool size for the corpus store.",
+        ge=0,
+    )
+    corpus_pool_max_size: int = Field(
+        default=5,
+        description="Maximum asyncpg connection pool size for the corpus store.",
+        gt=0,
+    )
+
 
 #: Singleton settings instance. Import and use this directly.
 settings = Settings()

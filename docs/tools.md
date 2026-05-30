@@ -1,8 +1,9 @@
 # Tool catalog
 
-genesis-bio-mcp exposes **37 MCP tools** across **24 biomedical data sources**
-(plus local RDKit cheminformatics and the UMA-Inverse inverse-folding service, and
-`run_biology_workflow`, the 38th, which chains the others with Claude).
+genesis-bio-mcp exposes **38 MCP tools** across **24 biomedical data sources**
+(plus local RDKit cheminformatics, the UMA-Inverse inverse-folding service, and an optional
+embedding-backed corpus store), and `run_biology_workflow`, the 39th, which chains the
+others with Claude.
 
 All tools return Markdown strings by default and accept
 `response_format="json"` for programmatic integration. Single-gene tools
@@ -18,7 +19,8 @@ Jump to:
 [Protein engineering](#protein-engineering) ·
 [Expression](#expression) ·
 [Pathways](#pathways) ·
-[Synthesis & orchestration](#synthesis--orchestration)
+[Synthesis & orchestration](#synthesis--orchestration) ·
+[Corpus (indexed)](#corpus-indexed)
 
 ---
 
@@ -116,6 +118,21 @@ from `get_protein_atlas`).
 | `compare_targets` | Calls `prioritize_target` ×N | Side-by-side comparison of 2–5 targets for one indication |
 | `run_biology_workflow` | Claude + ToolSpec registry | Free-text question → inner Claude agent (`claude-sonnet-4-6`) dynamically selects and chains tools. Requires `ANTHROPIC_API_KEY` |
 
+## Corpus (indexed)
+
+A second retrieval pattern (v0.6.0): an **optional**, indexed PostgreSQL + pgvector store over a
+curated bioactivity corpus (the human kinome), queried with hybrid SQL-filter + similarity
+search. Distinct from the live-API tools above — closed-world (`openWorldHint=False`). When
+`GENESIS_CORPUS_DSN` is unset the server runs normally and these tools report the store as
+unconfigured. See [docs/ROADMAP.md](ROADMAP.md) (v0.6.0) for the full design.
+
+| Tool | Data source | Purpose |
+|---|---|---|
+| `corpus_describe` | Corpus manifest (Postgres + pgvector) | Coverage + provenance of the indexed corpus: target family, target/compound/activity counts, ChEMBL release, UniProt snapshot, embedding models, build date. Call first to establish what the corpus covers. |
+
+_More `corpus_*` tools (`corpus_search_targets_by_sequence`, `corpus_search_compounds`,
+`corpus_find_similar_compounds`) land in subsequent v0.6.0 milestones._
+
 ---
 
 ## Common input patterns
@@ -198,7 +215,7 @@ Exceptions (tools with additional required fields):
 ## MCP Resource: `tool://registry`
 
 Any MCP client can read the `tool://registry` resource to get a structured
-Markdown catalogue of all 37 tools grouped by category, with the
+Markdown catalogue of all 38 tools grouped by category, with the
 embedding-searchable `use_when` guidance the workflow agent uses for
 semantic retrieval. No tool call needed — useful for agent frameworks doing
 capability auditing or embedding-based tool selection.

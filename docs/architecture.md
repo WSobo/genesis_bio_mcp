@@ -12,7 +12,7 @@ see [deployment.md](deployment.md).
 
 ```
 src/genesis_bio_mcp/
-├── server.py                       # FastMCP server: 38 tools + run_biology_workflow,
+├── server.py                       # FastMCP server: 39 tools + run_biology_workflow,
 │                                     lifespan wiring, tool://registry + health://status resources
 ├── models.py                       # Pydantic V2 output models — every one implements
 │                                     to_markdown() + model_dump_json()
@@ -47,11 +47,16 @@ src/genesis_bio_mcp/
 │   ├── hpa.py                      # Human Protein Atlas: tissue-specificity, subcellular, pathology (7-day disk cache)
 │   ├── openfda.py                  # OpenFDA: FAERS adverse events + boxed warnings + recalls (optional OPENFDA_API_KEY)
 │   └── variant_effects.py          # Aggregator combining gnomAD + MyVariant + MaveDB + Ensembl VEP per-mutation
-└── tools/
-    ├── gene_resolver.py            # Multi-source alias resolution
-    ├── target_prioritization.py    # asyncio.gather orchestration + scoring + confidence CI
-    ├── biochem.py                  # Pure-Python MW/pI/GRAVY/ε₂₈₀ + liability-motif scanner
-    └── variant_parser.py           # Parse R175H / p.Arg175His / Arg175His → canonical form
+├── tools/
+│   ├── gene_resolver.py            # Multi-source alias resolution
+│   ├── target_prioritization.py    # asyncio.gather orchestration + scoring + confidence CI
+│   ├── biochem.py                  # Pure-Python MW/pI/GRAVY/ε₂₈₀ + liability-motif scanner
+│   ├── cheminformatics.py          # RDKit compute: properties, standardize, Tanimoto (local)
+│   ├── health.py                   # health://status: upstream reachability + runtime state
+│   └── variant_parser.py           # Parse R175H / p.Arg175His / Arg175His → canonical form
+└── corpus/                         # v0.6.0 hybrid retrieval (optional Postgres + pgvector)
+    ├── db.py                       # async pool (optional/never-raise) + schema apply + manifest
+    └── schema.sql                  # targets / compounds / activities / corpus_manifest DDL
 ```
 
 ---

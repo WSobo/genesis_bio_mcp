@@ -180,6 +180,7 @@ def test_build_tool_registry_has_all_tools():
         "get_pathway_members",
         "prioritize_target",
         "compare_targets",
+        "corpus_describe",
     }
     assert set(registry.keys()) == expected_tools
 

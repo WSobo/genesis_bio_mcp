@@ -18,6 +18,7 @@ from typing import Any
 import anthropic
 
 from genesis_bio_mcp.config.settings import settings
+from genesis_bio_mcp.corpus import fetch_manifest
 from genesis_bio_mcp.models import (
     BatchGeneResolution,
     BatchGeneResolutionItem,
@@ -135,6 +136,19 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
     async def _resolve_gene_fn(gene_name: str) -> str:
         result = await _resolve_gene(gene_name, uniprot_client=state.uniprot)
         return result.to_markdown()
+
+    async def _corpus_describe_fn() -> str:
+        pool = getattr(state, "corpus_pool", None)
+        if pool is None:
+            return "Corpus store is not configured (GENESIS_CORPUS_DSN unset)."
+        manifest = await fetch_manifest(pool)
+        if manifest is None:
+            return "Corpus store is configured but has not been built yet."
+        return (
+            f"Corpus '{manifest['target_family']}': {manifest['target_count']} targets, "
+            f"{manifest['compound_count']} compounds, {manifest['activity_count']} activities "
+            f"(ChEMBL {manifest.get('chembl_release') or 'n/a'})."
+        )
 
     async def _batch_resolve_genes_fn(gene_names: list[str]) -> str:
         async def _one(name: str) -> BatchGeneResolutionItem:
@@ -1498,6 +1512,19 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="synthesis",
             use_when="Use when the question asks to rank, compare, or select among multiple candidate targets.",
             fn=_compare_targets_fn,
+        ),
+        "corpus_describe": ToolSpec(
+            name="corpus_describe",
+            description=(
+                "Describe the indexed bioactivity corpus store (Postgres + pgvector): target "
+                "family, target/compound/activity counts, and provenance (ChEMBL release, "
+                "UniProt snapshot, embedding models). Reports if the corpus is unconfigured or "
+                "unbuilt."
+            ),
+            input_schema={"type": "object", "properties": {}, "required": []},
+            tool_category="corpus",
+            use_when="Use to check what the indexed corpus covers and from which releases it was built before relying on any corpus-backed retrieval.",
+            fn=_corpus_describe_fn,
         ),
     }
 
