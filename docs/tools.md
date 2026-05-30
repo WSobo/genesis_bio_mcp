@@ -1,8 +1,8 @@
 # Tool catalog
 
-genesis-bio-mcp exposes **33 MCP tools** across **24 biomedical data sources**
-(plus local RDKit cheminformatics, and `run_biology_workflow`, the 34th, which
-chains the others with Claude).
+genesis-bio-mcp exposes **35 MCP tools** across **24 biomedical data sources**
+(plus local RDKit cheminformatics and the UMA-Inverse inverse-folding service, and
+`run_biology_workflow`, the 36th, which chains the others with Claude).
 
 All tools return Markdown strings by default and accept
 `response_format="json"` for programmatic integration. Single-gene tools
@@ -55,6 +55,8 @@ Jump to:
 | `get_protein_structure` | AlphaFold + RCSB PDB | pLDDT confidence, experimental resolution, ligand-bound structures |
 | `get_structure_confidence` | AlphaFold | Per-residue pLDDT profile: confidence-band fractions + contiguous low-confidence (<70) regions likely to be flexible/disordered — see [Protein engineering](#protein-engineering) |
 | `get_structural_homologs` | Foldseek | Structural-similarity search on the gene's AlphaFold model: proteins with a similar 3D fold (E-value, bit score, probability, % id) — finds distant relatives sequence search misses. Async remote search (can take tens of seconds) |
+| `design_sequence_for_structure` | UMA-Inverse | Inverse folding: redesign a backbone's sequence (PDB text or URL) → designed sequence(s) + per-residue confidence. Calls a deployed model service (≤256 residues on the live endpoint) |
+| `score_structure` | UMA-Inverse | Score a sequence against a structure → perplexity (fit), recovery, and a candidate-mutation table (positions the model would change). The score step of the score→redesign loop |
 | `get_protein_interactome` | STRING | Configurable-confidence (default ≥700) binding partners with each partner's dominant evidence channel |
 | `get_biogrid_interactions` | BioGRID | Curated literature PPI with experimental method annotation. Requires `BIOGRID_ACCESS_KEY` env var |
 

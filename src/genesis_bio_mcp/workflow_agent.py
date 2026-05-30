@@ -247,6 +247,24 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"No structural homologs found for '{gene_symbol}'."
         return result.to_markdown()
 
+    async def _design_sequence_for_structure_fn(structure: str, temperature: float = 0.1) -> str:
+        pdb = await state.uma_inverse.resolve_pdb(structure)
+        if not pdb:
+            return "Could not read the structure (empty input or PDB URL fetch failed)."
+        result = await state.uma_inverse.design(pdb, temperature=temperature)
+        if result is None:
+            return "UMA-Inverse design did not complete (residue cap or service unavailable)."
+        return result.to_markdown()
+
+    async def _score_structure_fn(structure: str, sequence: str | None = None) -> str:
+        pdb = await state.uma_inverse.resolve_pdb(structure)
+        if not pdb:
+            return "Could not read the structure (empty input or PDB URL fetch failed)."
+        result = await state.uma_inverse.score(pdb, sequence=sequence)
+        if result is None:
+            return "UMA-Inverse scoring did not complete (residue cap or service unavailable)."
+        return result.to_markdown()
+
     async def _get_protein_interactome_fn(gene_symbol: str) -> str:
         result = await state.string_db.get_interactome(gene_symbol)
         if result is None or result.total_partners == 0:
@@ -797,6 +815,56 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="structure",
             use_when="Use to find proteins with a similar 3D fold (structural homologs) for scaffold discovery, function inference for poorly-annotated targets, or spotting structurally-similar off-target folds.",
             fn=_get_structural_homologs_fn,
+        ),
+        "design_sequence_for_structure": ToolSpec(
+            name="design_sequence_for_structure",
+            description=(
+                "Redesign a backbone's sequence via the UMA-Inverse inverse-folding model. Input "
+                "a structure as PDB text or a URL (e.g. the AlphaFold model URL from "
+                "get_protein_structure); returns designed sequence(s) + confidence."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "structure": {
+                        "type": "string",
+                        "description": "PDB text, or a URL to a PDB (AlphaFold model URL / RCSB).",
+                    },
+                    "temperature": {
+                        "type": "number",
+                        "description": "Sampling temperature (default 0.1; higher = more diverse).",
+                    },
+                },
+                "required": ["structure"],
+            },
+            tool_category="structure",
+            use_when="Use for protein engineering / de novo sequence design against a known fold — generate sequences predicted to fold into a given backbone.",
+            fn=_design_sequence_for_structure_fn,
+        ),
+        "score_structure": ToolSpec(
+            name="score_structure",
+            description=(
+                "Score a sequence against a structure with UMA-Inverse: perplexity (fit), recovery, "
+                "and a candidate-mutation table (positions where the model prefers a different "
+                "residue). Input a structure as PDB text or a URL."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "structure": {
+                        "type": "string",
+                        "description": "PDB text, or a URL to a PDB (AlphaFold model URL / RCSB).",
+                    },
+                    "sequence": {
+                        "type": "string",
+                        "description": "Sequence to score (default: the structure's native sequence).",
+                    },
+                },
+                "required": ["structure"],
+            },
+            tool_category="structure",
+            use_when="Use to find suboptimal residues in a sequence/structure (low per-residue probability, model prefers a different residue) before proposing mutations — the score step of the score→redesign loop.",
+            fn=_score_structure_fn,
         ),
         "get_protein_interactome": ToolSpec(
             name="get_protein_interactome",
