@@ -13,6 +13,19 @@ v0.5.0 in progress — cheminformatics core (RDKit) + agent/ops hardening (see d
 
 ### Added
 
+- **`design_sequence_for_structure` + `score_structure` tools (v0.5.0 M4, 36 tools total).**
+  Integrate **UMA-Inverse**, a deployed inverse-folding model service (structure → sequence),
+  via a thin `UMAInverseClient` — the stack's first *served-model* tool (consumes a deployed,
+  monitored ML endpoint rather than a database). `design_sequence_for_structure` redesigns a
+  backbone's sequence (`POST /design`) with per-residue confidence; `score_structure` scores a
+  sequence against a structure (`POST /score`) and surfaces a **candidate-mutation table**
+  (positions where the model prefers a different residue). Together they close the
+  protein-engineering loop: fetch a structure → score for suboptimal residues → redesign.
+  Each tool accepts the structure as **raw PDB text or a URL** (auto-fetched) — so an agent can
+  pass the AlphaFold model URL that `get_protein_structure` returns. New `SequenceDesign` /
+  `ScoredPosition` / `StructureScore` models, `GENESIS_UMA_API_URL` / `GENESIS_UMA_TIMEOUT_SECS`
+  settings (default the live HF Space), `run_biology_workflow` registration, and 4 client tests.
+  No heavy dependency (thin REST client). Confirmed against the live UMA-Inverse OpenAPI schema.
 - **`search_similar_compounds` tool (v0.5.0 M3, 34 tools total).** Structure-based compound
   search from a query SMILES via PubChem: `similarity` mode (`fastsimilarity_2d`, Tanimoto ≥
   threshold, ranked by a locally-computed RDKit Morgan Tanimoto) or `substructure` mode

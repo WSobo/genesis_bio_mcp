@@ -1843,6 +1843,123 @@ class StructuralHomologs(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# UMA-Inverse — deployed inverse-folding service (structure → sequence)
+# ---------------------------------------------------------------------------
+
+
+class SequenceDesign(BaseModel):
+    """A sequence designed for a backbone by the UMA-Inverse model."""
+
+    n_residues: int = Field(description="Number of residues in the designed structure")
+    mean_confidence: float | None = Field(
+        None, description="Mean per-residue confidence (0–1) of the designed sequence"
+    )
+    sequences: list[str] = Field(
+        default_factory=list, description="Designed amino-acid sequence(s), one per sample"
+    )
+    per_residue_confidence: list[list[float]] = Field(
+        default_factory=list, description="Per-residue confidence (0–1) for each designed sequence"
+    )
+    inference_ms: float | None = Field(None, description="Server-side inference time (ms)")
+    request_id: str | None = Field(None, description="Service request ID (for traceability)")
+
+    def to_markdown(self) -> str:
+        lines = [
+            "## Designed Sequence (UMA-Inverse)",
+            f"**{self.n_residues} residues**"
+            + (
+                f" | **Mean confidence:** {self.mean_confidence:.3f}"
+                if self.mean_confidence
+                else ""
+            )
+            + (f" | {self.inference_ms:.0f} ms" if self.inference_ms is not None else ""),
+        ]
+        for i, seq in enumerate(self.sequences):
+            lines += ["", f"**Sequence {i + 1}:**", f"```\n{seq}\n```"]
+            conf = self.per_residue_confidence[i] if i < len(self.per_residue_confidence) else []
+            low = [
+                (pos + 1, c) for pos, c in enumerate(conf) if c < 0.7
+            ]  # 1-indexed low-confidence positions
+            if low:
+                preview = ", ".join(f"{p}({c:.2f})" for p, c in low[:12])
+                more = f" …+{len(low) - 12} more" if len(low) > 12 else ""
+                lines.append(f"_Low-confidence positions (<0.70):_ {preview}{more}")
+        if self.request_id:
+            lines += ["", f"_request_id: `{self.request_id}`_"]
+        return "\n".join(lines)
+
+
+class ScoredPosition(BaseModel):
+    """Per-residue score from UMA-Inverse for a sequence against a structure."""
+
+    position: int = Field(description="0-indexed residue position")
+    residue_id: str | None = Field(None, description="Chain + residue number, e.g. 'A1'")
+    aa: str | None = Field(None, description="The scored (native or supplied) amino acid")
+    log_prob: float | None = Field(None, description="Log-probability of the scored residue")
+    prob: float | None = Field(None, description="Probability of the scored residue (0–1)")
+    top_aa: str | None = Field(
+        None, description="The model's most-probable residue at this position"
+    )
+    top_prob: float | None = Field(None, description="Probability of the model's preferred residue")
+
+
+class StructureScore(BaseModel):
+    """UMA-Inverse scoring of a sequence against a structure (fit + mutation candidates)."""
+
+    n_residues: int = Field(description="Number of residues scored")
+    perplexity: float | None = Field(
+        None, description="Sequence perplexity against the structure (lower = better fit)"
+    )
+    recovery: float | None = Field(
+        None, description="Fraction of positions where the native residue is the model's top choice"
+    )
+    mean_log_prob: float | None = Field(None, description="Mean per-residue log-probability")
+    mode: str | None = Field(None, description="Scoring mode used ('autoregressive' | 'single-aa')")
+    sequence_scored: str | None = Field(None, description="The sequence that was scored")
+    positions: list[ScoredPosition] = Field(default_factory=list, description="Per-residue scores")
+    inference_ms: float | None = Field(None, description="Server-side inference time (ms)")
+    request_id: str | None = Field(None, description="Service request ID (for traceability)")
+
+    def to_markdown(self) -> str:
+        lines = [
+            "## Structure Fit Score (UMA-Inverse)",
+            f"**{self.n_residues} residues**"
+            + (f" | **Perplexity:** {self.perplexity:.2f}" if self.perplexity is not None else "")
+            + (f" | **Recovery:** {self.recovery:.0%}" if self.recovery is not None else "")
+            + (f" | mode: {self.mode}" if self.mode else ""),
+            "_Lower perplexity = the sequence fits the backbone better; higher recovery = more "
+            "native-like._",
+        ]
+        # Candidate mutations: positions where the model prefers a different residue,
+        # ranked by how much more confident the model is in its pick vs. the native.
+        muts = [
+            p
+            for p in self.positions
+            if p.top_aa and p.aa and p.top_aa != p.aa and p.top_prob is not None
+        ]
+        muts.sort(key=lambda p: (p.top_prob or 0) - (p.prob or 0), reverse=True)
+        if muts:
+            lines += [
+                "",
+                f"### Candidate mutations ({len(muts)} positions the model would change)",
+                "| Position | Native | Model prefers | Native prob | Model prob |",
+                "|---|---|---|---:|---:|",
+            ]
+            for p in muts[:15]:
+                rid = p.residue_id or str(p.position)
+                np_ = f"{p.prob:.2f}" if p.prob is not None else "—"
+                tp = f"{p.top_prob:.2f}" if p.top_prob is not None else "—"
+                lines.append(f"| {rid} | {p.aa} | **{p.top_aa}** | {np_} | {tp} |")
+            if len(muts) > 15:
+                lines.append(f"\n_…and {len(muts) - 15} more candidate positions._")
+        else:
+            lines += ["", "_The model's top choice matches the scored residue at every position._"]
+        if self.request_id:
+            lines += ["", f"_request_id: `{self.request_id}`_"]
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Protein interaction network (STRING)
 # ---------------------------------------------------------------------------
 

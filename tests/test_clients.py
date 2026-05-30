@@ -26,6 +26,7 @@ from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.reactome import ReactomeClient
 from genesis_bio_mcp.clients.sabdab import SAbDabClient
 from genesis_bio_mcp.clients.string_db import StringDbClient
+from genesis_bio_mcp.clients.uma_inverse import UMAInverseClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
 from genesis_bio_mcp.config.efo_resolver import EFOResolver, EFOTerm
 from genesis_bio_mcp.config.trait_synonyms import filter_by_trait
@@ -1415,6 +1416,109 @@ def test_resolve_gene_flags_unresolved_input():
     md2 = resolved.to_markdown()
     assert "not resolved" not in md2.lower()
     assert "P15056" in md2 and "NCBI Gene: 673" in md2
+
+
+# ---------------------------------------------------------------------------
+# UMA-Inverse client tests
+# ---------------------------------------------------------------------------
+
+
+_MOCK_UMA_DESIGN = {
+    "sequences": ["HVCCPSQEAREKFLEC"],
+    "per_residue_confidence": [
+        [1.0, 0.99, 0.65, 1.0, 0.55, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    ],
+    "mean_confidence": 0.84,
+    "n_residues": 16,
+    "inference_ms": 47.7,
+    "request_id": "abc123",
+}
+
+_MOCK_UMA_SCORE = {
+    "positions": [
+        {
+            "position": 0,
+            "residue_id": "A1",
+            "aa": "T",
+            "log_prob": -2.59,
+            "prob": 0.075,
+            "top_aa": "H",
+            "top_prob": 0.46,
+        },
+        {
+            "position": 1,
+            "residue_id": "A2",
+            "aa": "T",
+            "log_prob": -0.1,
+            "prob": 0.9,
+            "top_aa": "T",
+            "top_prob": 0.9,
+        },
+    ],
+    "mean_log_prob": -1.79,
+    "perplexity": 6.0,
+    "recovery": 0.5,
+    "n_residues": 2,
+    "mode": "autoregressive",
+    "sequence_scored": "TT",
+    "inference_ms": 50.0,
+    "request_id": "def456",
+}
+
+
+@respx.mock
+async def test_uma_design(http_client):
+    respx.post(url__regex=r"uma-inverse\.hf\.space/design").mock(
+        return_value=httpx.Response(200, json=_MOCK_UMA_DESIGN)
+    )
+    client = UMAInverseClient(http_client)
+    result = await client.design("HEADER\nATOM ...")
+    assert result is not None
+    assert result.n_residues == 16
+    assert result.sequences == ["HVCCPSQEAREKFLEC"]
+    assert result.mean_confidence == 0.84
+    md = result.to_markdown()
+    assert "Designed Sequence" in md
+    assert "HVCCPSQEAREKFLEC" in md
+    assert "Low-confidence" in md  # positions 3 (0.65) and 5 (0.55) are < 0.70
+
+
+@respx.mock
+async def test_uma_score_surfaces_candidate_mutations(http_client):
+    respx.post(url__regex=r"uma-inverse\.hf\.space/score").mock(
+        return_value=httpx.Response(200, json=_MOCK_UMA_SCORE)
+    )
+    client = UMAInverseClient(http_client)
+    result = await client.score("HEADER\nATOM ...")
+    assert result is not None
+    assert result.perplexity == 6.0
+    assert result.recovery == 0.5
+    assert len(result.positions) == 2
+    md = result.to_markdown()
+    assert "Candidate mutations" in md
+    # Position A1: native T, model prefers H.
+    assert "A1" in md
+    assert "**H**" in md
+
+
+@respx.mock
+async def test_uma_returns_none_on_error_status(http_client):
+    respx.post(url__regex=r"uma-inverse\.hf\.space/design").mock(
+        return_value=httpx.Response(413, text="structure exceeds residue cap")
+    )
+    client = UMAInverseClient(http_client)
+    assert await client.design("HEADER\nATOM") is None
+
+
+@respx.mock
+async def test_uma_resolve_pdb_fetches_url_or_passes_text(http_client):
+    respx.get(url__regex=r"example\.com/1abc\.pdb").mock(
+        return_value=httpx.Response(200, text="HEADER fetched pdb")
+    )
+    client = UMAInverseClient(http_client)
+    assert await client.resolve_pdb("https://example.com/1abc.pdb") == "HEADER fetched pdb"
+    assert await client.resolve_pdb("HEADER raw pdb text") == "HEADER raw pdb text"
+    assert await client.resolve_pdb("") is None
 
 
 # ---------------------------------------------------------------------------

@@ -44,6 +44,8 @@ class Settings(BaseSettings):
         GENESIS_FOLDSEEK_POLL_TIMEOUT_SECS  — float (default 120.0)
         GENESIS_FOLDSEEK_POLL_INTERVAL_SECS — float (default 3.0)
         GENESIS_FOLDSEEK_MAX_HITS     — int (default 20)
+        GENESIS_UMA_API_URL           — string (default https://wsobo-uma-inverse.hf.space)
+        GENESIS_UMA_TIMEOUT_SECS      — float (default 120.0)
         GENESIS_SABDAB_CACHE_PATH     — path string (default data/sabdab_cache.tsv)
         GENESIS_SABDAB_CACHE_TTL_SECS — int, seconds (default 604800 = 7 days)
         GENESIS_CLAUDE_MODEL          — string (default claude-sonnet-4-6)
@@ -175,6 +177,22 @@ class Settings(BaseSettings):
         description="Default maximum number of structural-homolog hits to return.",
         gt=0,
         le=100,
+    )
+
+    # ---------------------------------------------------------------------------
+    # UMA-Inverse — deployed inverse-folding service (structure → sequence)
+    # ---------------------------------------------------------------------------
+
+    uma_api_url: str = Field(
+        default="https://wsobo-uma-inverse.hf.space",
+        description="Base URL of the UMA-Inverse REST service (POST /design, /score). "
+        "Override to point at a self-hosted or GPU endpoint.",
+    )
+    uma_timeout_secs: float = Field(
+        default=120.0,
+        description="Request timeout for UMA-Inverse calls; inference scales ~linearly with "
+        "residue count and a cold Space can take longer to wake.",
+        gt=0,
     )
 
     # ---------------------------------------------------------------------------

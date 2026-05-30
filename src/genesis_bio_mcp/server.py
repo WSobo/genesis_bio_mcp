@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 34 tools for biomedical database queries:
+Exposes 36 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -15,6 +15,8 @@ Exposes 34 tools for biomedical database queries:
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_structure_confidence      AlphaFold: per-residue pLDDT profile + disordered regions
   - get_structural_homologs       Foldseek: proteins with a similar 3D fold (structural search)
+  - design_sequence_for_structure UMA-Inverse: redesign a backbone's sequence (inverse folding)
+  - score_structure               UMA-Inverse: score a sequence vs a structure + mutation candidates
   - get_protein_interactome       STRING: binding partners and selectivity risks
   - get_biogrid_interactions      BioGRID: curated literature PPI network
   - get_antibody_structures       SAbDab: antibody/nanobody structures for an antigen
@@ -78,6 +80,7 @@ from genesis_bio_mcp.clients.pubchem import PubChemClient
 from genesis_bio_mcp.clients.reactome import ReactomeClient
 from genesis_bio_mcp.clients.sabdab import SAbDabClient
 from genesis_bio_mcp.clients.string_db import StringDbClient
+from genesis_bio_mcp.clients.uma_inverse import UMAInverseClient
 from genesis_bio_mcp.clients.uniprot import UniProtClient
 from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
 from genesis_bio_mcp.config.efo_resolver import EFOResolver
@@ -151,6 +154,7 @@ async def lifespan(server: FastMCP):
         server.state.chembl = ChEMBLClient(client)
         server.state.alphafold = AlphaFoldClient(client)
         server.state.foldseek = FoldseekClient(client, alphafold=server.state.alphafold)
+        server.state.uma_inverse = UMAInverseClient(client)
         server.state.string_db = StringDbClient(client)
         server.state.biogrid = BioGRIDClient(client)
         server.state.sabdab = SAbDabClient(client)
@@ -364,6 +368,50 @@ class GetStructuralHomologsInput(_GeneInput):
         description="Maximum number of structural homologs to return. Omit for the server "
         "default (20).",
     )
+
+
+_STRUCTURE_FIELD = Field(
+    ...,
+    description=(
+        "The structure: full PDB text, OR a URL to a PDB file (e.g. the AlphaFold model URL "
+        "reported by get_protein_structure, or an RCSB 'files.rcsb.org/download/{id}.pdb' URL). "
+        "The live service caps inputs at 256 residues."
+    ),
+    min_length=1,
+    max_length=2_000_000,
+)
+
+
+class DesignSequenceInput(BaseModel):
+    """Input for design_sequence_for_structure."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    structure: str = _STRUCTURE_FIELD
+    ligand: str | None = Field(
+        None, description="Optional ligand context (3-letter code or SMILES).", max_length=2000
+    )
+    temperature: float = Field(
+        0.1, ge=0.0, le=2.0, description="Sampling temperature; higher = more sequence diversity."
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class ScoreStructureInput(BaseModel):
+    """Input for score_structure."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    structure: str = _STRUCTURE_FIELD
+    sequence: str | None = Field(
+        None,
+        description="Sequence to score against the structure (default: the structure's native "
+        "sequence).",
+        max_length=10000,
+    )
+    mode: Literal["autoregressive", "single-aa"] = Field(
+        "autoregressive",
+        description="'autoregressive' (fast; one pass) | 'single-aa' (per-residue; slower).",
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
 
 
 class GetProteinInteractomeInput(_GeneInput):
@@ -1226,6 +1274,92 @@ async def get_structural_homologs(params: GetStructuralHomologsInput) -> str:
         params.response_format,
         f"No structural homologs found for '{symbol}'. The protein may lack an "
         "AlphaFold model, or the Foldseek search did not complete.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True
+    )
+)
+async def design_sequence_for_structure(params: DesignSequenceInput) -> str:
+    """Redesign a protein backbone's sequence via the UMA-Inverse inverse-folding model.
+
+    Given a structure (PDB text or a URL to one — e.g. the AlphaFold model URL from
+    get_protein_structure), returns amino-acid sequence(s) the model predicts will fold
+    into that backbone, with per-residue and mean confidence. Use this for protein
+    engineering / de novo sequence design against a known fold, or to propose a stabilized
+    or solubilized variant of a target. Pairs with score_structure (score → redesign loop).
+
+    Note: this calls a deployed model service; latency scales with structure length (the
+    live endpoint caps inputs at 256 residues). Sampling is stochastic — raise temperature
+    for more diversity.
+
+    Args:
+        params (DesignSequenceInput): structure (PDB text or URL), optional ligand,
+            temperature, response_format.
+
+    Returns:
+        Markdown with the designed sequence(s), mean confidence, and low-confidence
+        positions. Returns an error if the structure can't be read or the service rejects
+        it (e.g. over the residue cap) / is unavailable.
+    """
+    pdb = await mcp.state.uma_inverse.resolve_pdb(params.structure)
+    if not pdb:
+        return _fmt(
+            None,
+            params.response_format,
+            "Could not read the structure (empty input, or the PDB URL could not be fetched).",
+        )
+    result = await mcp.state.uma_inverse.design(
+        pdb, ligand=params.ligand, temperature=params.temperature
+    )
+    return _fmt(
+        result,
+        params.response_format,
+        "UMA-Inverse design did not complete — the structure may exceed the service's "
+        "residue cap (256 on the live endpoint), or the service is unavailable.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True
+    )
+)
+async def score_structure(params: ScoreStructureInput) -> str:
+    """Score a sequence against a structure with UMA-Inverse, flagging candidate mutations.
+
+    Given a structure (PDB text or URL) and an optional sequence (defaults to the
+    structure's native sequence), returns how well that sequence fits the backbone —
+    overall perplexity (lower = better fit) and recovery, plus per-residue probabilities and
+    the model's preferred residue at each position. Positions where the model prefers a
+    different residue are surfaced as a **candidate-mutation table**. Use this to identify
+    suboptimal residues to engineer, then feed the structure to design_sequence_for_structure.
+
+    Note: this calls a deployed model service (live endpoint caps inputs at 256 residues).
+
+    Args:
+        params (ScoreStructureInput): structure (PDB text or URL), optional sequence, mode
+            (autoregressive | single-aa), response_format.
+
+    Returns:
+        Markdown with perplexity/recovery and a candidate-mutation table. Returns an error if
+        the structure can't be read or the service rejects it / is unavailable.
+    """
+    pdb = await mcp.state.uma_inverse.resolve_pdb(params.structure)
+    if not pdb:
+        return _fmt(
+            None,
+            params.response_format,
+            "Could not read the structure (empty input, or the PDB URL could not be fetched).",
+        )
+    result = await mcp.state.uma_inverse.score(pdb, sequence=params.sequence, mode=params.mode)
+    return _fmt(
+        result,
+        params.response_format,
+        "UMA-Inverse scoring did not complete — the structure may exceed the service's "
+        "residue cap (256 on the live endpoint), or the service is unavailable.",
     )
 
 
