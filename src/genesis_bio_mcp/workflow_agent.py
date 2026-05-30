@@ -75,7 +75,7 @@ Workflow guidance:
 2. Use pathway/annotation tools (get_pathway_context, get_protein_info) for broad biology questions. Use get_pathway_members to enumerate all genes in a pathway for systematic screening.
 3. Use evidence tools (get_target_disease_association, get_cancer_dependency, get_gwas_evidence) for disease links.
 4. Use druggability tools (get_compounds, get_drug_history) to assess chemical tractability and competition.
-5. Call prioritize_target for a full evidence synthesis and composite score on a specific target–indication pair.
+5. Call prioritize_target for a full evidence synthesis (a per-axis evidence profile, not a single score) on a specific target–indication pair.
 6. Call compare_targets when ranking 2–5 candidates side by side.
 7. For antibody/nanobody design questions: call get_antibody_structures to find PDB-curated structural templates; use get_protein_structure for the antigen conformation.
 8. For protein engineering questions: call get_variant_constraints first to understand mutation tolerance (pLI/LOEUF); then use get_protein_structure for structural context.
@@ -1544,7 +1544,8 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             name="prioritize_target",
             description=(
                 "Full target prioritization report: queries all databases in parallel and returns a "
-                "composite priority score (0–10) with tier (High/Medium/Low). Use for go/no-go decisions."
+                "per-axis evidence profile (each axis rated strong/moderate/weak/none/n-a) — no single "
+                "composite score. Use for go/no-go decisions."
             ),
             input_schema={
                 "type": "object",
@@ -1571,8 +1572,8 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
         "compare_targets": ToolSpec(
             name="compare_targets",
             description=(
-                "Compare 2–5 gene targets side by side for a given indication. "
-                "Returns a ranked Markdown table with priority scores and per-gene summaries."
+                "Compare 2–5 gene targets side by side for a given indication. Returns an evidence "
+                "matrix (genes × axes) ordered by strength of evidence, plus per-gene summaries."
             ),
             input_schema={
                 "type": "object",

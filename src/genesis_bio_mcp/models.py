@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, computed_field, model_validator
 
 from genesis_bio_mcp.tools.biochem import BiochemFeatures, LiabilityHit
@@ -2975,70 +2977,71 @@ class PathwayContext(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-# Expression axis scoring table — maps HPA's tissue-specificity category to a
-# 0.0–1.0 contribution. Calibrated so that only clearly restricted expression
-# earns the full bonus (therapeutic-window advantage); "Low tissue specificity"
-# still earns a small credit because expression is detected at all.
-#
-# Kept outside _compute_score so TargetPrioritizationReport.to_markdown can
-# render the row with the same weights used at scoring time.
-_EXPRESSION_BY_CATEGORY: dict[str, float] = {
-    "Tissue enriched": 1.0,
-    "Group enriched": 0.7,
-    "Tissue enhanced": 0.5,
-    "Low tissue specificity": 0.2,
-    "Not detected": 0.0,
+# Expression-axis rating table — maps HPA's tissue-specificity category to a
+# qualitative evidence rating. Restricted expression is a therapeutic-window
+# advantage (a target concentrated in the indication-relevant tissue is safer
+# to drug than one expressed everywhere), so enriched/enhanced rate higher.
+# These are classification boundaries, not score weights — no value is summed.
+_EXPRESSION_RATING: dict[str, str] = {
+    "Tissue enriched": "strong",
+    "Tissue enhanced": "strong",
+    "Group enriched": "moderate",
+    "Low tissue specificity": "weak",
+    "Not detected": "none",
 }
 
 
-class ScoreBreakdown(BaseModel):
-    """Per-axis contributions that sum to the priority score.
+# Rating vocabulary used across the evidence profile. ``none`` means data was
+# present but showed no signal; ``n/a`` means the data source returned nothing
+# (a gap) — the two are deliberately distinct so an absent source is never
+# silently treated as a zero/negative.
+EvidenceRating = Literal["strong", "moderate", "weak", "none", "n/a"]
 
-    Surfaces the six weighted axes of ``_compute_score`` so the reader can audit
-    *why* a target ranks where it does — especially in compare_targets, where the
-    aggregate score alone doesn't explain why a target with the highest OT score
-    can still rank below peers that win on DepMap/GWAS/drug/chem axes.
+# Rating → (glyph, word) for Markdown rendering. The glyph gives a quick visual
+# scan; the word keeps it accessible in plain text / screen readers.
+_RATING_DISPLAY: dict[str, tuple[str, str]] = {
+    "strong": ("●●●", "Strong"),
+    "moderate": ("●●○", "Moderate"),
+    "weak": ("●○○", "Weak"),
+    "none": ("○○○", "None"),
+    "n/a": ("—", "N/A"),
+}
+
+# Ordinal weight of each rating, used ONLY to order rows in a comparison matrix
+# (count of strong/moderate axes). This is a transparent dominance ordering for
+# display — it is deliberately NOT surfaced as a single 0–N "priority score".
+_RATING_ORDINAL: dict[str, int] = {"strong": 2, "moderate": 1, "weak": 0, "none": 0, "n/a": 0}
+
+
+def _rating_badge(rating: str) -> str:
+    """Render a rating as ``●●● Strong`` for a Markdown cell."""
+    glyph, word = _RATING_DISPLAY.get(rating, ("—", rating))
+    return f"{glyph} {word}"
+
+
+class EvidenceAxis(BaseModel):
+    """One axis of the target evidence profile, rated independently of the others.
+
+    Each axis is classified directly from its own source metric (Open Targets
+    overall score, DepMap dependency fraction, ChEMBL potency, …) using documented,
+    conventional boundaries — never multiplied, weighted, or summed into a single
+    composite. The reader sees the trade-off across axes (a target strong on
+    genetics but with no chemical matter is *not* interchangeable with one strong
+    on chemistry but weak on genetics), which a single number would hide.
     """
 
-    ot: float = Field(
-        default=0.0,
-        description="Open Targets association contribution (baseline max 3.0; up to 3.25 "
-        "when the clinical-validated floor fires for approved-drug targets — see "
-        "OT_CLINICALLY_VALIDATED_FLOOR in tools/target_prioritization.py).",
+    name: str = Field(description="Axis label, e.g. 'Disease association', 'Chemical tractability'")
+    rating: EvidenceRating = Field(
+        description="strong | moderate | weak | none (data present, no signal) | n/a (no data)"
     )
-    depmap: float = Field(default=0.0, description="Cancer dependency contribution (max 2.0)")
-    gwas: float = Field(default=0.0, description="GWAS evidence contribution (max 2.0)")
-    known_drug: float = Field(default=0.0, description="Known-drug evidence contribution (max 1.5)")
-    chem_matter: float = Field(default=0.0, description="Chemical matter contribution (max 1.5)")
-    protein: float = Field(default=0.0, description="Protein annotation contribution (max 1.5)")
-    # Added in v0.3.0 — HPA tissue-specificity axis. Only populated when the
-    # caller passes extended=True and HPA is reachable. Keeps pre-cap sum
-    # ≤ 11.5 + 1.0 = 12.5; the 10.0 ceiling in _compute_score absorbs it.
-    expression: float = Field(
-        default=0.0,
-        description="HPA tissue-specificity contribution (max 1.0). 0.0 when HPA data is absent.",
+    detail: str = Field(description="Raw evidence behind the rating, e.g. 'OT overall 0.82, n=5'")
+    value: float | None = Field(
+        default=None, description="Underlying numeric metric for programmatic consumers, if any"
     )
 
-    @property
-    def total(self) -> float:
-        """Pre-cap sum of the seven axes. Caller applies the 10.0 ceiling."""
-        return (
-            self.ot
-            + self.depmap
-            + self.gwas
-            + self.known_drug
-            + self.chem_matter
-            + self.protein
-            + self.expression
-        )
-
-    def to_compact(self) -> str:
-        """Single-line breakdown, e.g. ``OT 2.3 · Dep 1.2 · GWAS 0.0 · Drug 1.1 · Chem 1.5 · Prot 0.6 · Exp 0.7``."""
-        return (
-            f"OT {self.ot:.1f} · Dep {self.depmap:.1f} · GWAS {self.gwas:.1f} · "
-            f"Drug {self.known_drug:.1f} · Chem {self.chem_matter:.1f} · "
-            f"Prot {self.protein:.1f} · Exp {self.expression:.1f}"
-        )
+    def to_row(self) -> str:
+        """Render as a Markdown table row: ``| name | badge | detail |``."""
+        return f"| {self.name} | {_rating_badge(self.rating)} | {self.detail} |"
 
 
 class TargetPrioritizationReport(BaseModel):
@@ -3062,18 +3065,17 @@ class TargetPrioritizationReport(BaseModel):
         default=None,
         description=(
             "HPA tissue-specificity + subcellular + pathology summary. Only populated "
-            "in extended mode; contributes to the expression scoring axis."
+            "in extended mode; drives the tissue-specificity axis of the evidence profile."
         ),
     )
-    priority_score: float = Field(
-        ge=0.0,
-        le=10.0,
-        description="Composite evidence score 0–10 computed from weighted database evidence",
-    )
-    priority_tier: str = Field(description="'High' (>7) | 'Medium' (4–7) | 'Low' (<4)")
-    score_breakdown: ScoreBreakdown | None = Field(
-        default=None,
-        description="Per-axis contributions that sum to priority_score (before 10.0 cap)",
+    evidence_profile: list[EvidenceAxis] = Field(
+        default_factory=list,
+        description=(
+            "Per-axis evidence ratings (disease association, clinical validation, genetics, "
+            "cancer dependency, chemical tractability, annotation, tissue specificity). Each "
+            "axis is classified independently from its source metric — there is deliberately no "
+            "single composite score, so the cross-axis trade-off stays visible."
+        ),
     )
     evidence_summary: str = Field(
         description="1–3 sentence plain-language summary of key evidence for this target"
@@ -3096,16 +3098,9 @@ class TargetPrioritizationReport(BaseModel):
     proxy_data_flags: dict[str, bool] = Field(
         default_factory=dict,
         description=(
-            "Per-axis flag: True if the score contribution used proxy/estimated data rather than "
+            "Per-axis flag: True if an axis was rated from proxy/estimated data rather than "
             "direct measurement. Keys: 'depmap' (OT somatic proxy instead of CRISPR), "
             "'compounds' (PubChem count only, no ChEMBL potency data)."
-        ),
-    )
-    score_confidence_interval: tuple[float, float] | None = Field(
-        default=None,
-        description=(
-            "(lower_bound, upper_bound) for priority_score based on data completeness. "
-            "None when all core sources returned data."
         ),
     )
     api_latency_s: dict[str, float] = Field(
@@ -3117,138 +3112,26 @@ class TargetPrioritizationReport(BaseModel):
     )
 
     def to_markdown(self) -> str:
-        tier_emoji = {
-            "High": "HIGH PRIORITY",
-            "Medium": "MEDIUM PRIORITY",
-            "Low": "LOW PRIORITY",
-        }
-        tier_label = tier_emoji.get(self.priority_tier, self.priority_tier)
-
         lines = [
             f"# Target Assessment: {self.gene_symbol} | {self.indication}",
             "",
-            f"**Priority Score: {self.priority_score:.1f}/10 — {tier_label}**",
+            "## Evidence Profile",
             "",
-            "## Evidence Summary",
-            self.evidence_summary,
+            "_Each axis is rated independently from its own evidence — there is no single "
+            "composite score, so the trade-off across axes stays visible._",
             "",
-            "## Scoring Breakdown",
-            "| Source | Contribution | Max |",
+            "| Axis | Signal | Evidence |",
             "|---|---|---|",
         ]
-
-        # Bug M.1 (v0.3.4): the breakdown table previously RECOMPUTED scores
-        # inline using stale formulas (cap at 10 not 3, no monogenic credit,
-        # no fallback suppression, no functional/binding split). The displayed
-        # numbers drifted from the actual ``priority_score`` and from the
-        # canonical _compute_score logic. Now we render directly from the
-        # ``score_breakdown`` that _compute_score produced — the only source
-        # of truth — and decorate each row with a contextual note derived
-        # from the source models.
-        sb = self.score_breakdown
-        da = self.disease_association
-        cd = self.cancer_dependency
-        gw = self.gwas_evidence
-        cp = self.compounds
-        chembl = self.chembl_compounds
-        pi = self.protein_info
-
-        # Open Targets association — baseline max 3.0; the clinical-validated
-        # floor (OT_CLINICALLY_VALIDATED_FLOOR=3.25) raises the effective max
-        # for approved-drug targets where genetic+somatic are null. Annotate
-        # the row when the floor fires so the >3.0 contribution is explained
-        # rather than looking like a bug.
-        if da:
-            ot_note = f"OT overall_score={da.overall_score:.2f}"
-            if sb.ot > 3.0:
-                ot_note += " — clinical-validated floor (3.25)"
+        # Render directly from the per-axis profile that the scoring engine
+        # produced — the single source of truth. No numbers are recomputed or
+        # re-weighted here, so the table can never drift from the rated axes.
+        if self.evidence_profile:
+            lines += [axis.to_row() for axis in self.evidence_profile]
         else:
-            ot_note = "no data"
-        lines.append(f"| Open Targets association | {sb.ot:.2f} ({ot_note}) | 3.25 |")
+            lines.append("| _(no evidence axes available)_ | — N/A | — |")
 
-        # Cancer dependency
-        if cd:
-            if cd.pan_essential:
-                dep_note = "pan-essential cap"
-            else:
-                dep_note = f"{int(cd.fraction_dependent_lines * 100)}% dependent"
-                if "DepMap" not in cd.data_source:
-                    dep_note += " (OT proxy, 0.7×)"
-                if self.indication and any(
-                    self.indication.lower() in lin.lower() or lin.lower() in self.indication.lower()
-                    for lin in (cd.top_dependent_lineages or [])
-                ):
-                    dep_note += " (lineage match, 1.2×)"
-        else:
-            dep_note = "no data"
-        lines.append(f"| Cancer dependency | {sb.depmap:.2f} ({dep_note}) | 2.0 |")
-
-        # GWAS evidence — flag fallback / off-trait suppression so a 0.00
-        # score isn't mistaken for "no data" when hits actually exist.
-        if gw:
-            if "no exact-trait match" in (gw.trait_query or ""):
-                gw_note = (
-                    f"{gw.total_associations} fallback hits — no exact-trait match, not credited"
-                )
-            elif sb.gwas == 0.0 and gw.total_associations > 0:
-                gw_note = (
-                    f"{gw.total_associations} hits but trait labels off-indication — not credited"
-                )
-            else:
-                gw_note = f"{gw.total_associations} hits"
-        elif da and (da.genetic_association_score or 0) > 0.7:
-            gw_note = "monogenic credit (OT genetic > 0.7, GWAS Catalog absent)"
-        else:
-            gw_note = "no data"
-        lines.append(f"| GWAS evidence | {sb.gwas:.2f} ({gw_note}) | 2.0 |")
-
-        # Clinical / known-drug — surfaced as its own row (was previously
-        # absorbed into the OT row, contributing to the breakdown-vs-displayed
-        # mismatch).
-        if da:
-            kd_note = (
-                f"known_drug_score={da.known_drug_score:.2f}"
-                if da.known_drug_score
-                else "no approved drugs"
-            )
-        else:
-            kd_note = "no data"
-        lines.append(f"| Clinical / known-drug | {sb.known_drug:.2f} ({kd_note}) | 1.5 |")
-
-        # Chemical matter — surface whether the credit came from functional
-        # or discounted binding-only data so the v0.3.3 weighting is visible.
-        if chembl and chembl.best_pchembl is not None:
-            if chembl.best_pchembl_functional is not None:
-                cp_label = f"ChEMBL pChEMBL={chembl.best_pchembl_functional:.1f} (functional)"
-            else:
-                cp_label = f"ChEMBL pChEMBL={chembl.best_pchembl:.1f} (binding-only — discounted)"
-        elif cp and cp.total_active_compounds >= 5:
-            cp_label = f"PubChem count={cp.total_active_compounds}"
-        elif cp:
-            cp_label = f"PubChem count={cp.total_active_compounds} (below tractability threshold)"
-        else:
-            cp_label = "no data"
-        lines.append(f"| Chemical matter | {sb.chem_matter:.2f} ({cp_label}) | 1.5 |")
-
-        # Protein annotation
-        if pi:
-            pi_note = (
-                f"{'reviewed' if pi.reviewed else 'unreviewed'}, "
-                f"{len(pi.known_variants)} known variants"
-            )
-        else:
-            pi_note = "no data"
-        lines.append(f"| Protein annotation | {sb.protein:.2f} ({pi_note}) | 1.5 |")
-
-        # Expression axis — rendered only when HPA was queried.
-        pa = self.protein_atlas
-        if pa:
-            exp_cat = (
-                pa.expression.rna_tissue_specificity_category
-                if pa.expression and pa.expression.rna_tissue_specificity_category
-                else "no HPA data"
-            )
-            lines.append(f"| Tissue expression | {sb.expression:.2f} ({exp_cat}) | 1.0 |")
+        lines += ["", "## Evidence Summary", self.evidence_summary]
 
         lines += ["", "## Data Sources"]
         sources = [
@@ -3271,17 +3154,11 @@ class TargetPrioritizationReport(BaseModel):
                 lines.append(f"- `{module}`: {msg[:120]}")
 
         # Confidence assessment (populated when data_coverage_pct > 0)
-        if self.data_coverage_pct > 0 or self.proxy_data_flags or self.score_confidence_interval:
+        if self.data_coverage_pct > 0 or self.proxy_data_flags:
             lines += ["", "## Confidence Assessment"]
             lines.append(
                 f"**Data coverage:** {self.data_coverage_pct:.0f}% of core sources returned data"
             )
-            if self.score_confidence_interval:
-                lo, hi = self.score_confidence_interval
-                lines.append(
-                    f"**Score range:** {lo:.1f}–{hi:.1f}/10 "
-                    f"(uncertainty from {100 - self.data_coverage_pct:.0f}% missing sources)"
-                )
             if any(self.proxy_data_flags.values()):
                 lines.append("**Proxy data used (reduced confidence):**")
                 _proxy_labels = {
@@ -3334,12 +3211,27 @@ class TargetPrioritizationReport(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# Short column labels for the comparison matrix, keyed by the full axis names
+# the scoring engine emits. Falls back to the full name if unmapped.
+_AXIS_SHORT: dict[str, str] = {
+    "Disease association": "Disease",
+    "Clinical validation": "Clinical",
+    "Genetic evidence": "Genetics",
+    "Cancer dependency": "Dependency",
+    "Chemical tractability": "Chemistry",
+    "Annotation quality": "Annotation",
+    "Tissue specificity": "Expression",
+}
+
+
 class TargetComparisonRow(BaseModel):
     """Single row in a multi-target comparison."""
 
     gene_symbol: str
-    priority_score: float
-    priority_tier: str
+    evidence_profile: list[EvidenceAxis] = Field(
+        default_factory=list,
+        description="Per-axis evidence ratings for this target (same axes as prioritize_target)",
+    )
     ot_score: float | None = None
     depmap_pct: int | None = None
     depmap_real_data: bool = False
@@ -3355,10 +3247,13 @@ class TargetComparisonRow(BaseModel):
     gwas_count: int | None = None
     data_gaps: list[str] = Field(default_factory=list)
     evidence_summary: str = ""
-    score_breakdown: ScoreBreakdown | None = Field(
-        default=None,
-        description="Per-axis contributions so the reader can audit why a rank is what it is",
-    )
+
+    def rating_for(self, axis_name: str) -> str | None:
+        """Return this row's rating for the named axis, or None if the axis is absent."""
+        for ax in self.evidence_profile:
+            if ax.name == axis_name:
+                return ax.rating
+        return None
 
 
 class ComparisonReport(BaseModel):
@@ -3368,15 +3263,63 @@ class ComparisonReport(BaseModel):
     rows: list[TargetComparisonRow]
 
     def to_markdown(self) -> str:
-        ranked = sorted(self.rows, key=lambda r: r.priority_score, reverse=True)
+        # Ordered union of axis names across all rows (preserves first-seen order,
+        # so extended-mode axes append after the core ones).
+        axis_names: list[str] = []
+        for row in self.rows:
+            for ax in row.evidence_profile:
+                if ax.name not in axis_names:
+                    axis_names.append(ax.name)
+
+        def _dominance_key(row: TargetComparisonRow) -> tuple[int, int, int]:
+            # Higher is better: more strong axes, then more moderate, then fewer
+            # missing/no-data axes. A missing axis is counted alongside 'n/a'.
+            ratings = [row.rating_for(name) for name in axis_names]
+            n_strong = sum(1 for r in ratings if r == "strong")
+            n_moderate = sum(1 for r in ratings if r == "moderate")
+            n_absent = sum(1 for r in ratings if r is None or r == "n/a")
+            return (n_strong, n_moderate, -n_absent)
+
+        # Stable two-pass sort: alphabetical first, then dominance — so ties
+        # break alphabetically while the primary order is strength of evidence.
+        ranked = sorted(self.rows, key=lambda r: r.gene_symbol)
+        ranked = sorted(ranked, key=_dominance_key, reverse=True)
+
         lines = [
             f"# Target Comparison: {self.indication}",
             "",
-            "| Rank | Gene | Score | Tier | OT Score | DepMap % | PubChem | ChEMBL (best pChEMBL) "
-            "| GWAS Hits | Data Gaps |",
-            "|---|---|---|---|---|---|---|---|---|---|",
+            "_Ordered by strength of evidence (count of strong, then moderate axes). This is a "
+            "transparent ordering for convenience — **not** a validated composite score._",
+            "",
         ]
-        for i, row in enumerate(ranked, 1):
+
+        # Evidence matrix — one column per axis, glyph cells for quick scanning.
+        if axis_names:
+            header = (
+                "| Rank | Gene | " + " | ".join(_AXIS_SHORT.get(n, n) for n in axis_names) + " |"
+            )
+            lines.append(header)
+            lines.append("|---|---|" + "|".join("---" for _ in axis_names) + "|")
+            for i, row in enumerate(ranked, 1):
+                cells = []
+                for name in axis_names:
+                    rating = row.rating_for(name)
+                    glyph = _RATING_DISPLAY.get(rating, ("—", ""))[0] if rating else "—"
+                    cells.append(glyph)
+                lines.append(f"| {i} | **{row.gene_symbol}** | " + " | ".join(cells) + " |")
+            lines += [
+                "",
+                "_Legend: ●●● Strong · ●●○ Moderate · ●○○ Weak · ○○○ None (no signal) · — N/A (no data)_",
+            ]
+
+        # Raw signals — the underlying numbers behind the ratings.
+        lines += [
+            "",
+            "## Raw signals",
+            "| Gene | OT Score | DepMap % | PubChem | ChEMBL (best pChEMBL) | GWAS Hits | Data Gaps |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for row in ranked:
             ot = f"{row.ot_score:.2f}" if row.ot_score is not None else "—"
             dep = f"{row.depmap_pct}%" if row.depmap_pct is not None else "—"
             if row.depmap_pct is not None and not row.depmap_real_data:
@@ -3394,24 +3337,13 @@ class ComparisonReport(BaseModel):
             gwas = str(row.gwas_count) if row.gwas_count is not None else "—"
             gaps = ", ".join(row.data_gaps) if row.data_gaps else "none"
             lines.append(
-                f"| {i} | **{row.gene_symbol}** | {row.priority_score:.1f}/10 | {row.priority_tier} "
-                f"| {ot} | {dep} | {pubchem} | {chembl} | {gwas} | {gaps} |"
+                f"| **{row.gene_symbol}** | {ot} | {dep} | {pubchem} | {chembl} | {gwas} | {gaps} |"
             )
 
         lines += [
             "",
             "_* DepMap % estimated from Open Targets somatic mutation data (no direct CRISPR data)_",
         ]
-
-        # Per-row score breakdown makes the ranking auditable. Without this,
-        # cases where the target with the highest OT score ranks below peers
-        # that win on DepMap/GWAS/drug/chem look arbitrary.
-        if any(r.score_breakdown is not None for r in ranked):
-            lines += ["", "## Score Breakdown (contribution per axis)"]
-            lines += ["| Gene | Breakdown |", "|---|---|"]
-            for row in ranked:
-                if row.score_breakdown is not None:
-                    lines.append(f"| **{row.gene_symbol}** | {row.score_breakdown.to_compact()} |")
 
         lines += ["", "## Evidence Summaries"]
         for row in ranked:
