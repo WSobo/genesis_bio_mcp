@@ -74,7 +74,7 @@ def _mock_clients(
 
 
 async def test_braf_melanoma_full_report():
-    """BRAF assessed for melanoma should return a High priority report with all fields."""
+    """BRAF assessed for melanoma should return a strong evidence profile with all fields."""
     uniprot, open_targets, depmap, gwas_client, pubchem, chembl = _mock_clients(
         protein=build_mock_protein_info("BRAF"),
         association=build_mock_association("BRAF", "melanoma", score=0.89),
@@ -98,9 +98,13 @@ async def test_braf_melanoma_full_report():
     assert report.gene_symbol == "BRAF"
     assert report.indication == "melanoma"
 
-    # Priority
-    assert report.priority_tier == "High"
-    assert report.priority_score > 7.0
+    # Evidence profile — each axis rated independently; no composite score
+    assert not hasattr(report, "priority_score")
+    axes = {a.name: a.rating for a in report.evidence_profile}
+    assert axes["Disease association"] == "strong"  # OT overall 0.89
+    assert axes["Clinical validation"] == "strong"  # known-drug 0.88
+    assert axes["Genetic evidence"] == "strong"  # OT genetic 0.72 + 5 melanoma GWAS hits
+    assert axes["Cancer dependency"] == "strong"  # 61% dependent, real DepMap Chronos
 
     # Evidence fields all populated
     assert report.protein_info is not None
@@ -166,9 +170,11 @@ async def test_prioritization_handles_api_failures_gracefully():
     assert report.disease_association is not None
     assert report.compounds is not None
 
-    # Still gets a tier (lower score without DepMap/GWAS, but not zero)
-    assert report.priority_tier in ("High", "Medium", "Low")
-    assert report.priority_score >= 0.0
+    # Failed sources are rated n/a, not silently scored zero
+    axes = {a.name: a.rating for a in report.evidence_profile}
+    assert axes["Cancer dependency"] == "n/a"  # DepMap failed
+    assert axes["Genetic evidence"] == "strong"  # GWAS failed but OT genetic 0.72 still rates it
+    assert axes["Disease association"] == "strong"  # OT survived
 
     # Does not raise — critical for agent stability
     assert report is not None
@@ -202,8 +208,9 @@ async def test_prioritization_all_apis_fail():
     assert report.gwas_evidence is None
     assert report.compounds is None
     assert len(report.data_gaps) == 6  # includes chembl
-    assert report.priority_score == pytest.approx(0.0)
-    assert report.priority_tier == "Low"
+    # Every axis is n/a — no data means no signal, never a fabricated zero score
+    assert report.evidence_profile
+    assert all(a.rating == "n/a" for a in report.evidence_profile)
     assert report is not None  # Never raises
 
 
@@ -212,8 +219,10 @@ async def test_prioritization_all_apis_fail():
 # ---------------------------------------------------------------------------
 
 
-async def test_pan_essential_gene_capped_score():
-    """Pan-essential genes should not score full DepMap points."""
+async def test_pan_essential_gene_rated_weak_not_strong():
+    """Pan-essential genes carry a narrow therapeutic window — the cancer-
+    dependency axis must be 'weak' (a liability), never 'strong', no matter
+    how high the dependent fraction is."""
     pan_essential_dep = build_mock_dependency("MYC", mean_score=-1.8, fraction_dependent=0.95)
     pan_essential_dep = pan_essential_dep.model_copy(update={"pan_essential": True})
 
@@ -232,12 +241,10 @@ async def test_pan_essential_gene_capped_score():
         chembl=chembl,
     )
 
-    # Pan-essential contribution is capped at 0.5, not 2.0
-    # So report.priority_score should reflect the capped value
     assert report is not None
-    # With capped DepMap + full OT (score 0.89 * 3 = 2.67) + other sources,
-    # score should still be reasonable but not max
-    assert report.priority_score <= 10.0
+    dep_axis = next(a for a in report.evidence_profile if a.name == "Cancer dependency")
+    assert dep_axis.rating == "weak"  # pan-essential is a liability, not strength
+    assert "pan-essential" in dep_axis.detail.lower()
 
 
 # ---------------------------------------------------------------------------

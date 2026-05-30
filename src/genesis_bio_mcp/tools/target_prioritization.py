@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING, Any
 
 from genesis_bio_mcp.clients.dgidb import _DIRECT_TYPES
 from genesis_bio_mcp.models import (
-    _EXPRESSION_BY_CATEGORY,
+    _EXPRESSION_RATING,
     CancerDependency,
     ChEMBLCompounds,
     Compounds,
     DrugHistory,
     DrugInteraction,
+    EvidenceAxis,
     GeneResolution,
     GwasEvidence,
     PathwayContext,
@@ -21,7 +22,6 @@ from genesis_bio_mcp.models import (
     ProteinInfo,
     ProteinInteractome,
     ProteinStructure,
-    ScoreBreakdown,
     TargetComparisonRow,
     TargetDiseaseAssociation,
     TargetPrioritizationReport,
@@ -46,79 +46,39 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Scoring constants
+# Classification thresholds for the evidence profile
 #
-# These are the two tunable parameters most likely to need adjustment as
-# ground-truth target assessments accumulate. Both are intentionally modest
-# to avoid over-fitting to any single target class.
-#
-# LINEAGE_MATCH_FACTOR (1.2):
-#   Multiplicative bonus applied to the DepMap dependency contribution when
-#   the query indication matches a top dependent lineage. Rescues lineage-
-#   restricted oncogenes (e.g. BRAF in melanoma) from being penalized for
-#   low pan-cancer dependency. Capped so the DepMap axis never exceeds its
-#   2.0 max. Range to consider: 1.1–1.5. Above ~1.5 starts to over-reward
-#   targets with any incidental lineage overlap.
-#
-# PUBCHEM_MIN_COMPOUNDS (5):
-#   Minimum PubChem active compound count required to contribute a chemical
-#   matter score. Below this threshold (and with no ChEMBL potency data),
-#   the target is reported as "no usable chemical matter." The threshold
-#   filters out single-assay hits and data entry noise. Range to consider:
-#   3–10. Below 3 risks counting artifacts; above 10 may be too conservative
-#   for early-stage targets.
+# These are *classification boundaries* used to label one axis at a time
+# (strong / moderate / weak / none / n-a) — NOT weights, multipliers, or a
+# composite score. None of them is tuned to land a particular named target in
+# a particular tier; each is a conventional cutoff for its single metric.
 # ---------------------------------------------------------------------------
 
-LINEAGE_MATCH_FACTOR = 1.2
+# PUBCHEM_MIN_COMPOUNDS (5):
+#   Minimum PubChem active-compound count for the chemical-tractability axis to
+#   register any signal when no ChEMBL potency data exists. Below this (and with
+#   no ChEMBL data) the axis is "none" — the count filters single-assay hits and
+#   data-entry noise from a real chemical-matter signal.
 PUBCHEM_MIN_COMPOUNDS = 5
 
-# OT_CLINICALLY_VALIDATED_FLOOR (3.25):
-#   Minimum OT contribution for targets with approved drugs (known_drug_score > 0.9).
-#   OT's overall_score is a composite across 6-8 evidence datatypes (genetic, somatic,
-#   known_drug, literature, expression, pathways, animal models, etc.). For biologics
-#   targets, expression/pathway/animal model datatypes score moderately (~0.4-0.7),
-#   pulling the composite below 0.7 even when known_drug and literature are ~0.99.
-#   Approved drugs are the gold standard of target-disease validation; a composite
-#   score of 0.63-0.64 for TNF/RA and HER2/breast cancer understates that certainty.
-#   The floor ensures pharmacological validation is never washed out by weak-but-
-#   populated orthogonal evidence types.
-#
-#   Value exceeds the OT axis natural max (3.0) by design: the excess 0.25 represents
-#   certainty from approved drug evidence that OT's multi-datatype average cannot fully
-#   express. Calibrated so HER2/breast cancer (OT base 1.902 → 7.65 High) and TNF/RA
-#   (OT base 1.926 → 7.10 High) reach the correct tier. Range to consider: 3.0–3.5.
-#   Below 3.15 leaves TNF at Medium; above 3.5 risks over-scoring targets with one
-#   approved drug and a weak OT overall.
-OT_CLINICALLY_VALIDATED_FLOOR = 3.25
-
 # OT_GENETIC_MONOGENIC_THRESHOLD (0.7):
-#   Threshold on Open Targets' ``genetic_association_score`` above which the
-#   GWAS axis is treated as N/A (rather than zero) when GWAS Catalog returns
-#   no hits. A score >0.7 is the empirical signature of monogenic / Mendelian
-#   diseases (CFTR/CF=0.99, HBB/sickle cell=0.96, HTT/Huntington's=0.94 all
-#   sit here) for which GWAS Catalog has no entries by design — they're
-#   studied via Mendelian linkage and ClinVar, not population GWAS. Without
-#   this gate, CFTR/CF scored 6.7 MEDIUM despite being the most-validated
-#   target-disease pair in cystic fibrosis history. Polygenic targets
-#   (FTO/obesity=0.55, PCSK9/CHD=0.65) sit below the threshold and are
-#   unaffected. Range to consider: 0.65–0.8. Below 0.65 starts crediting
-#   moderate-evidence polygenic targets that should still surface GWAS hits;
-#   above 0.8 leaves some monogenic targets uncredited.
+#   Open Targets ``genetic_association_score`` above which the genetic-evidence
+#   axis is rated "strong" even when GWAS Catalog returns no hits. A score >0.7
+#   is the signature of monogenic / Mendelian disease (CFTR/CF≈0.99,
+#   HBB/sickle-cell≈0.96, HTT/Huntington's≈0.94) — studied via Mendelian linkage
+#   and ClinVar, not population GWAS, so an empty GWAS Catalog is expected rather
+#   than weak evidence. Polygenic targets (FTO/obesity≈0.55, PCSK9/CHD≈0.65) sit
+#   below it and are rated from their actual GWAS hits.
 OT_GENETIC_MONOGENIC_THRESHOLD = 0.7
 
 # _GWAS_TRAIT_RELEVANCE_MIN (0.15):
-#   Minimum token-set Jaccard between the indication and the most-relevant
-#   GWAS hit's trait label, below which the GWAS axis is zeroed even when
-#   the gwas_ev was not flagged as a fallback. Catches direct-match returns
-#   where the queried trait substring-matched something incidental in the
-#   GWAS Catalog (TP53/Li-Fraumeni returning sex-hormone-binding-globulin
-#   hits because "TP53" appeared in the study title). Calibrated so:
-#     - PCSK9/CHD vs "Coronary artery disease" → ~0.50, credited ✓
-#     - EGFR/NSCLC vs "Lung cancer" → ~0.20, credited ✓
-#     - TP53/LFS vs "sex hormone-binding globulin" → ~0.0, zeroed ✓
-#   Range to consider: 0.10–0.25. Below 0.10 risks crediting completely
-#   unrelated traits; above 0.25 risks zeroing legitimate near-misses
-#   (parent disease vs subtype, brand-name trait vs generic).
+#   Minimum token-set Jaccard between the indication and a GWAS hit's trait label
+#   for that hit to count as *trait-relevant*. This is a relevance/correctness
+#   filter, not a score weight: it stops a hit that merely substring-matched
+#   something incidental in the Catalog (e.g. a TP53-locus sex-hormone-binding-
+#   globulin study for a Li-Fraumeni query) from being counted as genetic
+#   evidence for the indication. It is a coarse string-overlap heuristic — it
+#   classifies hits as on/off-trait, nothing more.
 _GWAS_TRAIT_RELEVANCE_MIN = 0.15
 
 
@@ -174,8 +134,7 @@ def build_comparison_row(
     if isinstance(report, BaseException):
         return TargetComparisonRow(
             gene_symbol=gene_symbol.upper(),
-            priority_score=0.0,
-            priority_tier="Error",
+            evidence_profile=[],
             data_gaps=["all"],
             evidence_summary=f"Query failed: {report}",
         )
@@ -186,8 +145,7 @@ def build_comparison_row(
     chembl = report.chembl_compounds
     return TargetComparisonRow(
         gene_symbol=report.gene_symbol,
-        priority_score=report.priority_score,
-        priority_tier=report.priority_tier,
+        evidence_profile=report.evidence_profile,
         ot_score=report.disease_association.overall_score if report.disease_association else None,
         depmap_pct=depmap_pct,
         depmap_real_data=depmap_real,
@@ -197,7 +155,6 @@ def build_comparison_row(
         gwas_count=report.gwas_evidence.total_associations if report.gwas_evidence else None,
         data_gaps=report.data_gaps,
         evidence_summary=report.evidence_summary,
-        score_breakdown=report.score_breakdown,
     )
 
 
@@ -310,7 +267,7 @@ async def prioritize_target(
             (ext_protein_atlas, _),
         ) = ext_results
 
-    priority_score, score_breakdown = _compute_score(
+    evidence_profile = _build_evidence_profile(
         disease_assoc,
         cancer_dep,
         gwas_ev,
@@ -320,9 +277,8 @@ async def prioritize_target(
         indication=indication,
         protein_atlas=ext_protein_atlas,
     )
-    priority_tier = _tier(priority_score)
 
-    # Confidence scoring: quantify data completeness and flag proxy sources
+    # Data completeness + proxy flags (kept — real provenance, no composite score)
     _CORE_SOURCES = ["uniprot", "open_targets", "depmap", "gwas", "pubchem", "chembl"]
     filled = sum(1 for s in _CORE_SOURCES if s not in data_gaps)
     data_coverage_pct = round(filled / len(_CORE_SOURCES) * 100, 1)
@@ -332,15 +288,6 @@ async def prioritize_target(
         proxy_data_flags["depmap"] = True
     if chembl_compounds is None and compounds is not None:
         proxy_data_flags["compounds"] = True
-
-    missing_fraction = 1.0 - data_coverage_pct / 100.0
-    score_bound = round(priority_score * missing_fraction * 0.5, 2)
-    score_confidence_interval: tuple[float, float] | None = None
-    if score_bound > 0:
-        score_confidence_interval = (
-            round(max(0.0, priority_score - score_bound), 2),
-            round(min(10.0, priority_score + score_bound), 2),
-        )
 
     evidence_summary = _build_summary(
         symbol,
@@ -378,15 +325,12 @@ async def prioritize_target(
         gwas_evidence=gwas_ev,
         compounds=compounds,
         chembl_compounds=chembl_compounds,
-        priority_score=round(priority_score, 2),
-        priority_tier=priority_tier,
-        score_breakdown=score_breakdown,
+        evidence_profile=evidence_profile,
         evidence_summary=evidence_summary,
         data_gaps=data_gaps,
         errors=errors,
         data_coverage_pct=data_coverage_pct,
         proxy_data_flags=proxy_data_flags,
-        score_confidence_interval=score_confidence_interval,
         api_latency_s=api_latency_s,
         protein_structure=ext_structure,
         protein_interactome=ext_interactome,
@@ -539,7 +483,7 @@ async def _return_empty_tuple() -> tuple:
     return [], {}
 
 
-def _compute_score(
+def _build_evidence_profile(
     disease_assoc: TargetDiseaseAssociation | None,
     cancer_dep: CancerDependency | None,
     gwas_ev: GwasEvidence | None,
@@ -548,171 +492,270 @@ def _compute_score(
     chembl_compounds: ChEMBLCompounds | None = None,
     indication: str = "",
     protein_atlas: ProteinAtlasReport | None = None,
-) -> tuple[float, ScoreBreakdown]:
-    """Compute the priority score and the per-axis breakdown that produced it.
+) -> list[EvidenceAxis]:
+    """Classify each evidence axis independently into strong / moderate / weak / none / n-a.
 
-    Returns ``(total, breakdown)`` where ``total`` is the 0–10 capped score and
-    ``breakdown`` exposes each of the six axes' contributions. Callers show the
-    breakdown to make rankings auditable — otherwise a user can't tell why a
-    target with the highest Open Targets score can rank below peers that win
-    on DepMap, GWAS, drug, and chemical-matter axes.
+    There is deliberately **no** composite score: each axis is rated only from its
+    own source metric, using documented conventional boundaries — never weighted,
+    multiplied, or summed. ``none`` means data was present but showed no signal;
+    ``n/a`` means the source returned nothing (a gap). Keeping the axes separate
+    preserves the cross-axis trade-off (genetics vs tractability vs chemistry are
+    distinct go/no-go gates) that a single number would erase.
     """
-    breakdown = ScoreBreakdown()
+    axes: list[EvidenceAxis] = []
 
-    # Open Targets association (max 3.0; floor raised for clinically validated targets)
-    # When known_drug_score > 0.9 AND both genetic_association and somatic_mutation
-    # subscores are null, floor the OT contribution at OT_CLINICALLY_VALIDATED_FLOOR.
-    #
-    # The two-gate condition matters: genetic/somatic null means the OT composite is
-    # artificially low because those evidence classes are non-applicable for this
-    # target mechanism (CNV amplification, cytokine inhibition) — not because the
-    # evidence is weak. When somatic or genetic IS populated (e.g. BRAF V600E), the
-    # OT composite accurately reflects the full evidence base and should not be floored.
-    if disease_assoc:
-        ot_contrib = disease_assoc.overall_score * 3.0
-        if (
-            (disease_assoc.known_drug_score or 0.0) > 0.9
-            and disease_assoc.genetic_association_score is None
-            and disease_assoc.somatic_mutation_score is None
-        ):
-            ot_contrib = max(ot_contrib, OT_CLINICALLY_VALIDATED_FLOOR)
-        breakdown.ot = ot_contrib
-
-    # DepMap cancer dependency (max 2.0)
-    # Apply 0.7x confidence discount when using OT somatic mutation proxy instead of real CRISPR data.
-    # Apply 1.2x lineage bonus when the query indication matches a top dependent lineage
-    # (e.g. BRAF 9% overall dependency is concentrated in melanoma — penalizing it equally to a
-    # pan-cancer 9% target misrepresents the biology for a melanoma query).
-    if cancer_dep and not cancer_dep.pan_essential:
-        is_real_depmap = "DepMap Chronos" in cancer_dep.data_source
-        confidence = 1.0 if is_real_depmap else 0.7
-        lineage_match = indication and any(
-            indication.lower() in lin.lower() or lin.lower() in indication.lower()
-            for lin in (cancer_dep.top_dependent_lineages or [])
+    # --- Disease association (Open Targets overall_score) --------------------
+    if disease_assoc is not None:
+        s = disease_assoc.overall_score
+        rating = "strong" if s >= 0.5 else "moderate" if s >= 0.2 else "weak" if s > 0 else "none"
+        axes.append(
+            EvidenceAxis(
+                name="Disease association",
+                rating=rating,
+                detail=f"OT overall {s:.2f}, n={disease_assoc.evidence_count} evidence items",
+                value=s,
+            )
         )
-        lineage_factor = LINEAGE_MATCH_FACTOR if lineage_match else 1.0
-        breakdown.depmap = min(
-            cancer_dep.fraction_dependent_lines * 2.0 * confidence * lineage_factor, 2.0
+    else:
+        axes.append(
+            EvidenceAxis(name="Disease association", rating="n/a", detail="no Open Targets data")
         )
-    elif cancer_dep and cancer_dep.pan_essential:
-        # Pan-essential genes have narrow therapeutic windows — cap contribution
-        breakdown.depmap = 0.5
 
-    # GWAS evidence (max 2.0)
-    # Cap at 3: ≥3 replicated trait hits = full credit. Keeps score stable whether
-    # the fetch returned 3 or 30 hits — pagination differences don't affect scoring.
-    #
-    # Bug M (v0.3.3): when GWAS fell back to unfiltered top gene-level
-    # associations (Bug D fix), the surfaced hits aren't trait-relevant — they
-    # might be height or sex-hormone GWAS hits at a TP53 locus when the query
-    # was Li-Fraumeni. Surface them in the report for context, but the GWAS
-    # axis must score 0 — the axis represents trait-relevant evidence, and
-    # off-trait hits don't count. Without this gate, MRAS outranked HRAS for
-    # PDAC because MRAS's GWAS fallback got full 2.0 credit from unrelated
-    # traits.
-    #
-    # Monogenic credit: when OT's genetic_association_score is high
-    # (> OT_GENETIC_MONOGENIC_THRESHOLD), the disease is Mendelian and absent
-    # GWAS data is a feature of the disease class, not weak evidence. Award
-    # full GWAS credit to avoid double-penalizing CF, sickle cell, Huntington's,
-    # and other targets where OT's overall_score already captures the genetic
-    # certainty in full.
-    if gwas_ev:
-        # Bug M (v0.3.3): zero credit when the fallback path explicitly
-        # marked the hits as off-trait via the trait_query sentinel.
-        # Bug M refined (v0.3.4): even in the direct-match path, GWAS
-        # Catalog can return hits whose trait labels don't relate to the
-        # queried indication (TP53/Li-Fraumeni returning sex-hormone-binding-
-        # globulin hits because "TP53" is in the study title). Also zero
-        # out when the returned hits' trait labels show no meaningful token
-        # overlap with the indication.
+    # --- Clinical validation (Open Targets known_drug_score) -----------------
+    if disease_assoc is not None:
+        kd = disease_assoc.known_drug_score or 0.0
+        if kd >= 0.7:
+            rating, note = "strong", "approved / clinical-stage therapeutics exist"
+        elif kd >= 0.3:
+            rating, note = "moderate", "clinical-stage drug evidence"
+        elif kd > 0:
+            rating, note = "weak", "limited known-drug evidence"
+        else:
+            rating, note = "none", "no known-drug evidence"
+        axes.append(
+            EvidenceAxis(
+                name="Clinical validation",
+                rating=rating,
+                detail=f"known-drug {kd:.2f} — {note}",
+                value=kd,
+            )
+        )
+    else:
+        axes.append(
+            EvidenceAxis(name="Clinical validation", rating="n/a", detail="no Open Targets data")
+        )
+
+    # --- Genetic evidence (trait-relevant GWAS hits + OT genetic_association) -
+    # The trait-relevance filter is a correctness check (does the hit's trait
+    # actually match the indication?), not a score weight. A high OT genetic
+    # score is the monogenic/Mendelian signature, for which an empty GWAS
+    # Catalog is expected rather than weak evidence.
+    ot_genetic = (disease_assoc.genetic_association_score or 0.0) if disease_assoc else 0.0
+    trait_relevant_hits = 0
+    gwas_note: str | None = None
+    if gwas_ev is not None:
         is_fallback = "no exact-trait match" in (gwas_ev.trait_query or "")
         is_off_trait = (
             not is_fallback
-            and gwas_ev.associations
+            and bool(gwas_ev.associations)
             and _max_trait_relevance(gwas_ev.associations, indication) < _GWAS_TRAIT_RELEVANCE_MIN
         )
         if is_fallback or is_off_trait:
-            breakdown.gwas = 0.0
+            gwas_note = (
+                f"{gwas_ev.total_associations} GWAS hits but trait labels off-indication"
+                if gwas_ev.total_associations > 0
+                else "no GWAS hits"
+            )
         else:
-            breakdown.gwas = min(gwas_ev.total_associations, 3) / 3 * 2.0
-    elif (
-        disease_assoc
-        and (disease_assoc.genetic_association_score or 0) > OT_GENETIC_MONOGENIC_THRESHOLD
-    ):
-        breakdown.gwas = 2.0
+            trait_relevant_hits = gwas_ev.total_associations
+            gwas_note = f"{trait_relevant_hits} trait-relevant GWAS hit(s)"
 
-    # Clinical / known-drug evidence (max 1.5)
-    # Distinguishes targets with approved drugs from literature-only at the same OT overall_score
-    if disease_assoc and disease_assoc.known_drug_score:
-        breakdown.known_drug = disease_assoc.known_drug_score * 1.5
+    detail_parts: list[str] = []
+    if disease_assoc is not None:
+        detail_parts.append(f"OT genetic {ot_genetic:.2f}")
+    if gwas_note:
+        detail_parts.append(gwas_note)
 
-    # Chemical matter (max 1.5)
-    # ChEMBL potency-based scoring takes precedence over PubChem count-based scoring.
-    #
-    # Bug I (v0.3.3): assay-type weighting. A pChEMBL of 9 from a binding
-    # assay tells you nothing about cellular activity — MYC has dozens of
-    # high-pChEMBL hits from MYC-MAX heterodimerization or G-quadruplex
-    # binders, none of which translate to cellular MYC inhibition. Apply
-    # full credit only when the strongest potency comes from a cell-based /
-    # functional assay (assay_type=F); binding-only evidence gets a discount
-    # because binding ≠ druggability.
-    if chembl_compounds and chembl_compounds.best_pchembl is not None:
+    if gwas_ev is None and disease_assoc is None:
+        axes.append(
+            EvidenceAxis(
+                name="Genetic evidence", rating="n/a", detail="no GWAS or Open Targets data"
+            )
+        )
+    else:
+        if ot_genetic >= OT_GENETIC_MONOGENIC_THRESHOLD:
+            rating = "strong"
+            if trait_relevant_hits == 0:
+                detail_parts.append("monogenic/Mendelian signature — GWAS Catalog absent by design")
+        elif trait_relevant_hits >= 3:
+            rating = "strong"
+        elif ot_genetic >= 0.3 or trait_relevant_hits >= 1:
+            rating = "moderate"
+        elif (gwas_ev is not None and gwas_ev.total_associations > 0) or ot_genetic > 0:
+            rating = "weak"
+        else:
+            rating = "none"
+        axes.append(
+            EvidenceAxis(
+                name="Genetic evidence",
+                rating=rating,
+                detail="; ".join(detail_parts) or "no genetic signal",
+                value=ot_genetic or None,
+            )
+        )
+
+    # --- Cancer dependency (DepMap CRISPR; OT somatic as proxy) --------------
+    if cancer_dep is None:
+        axes.append(EvidenceAxis(name="Cancer dependency", rating="n/a", detail="no DepMap data"))
+    else:
+        frac = cancer_dep.fraction_dependent_lines
+        pct = int(frac * 100)
+        is_real = "DepMap Chronos" in cancer_dep.data_source
+        if cancer_dep.pan_essential:
+            axes.append(
+                EvidenceAxis(
+                    name="Cancer dependency",
+                    rating="weak",
+                    detail=f"pan-essential ({pct}% of lines) — narrow therapeutic window",
+                    value=frac,
+                )
+            )
+        else:
+            lineage_match = bool(indication) and any(
+                indication.lower() in lin.lower() or lin.lower() in indication.lower()
+                for lin in (cancer_dep.top_dependent_lineages or [])
+            )
+            rating = (
+                "strong"
+                if frac >= 0.5
+                else "moderate"
+                if frac >= 0.2
+                else "weak"
+                if frac > 0
+                else "none"
+            )
+            # A low pan-cancer fraction concentrated in the queried lineage is
+            # still strong evidence for *that* indication (qualitative, not a multiplier).
+            if lineage_match and rating in ("moderate", "weak"):
+                rating = "strong"
+            # Proxy data (OT somatic, not real CRISPR) is lower confidence — cap at moderate.
+            if not is_real and rating == "strong":
+                rating = "moderate"
+            parts = [f"{pct}% of lines dependent"]
+            if not is_real:
+                parts.append("OT somatic proxy")
+            top = ", ".join((cancer_dep.top_dependent_lineages or [])[:3])
+            if top:
+                parts.append(f"top: {top}")
+            if lineage_match:
+                parts.append("matches indication")
+            axes.append(
+                EvidenceAxis(
+                    name="Cancer dependency",
+                    rating=rating,
+                    detail="; ".join(parts),
+                    value=frac,
+                )
+            )
+
+    # --- Chemical tractability (ChEMBL potency, then PubChem breadth) --------
+    # Functional/cell-based potency is rated a full tier above binding-only at
+    # the same pChEMBL: binding ≠ cellular activity ≠ druggability.
+    if chembl_compounds is not None and chembl_compounds.best_pchembl is not None:
+        n = chembl_compounds.total_active_compounds
         bp_func = chembl_compounds.best_pchembl_functional
         bp_overall = chembl_compounds.best_pchembl
         if bp_func is not None:
-            # Functional / cell-based potency present — full credit on the
-            # functional best (which is ≤ overall best by construction).
-            if bp_func >= 9:
-                breakdown.chem_matter = 1.5
-            elif bp_func >= 7:
-                breakdown.chem_matter = 1.0
-            elif bp_func >= 5:
-                breakdown.chem_matter = 0.5
-            else:
-                breakdown.chem_matter = 0.25
+            rating = "strong" if bp_func >= 8 else "moderate" if bp_func >= 6 else "weak"
+            grade = (
+                "clinical-grade"
+                if bp_func >= 9
+                else "lead-quality"
+                if bp_func >= 7
+                else "hit-quality"
+            )
+            detail = f"best functional pChEMBL {bp_func:.1f} ({grade}), {n} ChEMBL actives"
+            value = bp_func
         else:
-            # Binding-only potency — apply ~33% discount. Strong binders may
-            # still mark a tractable target, but the confidence is lower.
-            if bp_overall >= 9:
-                breakdown.chem_matter = 1.0  # was 1.5
-            elif bp_overall >= 7:
-                breakdown.chem_matter = 0.7  # was 1.0
-            elif bp_overall >= 5:
-                breakdown.chem_matter = 0.35  # was 0.5
-            else:
-                breakdown.chem_matter = 0.2  # was 0.25
-    elif compounds and compounds.total_active_compounds >= PUBCHEM_MIN_COMPOUNDS:
-        breakdown.chem_matter = min(compounds.total_active_compounds, 100) / 100 * 1.5
-    # PubChem count < PUBCHEM_MIN_COMPOUNDS with no ChEMBL potency data → no usable chemical matter
+            rating = "moderate" if bp_overall >= 8 else "weak"
+            detail = (
+                f"best pChEMBL {bp_overall:.1f} (binding-only, no functional confirmation), "
+                f"{n} ChEMBL actives"
+            )
+            value = bp_overall
+        axes.append(
+            EvidenceAxis(name="Chemical tractability", rating=rating, detail=detail, value=value)
+        )
+    elif compounds is not None and compounds.total_active_compounds >= PUBCHEM_MIN_COMPOUNDS:
+        axes.append(
+            EvidenceAxis(
+                name="Chemical tractability",
+                rating="weak",
+                detail=f"{compounds.total_active_compounds} PubChem actives (count only, no potency data)",
+                value=float(compounds.total_active_compounds),
+            )
+        )
+    elif compounds is not None:
+        axes.append(
+            EvidenceAxis(
+                name="Chemical tractability",
+                rating="none",
+                detail=(
+                    f"{compounds.total_active_compounds} PubChem actives — below tractability "
+                    f"threshold ({PUBCHEM_MIN_COMPOUNDS})"
+                ),
+                value=float(compounds.total_active_compounds),
+            )
+        )
+    else:
+        axes.append(
+            EvidenceAxis(
+                name="Chemical tractability", rating="n/a", detail="no ChEMBL or PubChem data"
+            )
+        )
 
-    # Protein quality (max 1.5)
-    if protein:
-        pi_score = 0.0
+    # --- Annotation quality (UniProt) ----------------------------------------
+    if protein is None:
+        axes.append(EvidenceAxis(name="Annotation quality", rating="n/a", detail="no UniProt data"))
+    else:
+        nvar = len(protein.known_variants)
+        var_str = f"{nvar} known variant{'s' if nvar != 1 else ''}"
         if protein.reviewed:
-            pi_score += 0.5
-        pi_score += min(len(protein.known_variants), 2) / 2 * 1.0
-        breakdown.protein = pi_score
+            axes.append(
+                EvidenceAxis(
+                    name="Annotation quality",
+                    rating="strong",
+                    detail=f"SwissProt-reviewed; {var_str}",
+                )
+            )
+        else:
+            axes.append(
+                EvidenceAxis(
+                    name="Annotation quality",
+                    rating="moderate",
+                    detail=f"unreviewed (TrEMBL); {var_str}",
+                )
+            )
 
-    # Tissue expression (max 1.0) — HPA tissue-specificity category drives a
-    # therapeutic-window bonus. Restricted expression is favorable: a gene
-    # expressed everywhere has a narrower safety margin than one concentrated
-    # in the indication-relevant tissue. No HPA → axis contributes 0.0, which
-    # preserves pre-v0.3.0 rankings when HPA isn't queried.
-    if protein_atlas and protein_atlas.expression:
-        cat = protein_atlas.expression.rna_tissue_specificity_category or ""
-        breakdown.expression = _EXPRESSION_BY_CATEGORY.get(cat, 0.0)
+    # --- Tissue specificity (HPA) — only when extended mode fetched it -------
+    # Restricted expression is a therapeutic-window advantage. Axis is added only
+    # when HPA was queried; absent in standard mode rather than rated n/a.
+    if protein_atlas is not None:
+        cat = (
+            protein_atlas.expression.rna_tissue_specificity_category
+            if protein_atlas.expression
+            else None
+        )
+        rating = _EXPRESSION_RATING.get(cat or "", "n/a")
+        axes.append(
+            EvidenceAxis(
+                name="Tissue specificity",
+                rating=rating,
+                detail=f"HPA: {cat}" if cat else "no HPA specificity category",
+            )
+        )
 
-    total = min(breakdown.total, 10.0)
-    return total, breakdown
-
-
-def _tier(score: float) -> str:
-    if score >= 7.0:
-        return "High"
-    if score >= 4.0:
-        return "Medium"
-    return "Low"
+    return axes
 
 
 def _build_summary(
@@ -761,15 +804,13 @@ def _build_summary(
                 indication.lower() in lin.lower() or lin.lower() in indication.lower()
                 for lin in (cancer_dep.top_dependent_lineages or [])
             )
-            bonus_note = (
-                f" [DepMap score boosted {LINEAGE_MATCH_FACTOR}× — indication matches top lineage]"
-                if lineage_match
-                else ""
+            match_note = (
+                " — concentrated in the queried indication's lineage" if lineage_match else ""
             )
             parts.append(
                 f"DepMap CRISPR data show dependency in {pct}% of cancer lines"
                 + (f", highest in {top}" if top else "")
-                + bonus_note
+                + match_note
                 + "."
             )
 

@@ -1,10 +1,11 @@
 # Roadmap
 
-Current release: **v0.6.1** — 42 tools across 24 public biomedical data sources (plus local
+Current release: **v0.7.0** — 42 tools across 24 public biomedical data sources (plus local
 RDKit cheminformatics, the UMA-Inverse model service, and an optional embedding-backed corpus),
-with `prioritize_target` / `compare_targets` orchestration, the `run_biology_workflow` agent, the
-agent-contract provenance/typed-error envelope on all JSON output, and the v0.6.0 hybrid-retrieval
-`corpus_*` tools (Postgres + pgvector).
+with `prioritize_target` / `compare_targets` orchestration (now a transparent per-axis **evidence
+profile** rather than a composite score), the `run_biology_workflow` agent, the agent-contract
+provenance/typed-error envelope on all JSON output, and the v0.6.0 hybrid-retrieval `corpus_*` tools
+(Postgres + pgvector).
 
 ## North star
 

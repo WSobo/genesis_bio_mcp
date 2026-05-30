@@ -267,7 +267,7 @@ async def test_agent_loop_multi_step_mapk_workflow():
     pathway_fn = AsyncMock(return_value="## Pathway: MAPK\n\nMAP2K1 is in MAPK cascade.")
     drug_fn = AsyncMock(return_value="## Drug History: MAP2K1\n\nNo approved drugs found.")
     prioritize_fn = AsyncMock(
-        return_value="## Target Assessment: MAP2K1\n\nScore: 6.5/10 — Medium."
+        return_value="## Target Assessment: MAP2K1\n\nEvidence profile: disease ●●○ Moderate."
     )
 
     registry = {
@@ -336,7 +336,7 @@ async def test_agent_loop_multi_step_mapk_workflow():
     # Final synthesis
     final = _make_response(
         "end_turn",
-        [_text_block("MAP2K1 is underexplored with no approved drugs. Score: 6.5/10.")],
+        [_text_block("MAP2K1 is underexplored with no approved drugs; moderate disease evidence.")],
     )
 
     mock_create = AsyncMock(side_effect=[step1, step2, step3, final])

@@ -313,7 +313,7 @@ _QUERY_ATTRS = (
     "target",
 )
 _VERSION_ATTRS = ("dataset_version", "release", "data_version", "source_version", "model_version")
-_CONFIDENCE_ATTRS = ("confidence", "mean_confidence", "priority_score")
+_CONFIDENCE_ATTRS = ("confidence", "mean_confidence")
 
 
 def _first_attr(result: object, attrs: tuple[str, ...]) -> object | None:
@@ -2260,20 +2260,25 @@ async def prioritize_target(params: PrioritizeTargetInput) -> str:
 
     Use this tool when you need a full evidence synthesis for target prioritization.
     Queries all databases in parallel (UniProt, Open Targets, DepMap, GWAS Catalog,
-    PubChem, ChEMBL) and returns a structured Markdown report with a composite
-    priority score (0–10). Use for go/no-go decisions on a target–indication pair.
+    PubChem, ChEMBL) and returns a structured Markdown report with a per-axis
+    evidence profile — each axis (disease association, clinical validation, genetics,
+    cancer dependency, chemical tractability, annotation) rated independently as
+    strong/moderate/weak/none/n-a. There is deliberately no single composite score,
+    so the cross-axis trade-off stays visible for go/no-go reasoning on a
+    target–indication pair.
 
     Set extended=True for a deeper report that also includes AlphaFold structure data,
     STRING interactome (selectivity risks), drug history (DGIdb + ClinicalTrials.gov),
-    and Reactome pathway context. Extended mode adds ~10–20s to query time.
+    Reactome pathway context, and an HPA tissue-specificity axis. Extended mode adds
+    ~10–20s to query time.
 
     Args:
         params (PrioritizeTargetInput): gene_symbol, indication, extended, response_format.
 
     Returns:
-        Markdown report with priority_score (0–10), priority_tier (High/Medium/Low),
-        evidence summary, scoring breakdown table, and data gaps.
-        With extended=True, also includes structure, interactors, drugs, and pathways.
+        Markdown report with a per-axis evidence profile, a plain-language evidence
+        summary, data-source coverage, and data gaps. With extended=True, also includes
+        structure, interactors, drugs, pathways, and tissue specificity.
     """
     result = await _prioritize_target(
         gene_symbol=params.gene_symbol,
@@ -2303,15 +2308,19 @@ async def prioritize_target(params: PrioritizeTargetInput) -> str:
 async def compare_targets(params: CompareTargetsInput) -> str:
     """Compare 2–5 drug targets side by side for a given therapeutic indication.
 
-    Runs a full prioritize_target assessment for each gene in parallel and returns
-    a ranked Markdown comparison table. Use this tool when you need to choose between
-    multiple candidate targets or rank a target panel for an indication.
+    Runs a full prioritize_target assessment for each gene in parallel and returns a
+    Markdown evidence matrix (genes × axes, each cell rated strong/moderate/weak), a
+    raw-signals table, and per-gene evidence summaries. Rows are ordered by strength of
+    evidence (count of strong, then moderate axes) — a transparent ordering for
+    convenience, not a validated composite score. Use this when choosing between
+    multiple candidate targets for an indication.
 
     Args:
         params (CompareTargetsInput): gene_symbols (2–5), indication, response_format.
 
     Returns:
-        Markdown table ranking all genes by priority score, with per-gene evidence summaries.
+        Markdown evidence matrix + raw signals + per-gene summaries, ordered by
+        strength of evidence.
     """
     gene_symbols = list(params.gene_symbols)
     dropped: list[str] = []

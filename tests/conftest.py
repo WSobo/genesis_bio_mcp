@@ -494,7 +494,7 @@ def build_mock_dependency(
                 is_dependent=True,
             ),
         ],
-        data_source="DepMap Public 24Q4",
+        data_source="DepMap Chronos Combined (217/1100 cell lines dependent)",
     )
 
 
