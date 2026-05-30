@@ -38,7 +38,7 @@ calls.
 | **[docs/benchmark.md](docs/benchmark.md)** | 12-target benchmark matrix and example `prioritize_target` output |
 | **[docs/deployment.md](docs/deployment.md)** | Environment variables, Docker setup, Claude Desktop config, production checklist |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | 7-step walkthrough for adding a new data source |
-| **[docs/ROADMAP.md](docs/ROADMAP.md)** | Direction to v0.5.0 (cheminformatics core) and beyond |
+| **[docs/ROADMAP.md](docs/ROADMAP.md)** | Direction through v0.5.x (cheminformatics + agent/ops hardening) and beyond |
 | **[CHANGELOG.md](CHANGELOG.md)** | Version history |
 
 ---
@@ -150,7 +150,7 @@ All tools return Markdown by default; every tool accepts
 
 ```bash
 uv sync
-uv run pytest tests/ -v          # 218 unit + integration tests
+uv run pytest tests/ -v          # full unit + integration test suite
 uv run pytest tests/ --cov=genesis_bio_mcp
 ```
 
