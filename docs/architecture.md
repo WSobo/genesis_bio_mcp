@@ -123,8 +123,8 @@ See [tools.md](tools.md) for which model each tool produces.
 | `_safe()` / try-except on every coroutine | One API failure never crashes the pipeline; errors surface as `data_gaps` / `errors` |
 | EFO ontology-backed GWAS trait matching | Free-text queries (`"fat"`, `"joint inflammation"`) resolve via OLS4 to canonical EFO terms. Covers the full GWAS vocabulary without manual curation |
 | GWAS concurrent fetch paths + session gene cache | Primary (gene-ID) and SNP paths run via `asyncio.wait(timeout=15s)`. Same gene queried for multiple traits fetches associations once and filters per trait (COX2→PTGS2 pain reuses PTGS2 inflammation: 41.7s → 1.9s) |
-| GWAS score saturation at 3 hits | API pagination means hit counts can shift between runs. Saturating stabilizes the scoring signal |
-| OT **biologics floor** | Pharmacologically-validated biologics targets (HER2/breast, TNF/RA) would be underscored because OT's multi-datatype composite is depressed by irrelevant evidence classes. Floor at 3.25 applies only when `known_drug_score > 0.9` **and** both genetic/somatic scores are null |
+| GWAS evidence saturates at 3 trait-relevant hits | API pagination means hit counts shift between runs. Classifying "≥3 trait-relevant hits → strong" keeps the genetics axis stable whether the fetch returned 3 or 30 |
+| Evidence profile, **not** a composite score | Each axis is rated independently from its own metric (no weighting/summing). A single 0–10 number conflated orthogonal go/no-go gates and invited anecdote-tuned fudge factors; the profile keeps the cross-axis trade-off visible. See the evidence-profile model below |
 | Pydantic V2 + `to_markdown()` | Tools output agent-readable Markdown; MCP clients render directly without post-processing |
 | DepMap + EFO 7-day disk caches | EFO IDs are stable across quarterly releases; DepMap's ~10 MB CSV download is ~30s — cached so warm starts are instant |
 | `asyncio.Semaphore` per rate-limited API | STRING / ChEMBL / BioGRID: `Semaphore(2)`. Reactome / PubChem / gnomAD: `Semaphore(3)`. Prevents 429s without serializing the pipeline |
@@ -135,41 +135,47 @@ See [tools.md](tools.md) for which model each tool produces.
 
 ---
 
-## Scoring model — `prioritize_target`
+## Evidence-profile model — `prioritize_target`
 
-The composite priority score (0–10) combines seven evidence axes:
+> **History (v0.7.0).** Earlier releases collapsed these axes into a single
+> composite priority score (0–10). That number was a liability: its weights were
+> arbitrary, an OT "biologics floor" exceeded its own axis cap, and several
+> constants were reverse-engineered so named targets landed in a desired tier —
+> overfitting with no held-out validation. v0.7.0 removed the composite, the
+> tuned constants (`OT_CLINICALLY_VALIDATED_FLOOR`, `LINEAGE_MATCH_FACTOR`), and
+> the heuristic confidence interval. `prioritize_target` now emits a per-axis
+> **evidence profile** instead.
 
-| Source | Max | Logic |
-|--------|-----|-------|
-| Open Targets association | 3.0† | `overall_score × 3` |
-| DepMap CRISPR dependency | 2.0 | `fraction_dependent × 2` (×0.7 if OT proxy; ×1.2 if indication matches top lineage) |
-| GWAS evidence | 2.0 | `min(hits, 3) / 3 × 2` — saturates at 3 replicated hits |
-| Clinical / known-drug evidence | 1.5 | `known_drug_score × 1.5` |
-| ChEMBL potency | 1.5 | pChEMBL ≥9 → 1.5, ≥7 → 1.0, ≥5 → 0.5, else 0.25 |
-| UniProt protein quality | 1.5 | reviewed (+0.5) + variant coverage (max +1.0) |
-| HPA tissue specificity (extended mode) | 1.0 | `Tissue enriched` 1.0 → `Group enriched` 0.7 → `Tissue enhanced` 0.5 → `Low tissue specificity` 0.2 → `Not detected` 0.0. Sourced from `get_protein_atlas`; only contributes when extended-mode fan-out fetches HPA |
+`_build_evidence_profile` rates each axis **independently** from its own source
+metric — strong / moderate / weak / none / **n/a**. Nothing is weighted, multiplied,
+or summed. `none` means data was present but showed no signal; `n/a` means the
+source returned nothing (a gap) — the two are never conflated, so an absent source
+is never silently scored as a zero.
 
-The seven per-axis maxes sum to 12.5; the final priority score is capped at
-10.0. The expression axis was added in v0.3.0 — by design it does not push
-existing high-tier targets over the cap, so v0.2.x scores remain backward
-compatible.
+| Axis | Source | strong | moderate | weak |
+|------|--------|--------|----------|------|
+| Disease association | OT `overall_score` | ≥0.5 | ≥0.2 | >0 |
+| Clinical validation | OT `known_drug_score` | ≥0.7 | ≥0.3 | >0 |
+| Genetic evidence | GWAS trait-relevant hits / OT `genetic_association` | ≥3 hits **or** OT genetic ≥0.7 (monogenic) | 1–2 hits **or** OT genetic ≥0.3 | hits present but off-trait |
+| Cancer dependency | DepMap CRISPR (OT somatic as proxy) | real & fraction ≥0.5 (or lineage-concentrated, matching indication) | 0.2–0.5 | >0, or pan-essential (narrow window) |
+| Chemical tractability | ChEMBL functional/binding pChEMBL, PubChem count | functional pChEMBL ≥8 | functional 6–8 **or** binding ≥8 | below, or PubChem count-only ≥5 |
+| Annotation quality | UniProt | reviewed (SwissProt) | unreviewed (TrEMBL) | — |
+| Tissue specificity (extended) | HPA | tissue-enriched/enhanced | group-enriched | low specificity |
 
-**Pan-essential cap:** pan-essential genes (DepMap `common_essential`) have
-their DepMap contribution capped at 0.5 — a narrow therapeutic window is a
-liability, not an asset.
+Notes:
+- **Pan-essential** genes (DepMap `common_essential`) rate the dependency axis
+  `weak` with a "narrow therapeutic window" note — a liability, not a strength.
+- **Lineage match** (indication matches a top dependent lineage) and **OT-somatic
+  proxy** are qualitative qualifiers in the axis `detail` — proxy data caps the
+  rating at `moderate`. They are no longer ±multipliers.
+- The few surviving thresholds (`PUBCHEM_MIN_COMPOUNDS`,
+  `OT_GENETIC_MONOGENIC_THRESHOLD`, `_GWAS_TRAIT_RELEVANCE_MIN`) are documented
+  inline in `src/genesis_bio_mcp/tools/target_prioritization.py` as classification
+  cutoffs for a single metric — not score weights.
 
-†**Biologics floor:** when `known_drug_score > 0.9` **and** both
-`genetic_association_score` and `somatic_mutation_score` are null, the OT
-contribution is floored at 3.25. This prevents pharmacologically-validated
-biologics targets (HER2/breast cancer, TNF/RA) from being underscored
-because OT's multi-datatype composite is depressed by evidence classes
-irrelevant to their mechanism. Targets with populated genetic or somatic
-scores (BRAF/melanoma) are unaffected.
-
-All scoring constants are documented inline in
-`src/genesis_bio_mcp/tools/target_prioritization.py` with their tuning
-ranges. Calibrated against the [benchmark matrix](benchmark.md) and
-intentionally conservative to avoid overfitting to any single target class.
+`compare_targets` renders these profiles as a gene × axis matrix, ordered by a
+transparent strength-of-evidence count (number of strong, then moderate axes) —
+explicitly **not** a validated composite score.
 
 ---
 

@@ -114,8 +114,8 @@ from `get_protein_atlas`).
 | Tool | Data source | Purpose |
 |---|---|---|
 | `get_drug_history` | DGIdb + ClinicalTrials.gov + OpenFDA | Known drug interactions with approval status + trial counts by phase. Top-5 approved drugs are enriched with OpenFDA post-market safety signals (FAERS adverse-event counts, boxed warnings, recalls) carrying a permanent regulatory disclaimer |
-| `prioritize_target` | All of the above in parallel | Full evidence synthesis → composite priority score (0–10) with confidence interval. See [docs/architecture.md](architecture.md) for the scoring model |
-| `compare_targets` | Calls `prioritize_target` ×N | Side-by-side comparison of 2–5 targets for one indication |
+| `prioritize_target` | All of the above in parallel | Full evidence synthesis → per-axis evidence profile (each axis rated strong/moderate/weak/none/n-a; no composite score). See [docs/architecture.md](architecture.md) for the evidence-profile model |
+| `compare_targets` | Calls `prioritize_target` ×N | Side-by-side evidence matrix of 2–5 targets for one indication, ordered by strength of evidence |
 | `run_biology_workflow` | Claude + ToolSpec registry | Free-text question → inner Claude agent (`claude-sonnet-4-6`) dynamically selects and chains tools. Requires `ANTHROPIC_API_KEY` |
 
 ## Corpus (indexed)

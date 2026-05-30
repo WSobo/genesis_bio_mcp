@@ -9,6 +9,44 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-30
+
+Replaces the composite `prioritize_target` score with a transparent, per-axis **evidence
+profile**. The old 0–10 number was the shakiest part of the project: arbitrary axis weights, an
+"OT biologics floor" (3.25) that exceeded its own axis cap (3.0), and several constants
+reverse-engineered so named targets (HER2, TNF, BRAF, TP53) landed in a desired tier — overfitting
+with no held-out validation. No API surface or tool-count change (42 tools); the **output contract**
+of `prioritize_target` / `compare_targets` changes (breaking for anything parsing the old fields).
+
+### Changed
+
+- **`prioritize_target` now returns a per-axis evidence profile, not a composite score.** Each axis
+  (disease association, clinical validation, genetic evidence, cancer dependency, chemical
+  tractability, annotation quality, and — in extended mode — tissue specificity) is rated
+  independently as **strong / moderate / weak / none / n-a** directly from its source metric. Nothing
+  is weighted or summed. `none` (data present, no signal) and `n/a` (no data) are now distinct, so an
+  absent source is never silently scored as a zero.
+- **`compare_targets` renders a gene × axis evidence matrix** ordered by a transparent
+  strength-of-evidence count (number of strong, then moderate axes; alphabetical tiebreak),
+  explicitly labelled as an ordering convenience — **not** a validated composite score. A raw-signals
+  table (OT score, DepMap %, PubChem, ChEMBL, GWAS) and per-gene summaries are retained.
+
+### Removed
+
+- The `priority_score`, `priority_tier`, `score_breakdown`, and `score_confidence_interval` fields
+  from `TargetPrioritizationReport` (and `priority_score`/`priority_tier`/`score_breakdown` from
+  comparison rows); the `ScoreBreakdown` model.
+- The anecdote-tuned constants `OT_CLINICALLY_VALIDATED_FLOOR` (the floor that exceeded its cap) and
+  `LINEAGE_MATCH_FACTOR` (the 1.2× dependency multiplier). Lineage match and OT-somatic proxy are now
+  qualitative qualifiers in an axis's `detail` (proxy caps the rating at `moderate`).
+- The heuristic "score confidence interval" (`priority_score × missing_fraction × 0.5`) — it was
+  fake precision. `data_coverage_pct` and `proxy_data_flags` (real provenance) are retained.
+
+### Kept
+
+- The functional-vs-binding ChEMBL distinction and the GWAS trait-relevance filter survive as
+  *classification* qualifiers (correctness checks), not score weights.
+
 ## [0.6.1] - 2026-05-30
 
 Bug-fix release — three latent issues surfaced by stress-testing the new v0.6.0 corpus/ChEMBL
