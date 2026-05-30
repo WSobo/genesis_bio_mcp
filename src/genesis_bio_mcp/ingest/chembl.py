@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _BASE = "https://www.ebi.ac.uk/chembl/api/data"
 _TARGET_URL = f"{_BASE}/target"
 _ACTIVITY_URL = f"{_BASE}/activity"
+_ASSAY_URL = f"{_BASE}/assay"
 
 
 def _as_float(value: object) -> float | None:
@@ -127,7 +128,43 @@ async def fetch_activities_for_target(
         next_path = (body.get("page_meta") or {}).get("next")
         if not next_path:
             break
+
+    # ChEMBL's /activity rows carry NO confidence_score — it lives on the assay. Enrich the
+    # records from /assay so the assay-confidence signal is actually populated, not always null.
+    conf = await _fetch_assay_confidence(client, {r.assay_chembl_id for r in records})
+    for rec in records:
+        if rec.assay_confidence_score is None and rec.assay_chembl_id in conf:
+            rec.assay_confidence_score = conf[rec.assay_chembl_id]
     return records, smiles_by_molecule
+
+
+async def _fetch_assay_confidence(
+    client: httpx.AsyncClient, assay_ids: set[str | None]
+) -> dict[str, int]:
+    """Map assay_chembl_id → confidence_score from the ChEMBL /assay endpoint (batched)."""
+    ids = sorted(a for a in assay_ids if a)
+    out: dict[str, int] = {}
+    for i in range(0, len(ids), 50):
+        chunk = ids[i : i + 50]
+        try:
+            resp = await client.get(
+                _ASSAY_URL,
+                params={
+                    "assay_chembl_id__in": ",".join(chunk),
+                    "format": "json",
+                    "limit": len(chunk),
+                },
+            )
+            resp.raise_for_status()
+        except Exception as exc:
+            logger.warning("ChEMBL assay confidence fetch failed: %s", exc)
+            continue
+        for assay in resp.json().get("assays") or []:
+            cs = _as_int(assay.get("confidence_score"))
+            aid = assay.get("assay_chembl_id")
+            if cs is not None and aid:
+                out[aid] = cs
+    return out
 
 
 def build_compound_record(molecule_chembl_id: str, smiles: str | None) -> CompoundRecord:
