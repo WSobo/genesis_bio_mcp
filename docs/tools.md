@@ -131,6 +131,30 @@ and `response_format` (`"markdown"` or `"json"`).
 {"gene_symbol": "BRAF", "response_format": "json"}
 ```
 
+### JSON output contract — provenance envelope
+
+With `response_format="json"`, every tool returns a consistent **provenance
+envelope** so an agent or pipeline knows where a result came from, when it was
+produced, and what resolved query it answers — without parsing prose:
+
+```jsonc
+{
+  "provenance": {
+    "source": "UniProt",            // upstream data source(s)
+    "source_version": null,          // upstream DB/dataset/API version, when reported
+    "retrieved_at": "2026-05-30T02:34:51Z",  // ISO-8601 UTC
+    "query": "BRAF",                 // the resolved query (canonical symbol/SMILES)
+    "confidence": null               // overall score, when one applies
+  },
+  "data": { /* the tool's result model */ }
+}
+```
+
+When a tool has no result it returns `{"provenance": {...}, "error": "<message>"}`
+instead of `data`. Markdown output (the default) is unchanged — provenance is a
+JSON-only contract. (`get_pathway_members` and `run_biology_workflow` return free
+text rather than a model and are not enveloped.)
+
 Exceptions (tools with additional required fields):
 
 | Tool | Extra required fields |
@@ -153,7 +177,7 @@ Exceptions (tools with additional required fields):
 ## MCP Resource: `tool://registry`
 
 Any MCP client can read the `tool://registry` resource to get a structured
-Markdown catalogue of all 28 tools grouped by category, with the
+Markdown catalogue of all 37 tools grouped by category, with the
 embedding-searchable `use_when` guidance the workflow agent uses for
 semantic retrieval. No tool call needed — useful for agent frameworks doing
 capability auditing or embedding-based tool selection.

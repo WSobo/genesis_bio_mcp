@@ -13,6 +13,18 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **Provenance envelope for JSON output (v0.5.0 M5 — agent contract).** Every
+  `response_format="json"` result is now wrapped in a consistent envelope —
+  `{"provenance": {...}, "data": {...}}` on success, `{"provenance": {...}, "error": "..."}`
+  when there is no result — so an agent or pipeline knows the data **source**, the upstream
+  **version** (when reported), an ISO-8601 UTC **`retrieved_at`** timestamp, the **resolved
+  query**, and an overall **confidence** without parsing prose. Implemented centrally at the
+  `_fmt` seam: source is derived from the result's model type (a 36-entry source map),
+  query/version/confidence are read from common model fields, so all 36 model-returning tools
+  gain provenance with zero per-tool wiring. Markdown output (the default) is unchanged. New
+  `Provenance` model; `docs/tools.md` documents the contract; 6 tests in `test_provenance.py`.
+  (`get_pathway_members` / `run_biology_workflow` return free text, not a model, and are not
+  enveloped.)
 - **`batch_resolve_genes` + `batch_compute_molecular_properties` tools (v0.5.0 M8 — agent
   fan-out, 38 tools total).** Two batch helpers that collapse N round-trips into one call for
   agent workflows. `batch_resolve_genes` resolves up to 50 gene names/aliases concurrently to

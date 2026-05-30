@@ -51,6 +51,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Literal
 
@@ -96,6 +97,7 @@ from genesis_bio_mcp.models import (
     DMSVariantLookup,
     DrugHistory,
     ProteinSequence,
+    Provenance,
     TargetComparisonRow,
     VariantEffects,
 )
@@ -220,8 +222,93 @@ async def _resolve_symbol(gene_name: str) -> tuple[str, str | None]:
         return gene_name.strip().upper(), None
 
 
+# Provenance source labels keyed by output-model class name. Keyed by name (not the
+# class object) so no extra imports are needed; an unmapped model falls back to the
+# generic server label rather than failing — provenance degrades gracefully.
+_SOURCE_BY_MODEL: dict[str, str] = {
+    "GeneResolution": "UniProt + NCBI",
+    "BatchGeneResolution": "UniProt + NCBI",
+    "ProteinInfo": "UniProt",
+    "ProteinSequence": "UniProt",
+    "TargetDiseaseAssociation": "Open Targets",
+    "CancerDependency": "DepMap",
+    "GwasEvidence": "GWAS Catalog",
+    "Compounds": "PubChem",
+    "MolecularProperties": "RDKit (local)",
+    "BatchMolecularProperties": "RDKit (local)",
+    "StandardizedStructure": "RDKit (local)",
+    "SimilarCompounds": "PubChem + RDKit",
+    "ChEMBLCompounds": "ChEMBL",
+    "ProteinStructure": "AlphaFold + RCSB PDB",
+    "StructureConfidence": "AlphaFold",
+    "StructuralHomologs": "Foldseek",
+    "SequenceDesign": "UMA-Inverse",
+    "StructureScore": "UMA-Inverse",
+    "ProteinInteractome": "STRING",
+    "BioGRIDInteractome": "BioGRID",
+    "EpitopeResults": "IEDB",
+    "MHCBindingResults": "IEDB NextGen Tools",
+    "AntibodyStructures": "SAbDab",
+    "CDRDevelopabilityReport": "AbNum (Chothia) + biochem (local)",
+    "GnomADConstraint": "gnomAD",
+    "VariantEffects": "gnomAD + MyVariant.info + MaveDB + Ensembl VEP",
+    "VEPConsequenceReport": "Ensembl VEP",
+    "TissueExpressionProfile": "GTEx",
+    "ProteinAtlasReport": "Human Protein Atlas",
+    "DomainAnnotations": "InterPro",
+    "DMSResults": "MaveDB",
+    "DMSVariantLookup": "MaveDB",
+    "DrugHistory": "DGIdb + ClinicalTrials.gov + OpenFDA",
+    "PathwayContext": "Reactome",
+    "TargetPrioritizationReport": "genesis-bio-mcp (multi-source synthesis)",
+    "ComparisonReport": "genesis-bio-mcp (multi-source synthesis)",
+}
+
+# Attribute names a result model may expose for each provenance field, in priority
+# order. The first present, non-empty value wins. Lets provenance pull the resolved
+# query / upstream version / confidence straight off the model with no per-tool wiring.
+_QUERY_ATTRS = ("gene_symbol", "hgnc_symbol", "query_smiles", "input_smiles", "antigen_query")
+_VERSION_ATTRS = ("dataset_version", "release", "data_version", "source_version", "model_version")
+_CONFIDENCE_ATTRS = ("confidence", "mean_confidence", "priority_score")
+
+
+def _first_attr(result: object, attrs: tuple[str, ...]) -> object | None:
+    for attr in attrs:
+        value = getattr(result, attr, None)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _now_iso() -> str:
+    """Current UTC time as an ISO-8601 'Z' timestamp (second precision)."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _build_provenance(result: object) -> Provenance:
+    """Derive the provenance block for a result from its type + common fields."""
+    source = "genesis-bio-mcp"
+    if result is not None:
+        source = _SOURCE_BY_MODEL.get(type(result).__name__, "genesis-bio-mcp")
+    query = _first_attr(result, _QUERY_ATTRS)
+    version = _first_attr(result, _VERSION_ATTRS)
+    confidence = _first_attr(result, _CONFIDENCE_ATTRS)
+    return Provenance(
+        source=source,
+        source_version=str(version) if version is not None else None,
+        retrieved_at=_now_iso(),
+        query=str(query) if query is not None else None,
+        confidence=float(confidence) if isinstance(confidence, (int, float)) else None,
+    )
+
+
 def _fmt(result: object, response_format: str, error_msg: str) -> str:
     """Format a Pydantic model as Markdown or JSON, or return an error representation.
+
+    For ``response_format="json"`` the model is wrapped in a consistent agent contract
+    envelope — ``{"provenance": {...}, "data": {...}}`` on success, or
+    ``{"provenance": {...}, "error": "..."}`` when there is no result — so an agent
+    always knows the source, timestamp, and resolved query. Markdown output is unchanged.
 
     Args:
         result: Pydantic model with .to_markdown() and .model_dump_json(), or None.
@@ -230,10 +317,17 @@ def _fmt(result: object, response_format: str, error_msg: str) -> str:
     """
     if result is None:
         if response_format == "json":
-            return _json.dumps({"error": error_msg})
+            return _json.dumps(
+                {"provenance": _build_provenance(None).model_dump(), "error": error_msg},
+                indent=2,
+            )
         return f"**Error:** {error_msg}"
     if response_format == "json":
-        return result.model_dump_json(indent=2)  # type: ignore[attr-defined]
+        envelope = {
+            "provenance": _build_provenance(result).model_dump(),
+            "data": _json.loads(result.model_dump_json()),  # type: ignore[attr-defined]
+        }
+        return _json.dumps(envelope, indent=2)
     return result.to_markdown()  # type: ignore[attr-defined]
 
 
