@@ -13,6 +13,21 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **`corpus_search_compounds` — hybrid relational + similarity search (v0.6.0 M3, the headline
+  corpus tool).** Combines SQL-style filters (target gene/UniProt, assay type, minimum pChEMBL
+  potency, maximum molecular weight) with **optional Morgan/Tanimoto similarity** to a query
+  SMILES, **in one query** — ranked by similarity when a query molecule is given, otherwise by
+  potency. This answers the question neither a relational DB nor a vector index can alone, e.g.
+  *"compounds structurally like this hit that also have sub-µM measured activity against this
+  kinase."* Implemented as a single SQL statement: a `DISTINCT ON` CTE picks each compound's
+  strongest matching activity under the filters, joined to compounds with an optional pgvector
+  bit-Jaccard similarity term. Each hit surfaces **three honestly-separated confidence signals** —
+  Tanimoto (retrieval closeness), ChEMBL assay confidence (data quality), and pChEMBL (potency) —
+  never blended. Paginated. New `CorpusCompoundSearchHit` / `CorpusCompoundSearchResults` models,
+  `hybrid_search_compounds` + `resolve_target_accession` in the corpus layer. Registered in
+  `run_biology_workflow`; emits the M5/M6 envelope. **Tool count 41 → 42.** New CI integration
+  test loads a target + compounds + activities and verifies each filter (potency, assay type, MW)
+  and the hybrid similarity ranking against real Postgres+pgvector.
 - **ChEMBL compound/activity ingester (v0.6.0 M2 — offline ETL).** Fills the corpus's
   `compounds` + `activities` so the target↔chemistry links exist: for each corpus target
   (UniProt accession) it resolves the ChEMBL target id, pulls IC50/Ki/Kd/EC50 activities with a

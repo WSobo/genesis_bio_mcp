@@ -179,6 +179,98 @@ class CorpusSimilarCompounds(BaseModel):
         return "\n".join(lines)
 
 
+class CorpusCompoundSearchHit(BaseModel):
+    """One compound from a hybrid corpus search, with its strongest matching activity."""
+
+    molecule_chembl_id: str = Field(description="ChEMBL molecule ID")
+    canonical_smiles: str | None = Field(None, description="RDKit canonical SMILES")
+    inchikey: str | None = Field(None, description="Standard InChIKey")
+    mol_weight: float | None = Field(None, description="Molecular weight (Da)")
+    pchembl_value: float | None = Field(
+        None, description="Best pChEMBL (−log10 molar potency) among matching activities"
+    )
+    standard_type: str | None = Field(None, description="Assay endpoint (IC50/Ki/Kd/EC50)")
+    standard_units: str | None = Field(None, description="Units of the raw potency value")
+    standard_value: float | None = Field(None, description="Raw potency value")
+    assay_confidence_score: int | None = Field(
+        None, description="ChEMBL assay confidence score (data-quality signal)"
+    )
+    tanimoto: float | None = Field(
+        None, description="ECFP4 Tanimoto to the query molecule (only in similarity mode)"
+    )
+
+
+class CorpusCompoundSearchResults(BaseModel):
+    """Hybrid corpus compound search: relational filters + optional Tanimoto similarity.
+
+    Surfaces three honestly-separated confidence signals per hit — Tanimoto (retrieval
+    closeness), assay confidence (source data quality), and pChEMBL (potency) — never a
+    single blended score.
+    """
+
+    target: str | None = Field(None, description="Target filter applied (resolved gene/accession)")
+    standard_type: str | None = Field(None, description="Assay-type filter applied, if any")
+    min_pchembl: float | None = Field(None, description="Minimum pChEMBL filter applied, if any")
+    max_mol_weight: float | None = Field(None, description="Maximum MW filter applied, if any")
+    similar_to_smiles: str | None = Field(
+        None, description="Query SMILES for similarity ranking, if any"
+    )
+    total: int = Field(description="Number of compounds returned (this page)")
+    hits: list[CorpusCompoundSearchHit] = Field(
+        default_factory=list, description="Matching compounds"
+    )
+
+    def to_markdown(self) -> str:
+        filters = []
+        if self.target:
+            filters.append(f"target={self.target}")
+        if self.standard_type:
+            filters.append(f"type={self.standard_type}")
+        if self.min_pchembl is not None:
+            filters.append(f"pChEMBL≥{self.min_pchembl}")
+        if self.max_mol_weight is not None:
+            filters.append(f"MW≤{self.max_mol_weight}")
+        if self.similar_to_smiles:
+            filters.append(f"similar to `{self.similar_to_smiles}`")
+        filt = ", ".join(filters) if filters else "none"
+        ranking = "Tanimoto similarity" if self.similar_to_smiles else "potency (pChEMBL)"
+        lines = [
+            "## Corpus compound search (hybrid)",
+            f"**Filters:** {filt} | **Ranked by:** {ranking} | **{self.total} hit(s)**",
+        ]
+        if not self.hits:
+            lines += ["", "_No compounds in the corpus match these filters._"]
+            return "\n".join(lines)
+        show_tan = self.similar_to_smiles is not None
+        header = "| ChEMBL ID | pChEMBL | Type | Assay conf | MW |"
+        sep = "|---|---:|---|---:|---:|"
+        if show_tan:
+            header = "| ChEMBL ID | Tanimoto | pChEMBL | Type | Assay conf | MW |"
+            sep = "|---|---:|---:|---|---:|---:|"
+        lines += ["", header, sep]
+        for h in self.hits:
+            mw = f"{h.mol_weight:.1f}" if h.mol_weight is not None else "—"
+            pc = f"{h.pchembl_value:.2f}" if h.pchembl_value is not None else "—"
+            conf = h.assay_confidence_score if h.assay_confidence_score is not None else "—"
+            if show_tan:
+                tan = f"{h.tanimoto:.3f}" if h.tanimoto is not None else "—"
+                lines.append(
+                    f"| {h.molecule_chembl_id} | {tan} | {pc} | {h.standard_type or '—'} "
+                    f"| {conf} | {mw} |"
+                )
+            else:
+                lines.append(
+                    f"| {h.molecule_chembl_id} | {pc} | {h.standard_type or '—'} | {conf} | {mw} |"
+                )
+        lines += [
+            "",
+            "_Three signals, kept separate: Tanimoto = retrieval closeness; assay confidence = "
+            "source data quality; pChEMBL = measured potency. High similarity is not a validated "
+            "activity prediction._",
+        ]
+        return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Gene resolution
 # ---------------------------------------------------------------------------

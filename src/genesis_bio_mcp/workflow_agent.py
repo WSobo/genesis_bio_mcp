@@ -18,13 +18,21 @@ from typing import Any
 import anthropic
 
 from genesis_bio_mcp.config.settings import settings
-from genesis_bio_mcp.corpus import fetch_manifest, search_similar_compounds, search_similar_targets
+from genesis_bio_mcp.corpus import (
+    fetch_manifest,
+    hybrid_search_compounds,
+    resolve_target_accession,
+    search_similar_compounds,
+    search_similar_targets,
+)
 from genesis_bio_mcp.models import (
     BatchGeneResolution,
     BatchGeneResolutionItem,
     BatchMolecularProperties,
     ComparisonReport,
     CorpusCompoundHit,
+    CorpusCompoundSearchHit,
+    CorpusCompoundSearchResults,
     CorpusSimilarCompounds,
     CorpusTargetHit,
     CorpusTargetNeighbors,
@@ -181,6 +189,47 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return "No fingerprinted compounds are indexed yet."
         return CorpusSimilarCompounds(
             query_smiles=smiles, hits=[CorpusCompoundHit(**r) for r in rows]
+        ).to_markdown()
+
+    async def _corpus_search_compounds_fn(
+        target: str | None = None,
+        standard_type: str | None = None,
+        min_pchembl: float | None = None,
+        max_mol_weight: float | None = None,
+        similar_to_smiles: str | None = None,
+        limit: int = 25,
+    ) -> str:
+        pool = getattr(state, "corpus_pool", None)
+        if pool is None:
+            return "Corpus store is not configured (GENESIS_CORPUS_DSN unset)."
+        fp_bits = None
+        if similar_to_smiles:
+            fp_bits = _morgan_fp_bits(similar_to_smiles)
+            if fp_bits is None:
+                return f"Invalid SMILES: '{similar_to_smiles}' could not be parsed by RDKit."
+        accession = None
+        if target:
+            accession = await resolve_target_accession(pool, target)
+            if accession is None:
+                return f"Target '{target}' is not in the indexed corpus."
+        rows = await hybrid_search_compounds(
+            pool,
+            uniprot_accession=accession,
+            standard_type=standard_type,
+            min_pchembl=min_pchembl,
+            max_mol_weight=max_mol_weight,
+            query_fp_bits=fp_bits,
+            limit=limit,
+            offset=0,
+        )
+        return CorpusCompoundSearchResults(
+            target=target,
+            standard_type=standard_type,
+            min_pchembl=min_pchembl,
+            max_mol_weight=max_mol_weight,
+            similar_to_smiles=similar_to_smiles,
+            total=len(rows),
+            hits=[CorpusCompoundSearchHit(**r) for r in rows],
         ).to_markdown()
 
     async def _batch_resolve_genes_fn(gene_names: list[str]) -> str:
@@ -1610,6 +1659,45 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="corpus",
             use_when="Use to find analogs / known chemical matter near a query molecule within the indexed corpus, ranked by Tanimoto similarity.",
             fn=_corpus_find_similar_compounds_fn,
+        ),
+        "corpus_search_compounds": ToolSpec(
+            name="corpus_search_compounds",
+            description=(
+                "Hybrid corpus search: relational filters (target gene/UniProt, assay type, "
+                "min pChEMBL potency, max MW) combined with optional Morgan/Tanimoto similarity "
+                "to a query SMILES, in one query. Returns bioactive compounds with potency, "
+                "assay confidence, and (in similarity mode) Tanimoto — three separate signals."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "target": {
+                        "type": "string",
+                        "description": "Target gene symbol or UniProt accession in the corpus. Example: 'BRAF'",
+                    },
+                    "standard_type": {
+                        "type": "string",
+                        "enum": ["IC50", "Ki", "Kd", "EC50"],
+                        "description": "Filter to one assay endpoint.",
+                    },
+                    "min_pchembl": {
+                        "type": "number",
+                        "description": "Minimum pChEMBL potency (6≈1µM, 9≈1nM).",
+                    },
+                    "max_mol_weight": {
+                        "type": "number",
+                        "description": "Maximum molecular weight in Da (e.g. 500).",
+                    },
+                    "similar_to_smiles": {
+                        "type": "string",
+                        "description": "Optional query SMILES — rank results by Tanimoto to it.",
+                    },
+                    "limit": {"type": "integer", "description": "Max compounds (default 25)."},
+                },
+            },
+            tool_category="corpus",
+            use_when="Use for the hybrid drug-discovery question — bioactive compounds matching potency/assay/MW filters against a target, optionally ranked by structural similarity to a query molecule.",
+            fn=_corpus_search_compounds_fn,
         ),
     }
 

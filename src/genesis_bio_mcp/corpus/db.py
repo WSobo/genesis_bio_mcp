@@ -139,3 +139,76 @@ async def search_similar_compounds(pool: asyncpg.Pool, fp_bits: str, top_k: int)
         # asyncpg's bit codec needs an asyncpg.BitString, not a plain '0'/'1' str.
         rows = await conn.fetch(_COMPOUND_SQL, asyncpg.BitString(fp_bits), top_k)
     return [dict(r) for r in rows]
+
+
+async def resolve_target_accession(pool: asyncpg.Pool, query: str) -> str | None:
+    """Resolve a gene symbol / UniProt accession to a corpus target's accession, or None."""
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT uniprot_accession FROM targets "
+            "WHERE upper(gene_symbol) = upper($1) OR uniprot_accession = $1 LIMIT 1",
+            query,
+        )
+
+
+# Hybrid retrieval: SQL filters (target / assay type / potency / MW) + optional Morgan-Tanimoto
+# similarity, in ONE query. `best` picks each compound's strongest matching activity
+# (DISTINCT ON … ORDER BY pchembl DESC). When a query fingerprint is supplied, results are
+# ranked by pgvector Jaccard distance (most similar first); otherwise by potency.
+_HYBRID_SQL = """
+WITH best AS (
+    SELECT DISTINCT ON (a.molecule_chembl_id)
+           a.molecule_chembl_id, a.pchembl_value, a.standard_type,
+           a.standard_units, a.standard_value, a.assay_confidence_score
+    FROM activities a
+    WHERE ($1::text IS NULL OR a.uniprot_accession = $1)
+      AND ($2::text IS NULL OR a.standard_type = $2)
+      AND ($3::float8 IS NULL OR a.pchembl_value >= $3)
+    ORDER BY a.molecule_chembl_id, a.pchembl_value DESC NULLS LAST
+)
+SELECT c.molecule_chembl_id, c.canonical_smiles, c.inchikey, c.mol_weight,
+       b.pchembl_value, b.standard_type, b.standard_units, b.standard_value,
+       b.assay_confidence_score,
+       CASE WHEN $5::bit(2048) IS NOT NULL
+            THEN 1 - (c.morgan_fp <%> $5::bit(2048)) END AS tanimoto
+FROM best b
+JOIN compounds c ON c.molecule_chembl_id = b.molecule_chembl_id
+WHERE ($4::float8 IS NULL OR c.mol_weight <= $4)
+  AND ($5::bit(2048) IS NULL OR c.morgan_fp IS NOT NULL)
+ORDER BY
+    CASE WHEN $5::bit(2048) IS NOT NULL THEN (c.morgan_fp <%> $5::bit(2048)) END ASC NULLS LAST,
+    b.pchembl_value DESC NULLS LAST
+LIMIT $6 OFFSET $7
+"""
+
+
+async def hybrid_search_compounds(
+    pool: asyncpg.Pool,
+    *,
+    uniprot_accession: str | None,
+    standard_type: str | None,
+    min_pchembl: float | None,
+    max_mol_weight: float | None,
+    query_fp_bits: str | None,
+    limit: int,
+    offset: int,
+) -> list[dict]:
+    """Hybrid compound search: relational filters + optional Tanimoto similarity, one query.
+
+    Filters compounds by target / assay type / minimum pChEMBL / max MW (SQL), and — when a
+    query fingerprint is given — ranks by Morgan-Tanimoto (pgvector Jaccard); otherwise by
+    potency. Each compound appears once with its strongest matching activity.
+    """
+    fp = asyncpg.BitString(query_fp_bits) if query_fp_bits else None
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            _HYBRID_SQL,
+            uniprot_accession,
+            standard_type,
+            min_pchembl,
+            max_mol_weight,
+            fp,
+            limit,
+            offset,
+        )
+    return [dict(r) for r in rows]
