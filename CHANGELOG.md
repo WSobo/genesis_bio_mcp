@@ -13,6 +13,22 @@ v0.5.0 in progress — cheminformatics core (RDKit) + agent/ops hardening (see d
 
 ### Added
 
+- **`search_similar_compounds` tool (v0.5.0 M3, 34 tools total).** Structure-based compound
+  search from a query SMILES via PubChem: `similarity` mode (`fastsimilarity_2d`, Tanimoto ≥
+  threshold, ranked by a locally-computed RDKit Morgan Tanimoto) or `substructure` mode
+  (`fastsubstructure`). Returns CID, name, formula, MW, and similarity — for analog/me-too
+  discovery and scaffold hopping. New `SimilarCompound` / `SimilarCompounds` models, a
+  `PubChemClient.search_similar` method (POSTs the SMILES so special characters survive),
+  `tanimoto_similarity` helper in `tools/cheminformatics.py`, `run_biology_workflow`
+  registration, and 2 client tests. Confirmed against the live PubChem PUG-REST schema.
+- **`standardize_structure` tool (v0.5.0 M2, 33 tools total).** RDKit structure
+  normalization: strips salts/solvents (keeps the largest organic fragment), neutralizes
+  charges, and canonicalizes the tautomer, returning a registration-ready canonical SMILES
+  plus InChI and **InChIKey** for exact-structure matching and cross-source deduplication —
+  the data-readiness primitive to run before comparing or joining compounds. Flags whether a
+  salt/solvent was removed or the structure otherwise changed. New `StandardizedStructure`
+  model, `run_biology_workflow` registration, 3 tests. Local/deterministic
+  (`openWorldHint=False`).
 - **`compute_molecular_properties` tool (v0.5.0 M1, 32 tools total).** The first
   *computed-method* tool (RDKit, local, deterministic, no network): given a SMILES, returns
   molecular formula/weight, logP, TPSA, H-bond donors/acceptors, rotatable bonds, aromatic

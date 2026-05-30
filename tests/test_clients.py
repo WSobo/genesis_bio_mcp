@@ -489,6 +489,64 @@ async def test_pubchem_returns_none_when_no_assays(http_client):
 
 
 @respx.mock
+async def test_pubchem_search_similar_ranks_by_tanimoto(http_client):
+    """fastsimilarity_2d returns CIDs; the client enriches them and ranks by RDKit Tanimoto."""
+    respx.post(url__regex=r"compound/fastsimilarity_2d/smiles/cids/JSON").mock(
+        return_value=httpx.Response(200, json={"IdentifierList": {"CID": [2244, 68484]}})
+    )
+    respx.get(url__regex=r"compound/cid/.+/property/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "PropertyTable": {
+                    "Properties": [
+                        {
+                            "CID": 2244,
+                            "MolecularFormula": "C9H8O4",
+                            "MolecularWeight": "180.16",
+                            "SMILES": "CC(=O)OC1=CC=CC=C1C(=O)O",
+                            "IUPACName": "2-acetyloxybenzoic acid",
+                        },
+                        {
+                            "CID": 68484,
+                            "MolecularFormula": "C10H10O4",
+                            "MolecularWeight": "194.18",
+                            "SMILES": "CC(=O)OC1=CC=CC=C1C(=O)OC",
+                            "IUPACName": "methyl 2-acetyloxybenzoate",
+                        },
+                    ]
+                }
+            },
+        )
+    )
+    client = PubChemClient(http_client)
+    result = await client.search_similar("CC(=O)Oc1ccccc1C(=O)O", threshold=0.8, max_results=10)
+
+    assert result is not None
+    assert result.mode == "similarity"
+    assert result.threshold == 0.8
+    assert result.total_found == 2
+    # The query is aspirin (CID 2244) itself → Tanimoto 1.0, ranked first.
+    assert result.hits[0].cid == 2244
+    assert result.hits[0].tanimoto == 1.0
+    assert result.hits[1].tanimoto < 1.0
+    md = result.to_markdown()
+    assert "C9H8O4" in md
+
+
+@respx.mock
+async def test_pubchem_search_similar_empty(http_client):
+    respx.post(url__regex=r"compound/fastsimilarity_2d").mock(
+        return_value=httpx.Response(200, json={"IdentifierList": {"CID": []}})
+    )
+    client = PubChemClient(http_client)
+    result = await client.search_similar("CC(=O)Oc1ccccc1C(=O)O")
+    assert result is not None
+    assert result.total_found == 0
+    assert result.hits == []
+
+
+@respx.mock
 async def test_pubchem_returns_none_when_no_active_rows_match_gene(http_client):
     """AIDs exist but no concise rows match the resolved GeneID — return None
     rather than fall through to a misleading name-based fallback."""

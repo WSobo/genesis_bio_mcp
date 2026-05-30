@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 32 tools for biomedical database queries:
+Exposes 34 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -9,6 +9,8 @@ Exposes 32 tools for biomedical database queries:
   - get_gwas_evidence             GWAS Catalog: genetic associations for a trait
   - get_compounds                 PubChem: active small molecules against a target
   - compute_molecular_properties  RDKit: physicochemical + drug-likeness from a SMILES (local)
+  - standardize_structure         RDKit: salt-strip/neutralize/canonical-tautomer + InChIKey (local)
+  - search_similar_compounds      PubChem + RDKit: 2D-similarity / substructure structure search
   - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_structure_confidence      AlphaFold: per-residue pLDDT profile + disordered regions
@@ -92,6 +94,9 @@ from genesis_bio_mcp.tools.biochem import compute_features, scan_liabilities
 from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 from genesis_bio_mcp.tools.cheminformatics import (
     compute_molecular_properties as _compute_molecular_properties,
+)
+from genesis_bio_mcp.tools.cheminformatics import (
+    standardize_structure as _standardize_structure,
 )
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
@@ -289,6 +294,43 @@ class ComputeMolecularPropertiesInput(BaseModel):
         min_length=1,
         max_length=2000,
     )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class StandardizeStructureInput(BaseModel):
+    """Input for standardize_structure."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    smiles: str = Field(
+        ...,
+        description="SMILES string to standardize (salts/solvents stripped, charges neutralized).",
+        min_length=1,
+        max_length=2000,
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class SearchSimilarCompoundsInput(BaseModel):
+    """Input for search_similar_compounds."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    smiles: str = Field(
+        ...,
+        description="Query SMILES, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin).",
+        min_length=1,
+        max_length=2000,
+    )
+    mode: Literal["similarity", "substructure"] = Field(
+        "similarity",
+        description="'similarity' = 2D Tanimoto ≥ threshold; 'substructure' = contains the query.",
+    )
+    threshold: float = Field(
+        0.9,
+        ge=0.4,
+        le=1.0,
+        description="Tanimoto similarity threshold (similarity mode only; 0.4–1.0).",
+    )
+    max_results: int = Field(20, ge=1, le=100, description="Maximum number of hits to return.")
     response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
 
 
@@ -986,6 +1028,70 @@ async def compute_molecular_properties(params: ComputeMolecularPropertiesInput) 
         result,
         params.response_format,
         f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+    )
+)
+async def standardize_structure(params: StandardizeStructureInput) -> str:
+    """Standardize a molecule from its SMILES — salt/solvent strip, neutralize, canonical tautomer.
+
+    Locally computed with RDKit (deterministic, offline). Produces a registration-ready
+    canonical SMILES plus InChI / InChIKey for exact-structure matching and cross-source
+    deduplication — the data-readiness primitive to run before comparing or joining compounds.
+
+    Args:
+        params (StandardizeStructureInput): smiles, response_format.
+
+    Returns:
+        Markdown with the standardized SMILES, InChIKey/InChI, molecular formula, and flags
+        for whether a salt/solvent was removed or the structure otherwise changed. Returns an
+        error if the SMILES cannot be parsed.
+    """
+    result = _standardize_structure(params.smiles)
+    return _fmt(
+        result,
+        params.response_format,
+        f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def search_similar_compounds(params: SearchSimilarCompoundsInput) -> str:
+    """Find compounds structurally related to a query molecule via PubChem.
+
+    Two modes: 'similarity' returns compounds with 2D Tanimoto ≥ threshold (ranked by an
+    RDKit Morgan Tanimoto computed against the query); 'substructure' returns compounds that
+    contain the query as a substructure. Use this to expand chemical space around a hit,
+    find analogs/me-too compounds, or scaffold-hop from a known structure.
+
+    Args:
+        params (SearchSimilarCompoundsInput): smiles, mode, threshold, max_results,
+            response_format.
+
+    Returns:
+        Markdown table of hits (PubChem CID, name, formula, MW, Tanimoto). Returns a
+        no-results message if nothing matches or the search could not complete.
+    """
+    result = await mcp.state.pubchem.search_similar(
+        params.smiles,
+        mode=params.mode,
+        threshold=params.threshold,
+        max_results=params.max_results,
+    )
+    if result is not None and result.total_found == 0:
+        result = None
+    return _fmt(
+        result,
+        params.response_format,
+        f"No compounds found for '{params.smiles}' ({params.mode} search).",
     )
 
 

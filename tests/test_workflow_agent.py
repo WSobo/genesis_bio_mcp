@@ -60,6 +60,7 @@ def _mock_state() -> MagicMock:
             "get_essentiality",
             "get_evidence",
             "get_compounds",
+            "search_similar",
             "get_structure",
             "get_confidence",
             "search",
@@ -87,6 +88,7 @@ def _mock_state() -> MagicMock:
             mock_result.pathways = ["pathway1"]  # for reactome non-empty check
             mock_result.total_partners = 5  # for string_db non-empty check
             mock_result.hits = ["hit1"]  # for foldseek non-empty check
+            mock_result.total_found = 3  # for pubchem.search_similar non-empty check
             async_method = AsyncMock(return_value=mock_result)
             setattr(client, method, async_method)
         setattr(state, attr, client)
@@ -145,6 +147,8 @@ def test_build_tool_registry_has_all_tools():
         "get_gwas_evidence",
         "get_compounds",
         "compute_molecular_properties",
+        "standardize_structure",
+        "search_similar_compounds",
         "get_chembl_compounds",
         "get_protein_structure",
         "get_structure_confidence",

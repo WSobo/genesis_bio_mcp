@@ -1,6 +1,9 @@
-"""Unit tests for the RDKit-based cheminformatics tool."""
+"""Unit tests for the RDKit-based cheminformatics tools."""
 
-from genesis_bio_mcp.tools.cheminformatics import compute_molecular_properties
+from genesis_bio_mcp.tools.cheminformatics import (
+    compute_molecular_properties,
+    standardize_structure,
+)
 
 
 def test_compute_properties_aspirin():
@@ -49,3 +52,31 @@ def test_compute_properties_flags_non_druglike_molecule():
     assert p is not None
     assert p.lipinski_violations >= 2
     assert p.passes_lipinski is False
+
+
+def test_standardize_strips_salt_and_neutralizes():
+    # Sodium acetate → acetic acid (Na+ stripped, carboxylate neutralized).
+    s = standardize_structure("CC(=O)[O-].[Na+]")
+    assert s is not None
+    assert s.standardized_smiles == "CC(=O)O"
+    assert s.molecular_formula == "C2H4O2"
+    assert s.salt_or_solvent_removed is True
+    assert s.changed is True
+    assert s.inchikey == "QTBSBXVTEAMEQO-UHFFFAOYSA-N"  # acetic acid
+    md = s.to_markdown()
+    assert "Standardized Structure" in md
+    assert "salt/solvent stripped" in md
+
+
+def test_standardize_noop_on_clean_molecule():
+    # Aspirin is already standard — no salt, no change.
+    s = standardize_structure("CC(=O)Oc1ccccc1C(=O)O")
+    assert s is not None
+    assert s.standardized_smiles == "CC(=O)Oc1ccccc1C(=O)O"
+    assert s.salt_or_solvent_removed is False
+    assert s.changed is False
+
+
+def test_standardize_invalid_smiles_returns_none():
+    assert standardize_structure("not_a_smiles!!!") is None
+    assert standardize_structure("") is None
