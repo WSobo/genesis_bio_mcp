@@ -144,6 +144,8 @@ def test_build_tool_registry_has_all_tools():
 
     expected_tools = {
         "resolve_gene",
+        "batch_resolve_genes",
+        "batch_compute_molecular_properties",
         "get_protein_info",
         "get_protein_sequence",
         "get_target_disease_association",
@@ -569,6 +571,57 @@ def test_format_registry_docs_required_inputs():
 # ---------------------------------------------------------------------------
 # Test 8: _resolve_symbol helper falls back gracefully on resolution failure
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Batch tools (M8): fan-out helpers registered in the workflow registry
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_batch_compute_molecular_properties_fn():
+    """Batch compute returns one summary row per parseable SMILES and lists failures."""
+    state = _mock_state()
+    registry = build_tool_registry(state)
+    fn = registry["batch_compute_molecular_properties"].fn
+
+    md = await fn(smiles_list=["CCO", "CC(=O)Oc1ccccc1C(=O)O", "not_a_smiles!!!"])
+    assert "3 molecules" in md
+    assert "2 computed, 1 failed" in md
+    assert "C9H8O4" in md  # aspirin
+    assert "Failed to parse (1)" in md
+    assert "`not_a_smiles!!!`" in md
+
+
+@pytest.mark.asyncio
+async def test_batch_resolve_genes_fn(monkeypatch):
+    """Batch resolve maps each query to its resolution and flags unresolved entries."""
+    from genesis_bio_mcp import workflow_agent
+    from genesis_bio_mcp.models import GeneResolution
+
+    async def _fake_resolve(gene_name, *, uniprot_client):
+        if gene_name.upper() == "HER2":
+            return GeneResolution(
+                hgnc_symbol="ERBB2",
+                ncbi_gene_id="2064",
+                uniprot_accession="P04626",
+                source="uniprot",
+            )
+        # Unresolved fallback: echoes input with source='input' and no IDs.
+        return GeneResolution(hgnc_symbol=gene_name.upper(), source="input")
+
+    monkeypatch.setattr(workflow_agent, "_resolve_gene", _fake_resolve)
+
+    state = _mock_state()
+    registry = build_tool_registry(state)
+    fn = registry["batch_resolve_genes"].fn
+
+    md = await fn(gene_names=["HER2", "ZZZNOTAGENE"])
+    assert "2 queries (1 resolved)" in md
+    assert "ERBB2" in md
+    assert "2064" in md
+    assert "P04626" in md
+    assert "❌ not resolved" in md
 
 
 @pytest.mark.asyncio

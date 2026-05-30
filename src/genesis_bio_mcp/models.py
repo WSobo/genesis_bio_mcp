@@ -1281,6 +1281,95 @@ class SimilarCompounds(BaseModel):
         return "\n".join(lines)
 
 
+class BatchMolecularProperties(BaseModel):
+    """Batch RDKit property computation over many SMILES — one summary row per molecule.
+
+    For agent fan-out: profile a whole list of structures in a single call instead of
+    N round-trips. Parse failures are collected separately so one bad SMILES never
+    fails the batch.
+    """
+
+    results: list[MolecularProperties] = Field(
+        default_factory=list,
+        description="Per-molecule computed properties (parse failures listed in `failed`)",
+    )
+    failed: list[str] = Field(
+        default_factory=list, description="Input SMILES strings RDKit could not parse"
+    )
+    total_requested: int = Field(description="Number of SMILES submitted")
+
+    def to_markdown(self) -> str:
+        n_ok = len(self.results)
+        n_fail = len(self.failed)
+        plural = "s" if self.total_requested != 1 else ""
+        lines = [
+            f"## Batch Molecular Properties — {self.total_requested} molecule{plural} "
+            f"({n_ok} computed, {n_fail} failed)"
+        ]
+        if self.results:
+            lines += [
+                "",
+                "| # | Input | Formula | MW | logP | TPSA | QED | Ro5 | PAINS |",
+                "|---:|---|---|---:|---:|---:|---:|:---:|:---:|",
+            ]
+            for i, p in enumerate(self.results, 1):
+                smi = p.input_smiles if len(p.input_smiles) <= 40 else p.input_smiles[:37] + "…"
+                ro5 = "✅" if p.passes_lipinski else "⚠️"
+                pains = "⚠️" if p.pains_alert else "✅"
+                lines.append(
+                    f"| {i} | `{smi}` | {p.molecular_formula} | {p.molecular_weight} | "
+                    f"{p.logp} | {p.tpsa} | {p.qed} | {ro5} | {pains} |"
+                )
+        if self.failed:
+            shown = ", ".join(f"`{s}`" for s in self.failed[:10])
+            extra = f" (+{len(self.failed) - 10} more)" if len(self.failed) > 10 else ""
+            lines += ["", f"**Failed to parse ({n_fail}):** {shown}{extra}"]
+        return "\n".join(lines)
+
+
+class BatchGeneResolutionItem(BaseModel):
+    """One entry in a batch gene resolution: the original query plus its resolution."""
+
+    query: str = Field(description="The gene name/alias as submitted")
+    resolved: bool = Field(description="True if the query mapped to a known human gene")
+    resolution: GeneResolution | None = Field(
+        None, description="Resolved canonical identifiers, or None if unresolved"
+    )
+
+
+class BatchGeneResolution(BaseModel):
+    """Batch resolution of many gene names/aliases to canonical identifiers.
+
+    For agent fan-out: normalize a whole gene list (aliases, synonyms, mixed casing)
+    to HGNC symbols + database IDs in one call before querying other tools.
+    """
+
+    items: list[BatchGeneResolutionItem] = Field(
+        default_factory=list, description="Per-query resolution results, in input order"
+    )
+    total_requested: int = Field(description="Number of gene names submitted")
+
+    def to_markdown(self) -> str:
+        n_ok = sum(1 for it in self.items if it.resolved)
+        plural = "ies" if self.total_requested != 1 else "y"
+        lines = [
+            f"## Batch Gene Resolution — {self.total_requested} quer{plural} ({n_ok} resolved)",
+            "",
+            "| Query | Symbol | NCBI Gene | UniProt | Status |",
+            "|---|---|---|---|:---:|",
+        ]
+        for it in self.items:
+            r = it.resolution
+            if it.resolved and r:
+                lines.append(
+                    f"| {it.query} | {r.hgnc_symbol} | {r.ncbi_gene_id or '—'} | "
+                    f"{r.uniprot_accession or '—'} | ✅ |"
+                )
+            else:
+                lines.append(f"| {it.query} | — | — | — | ❌ not resolved |")
+        return "\n".join(lines)
+
+
 class CompoundActivity(BaseModel):
     """A small molecule with measured bioactivity against the target."""
 

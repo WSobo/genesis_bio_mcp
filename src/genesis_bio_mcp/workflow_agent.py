@@ -19,6 +19,9 @@ import anthropic
 
 from genesis_bio_mcp.config.settings import settings
 from genesis_bio_mcp.models import (
+    BatchGeneResolution,
+    BatchGeneResolutionItem,
+    BatchMolecularProperties,
     ComparisonReport,
     DMSVariantLookup,
     DrugHistory,
@@ -133,6 +136,26 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
         result = await _resolve_gene(gene_name, uniprot_client=state.uniprot)
         return result.to_markdown()
 
+    async def _batch_resolve_genes_fn(gene_names: list[str]) -> str:
+        async def _one(name: str) -> BatchGeneResolutionItem:
+            try:
+                res = await _resolve_gene(name, uniprot_client=state.uniprot)
+            except Exception:
+                res = None
+            resolved = bool(
+                res
+                and (
+                    res.source != "input"
+                    or res.ncbi_gene_id
+                    or res.uniprot_accession
+                    or res.hgnc_id
+                )
+            )
+            return BatchGeneResolutionItem(query=name, resolved=resolved, resolution=res)
+
+        items = await asyncio.gather(*[_one(n) for n in gene_names])
+        return BatchGeneResolution(items=list(items), total_requested=len(gene_names)).to_markdown()
+
     async def _get_protein_info_fn(gene_symbol: str) -> str:
         result = await state.uniprot.get_protein(gene_symbol)
         if result is None:
@@ -214,6 +237,19 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
         if result is None:
             return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
         return result.to_markdown()
+
+    async def _batch_compute_molecular_properties_fn(smiles_list: list[str]) -> str:
+        results = []
+        failed: list[str] = []
+        for smi in smiles_list:
+            props = _compute_molecular_properties(smi)
+            if props is None:
+                failed.append(smi)
+            else:
+                results.append(props)
+        return BatchMolecularProperties(
+            results=results, failed=failed, total_requested=len(smiles_list)
+        ).to_markdown()
 
     async def _search_similar_compounds_fn(
         smiles: str, mode: str = "similarity", threshold: float = 0.9
@@ -522,6 +558,30 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             use_when="Use when the input gene name might be an alias or informal name, or before any other tool to confirm the canonical symbol.",
             fn=_resolve_gene_fn,
         ),
+        "batch_resolve_genes": ToolSpec(
+            name="batch_resolve_genes",
+            description=(
+                "Resolve many gene names/aliases/synonyms to canonical identifiers (HGNC "
+                "symbol, NCBI Gene ID, UniProt accession) in one call. Resolutions run "
+                "concurrently; unresolved entries are flagged, not failed."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "gene_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 50,
+                        "description": "Gene symbols/aliases. Example: ['HER2', 'p53', 'COX2']",
+                    }
+                },
+                "required": ["gene_names"],
+            },
+            tool_category="gene_annotation",
+            use_when="Use to normalize a whole list of gene names/aliases to canonical symbols and IDs at once before querying other tools per gene.",
+            fn=_batch_resolve_genes_fn,
+        ),
         "get_protein_info": ToolSpec(
             name="get_protein_info",
             description=(
@@ -682,6 +742,30 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="druggability",
             use_when="Use to profile the drug-likeness of a specific molecule given its SMILES (Lipinski/Veber/QED/PAINS), independent of any database.",
             fn=_compute_molecular_properties_fn,
+        ),
+        "batch_compute_molecular_properties": ToolSpec(
+            name="batch_compute_molecular_properties",
+            description=(
+                "Compute drug-likeness properties for many molecules from their SMILES in one "
+                "call (RDKit, local): one summary row per molecule with formula, MW, logP, "
+                "TPSA, QED, Lipinski Ro5, and PAINS. Unparseable SMILES are reported, not failed."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "smiles_list": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 100,
+                        "description": "SMILES strings. Example: ['CCO', 'CC(=O)Oc1ccccc1C(=O)O']",
+                    }
+                },
+                "required": ["smiles_list"],
+            },
+            tool_category="druggability",
+            use_when="Use to profile or triage a whole set of candidate molecules (SMILES) for drug-likeness at once, instead of one compute_molecular_properties call per structure.",
+            fn=_batch_compute_molecular_properties_fn,
         ),
         "standardize_structure": ToolSpec(
             name="standardize_structure",

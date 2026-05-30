@@ -13,7 +13,7 @@ NO built-in Read/Grep/Glob. NO raw ls/cat/git. MUST use bash `rtk <cmd>` (`rtk l
 `uv run pytest tests/ -v`
 
 ## Git & Repo Hygiene
-- Use `rtk git` for ALL version control. NEVER `git push` without explicit user permission.
+- Use `rtk git` for ALL version control.
 - Commits MUST be atomic (one feature/fix per commit). Conventional Commits ONLY (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`).
 - One branch per change: `feat/…`, `fix/…`, `chore/…`, `docs/…`, `refactor/…`. DELETE a branch as soon as it merges — never let stale branches pile up (`git branch -d <name>`).
 - NEVER track/commit `data/`, `.parquet`, `.csv`, generated `examples/*.json`, or `.claude/worktrees/`. If a file slips into the index before `.gitignore` catches it, untrack with `git rm -r --cached <path>` — gitignore does NOT untrack already-tracked files.
