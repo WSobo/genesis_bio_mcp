@@ -144,6 +144,7 @@ def test_build_tool_registry_has_all_tools():
         "get_cancer_dependency",
         "get_gwas_evidence",
         "get_compounds",
+        "compute_molecular_properties",
         "get_chembl_compounds",
         "get_protein_structure",
         "get_structure_confidence",

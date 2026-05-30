@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 31 tools for biomedical database queries:
+Exposes 32 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -8,6 +8,7 @@ Exposes 31 tools for biomedical database queries:
   - get_cancer_dependency         DepMap: CRISPR essentiality across cancer lines
   - get_gwas_evidence             GWAS Catalog: genetic associations for a trait
   - get_compounds                 PubChem: active small molecules against a target
+  - compute_molecular_properties  RDKit: physicochemical + drug-likeness from a SMILES (local)
   - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_structure_confidence      AlphaFold: per-residue pLDDT profile + disordered regions
@@ -89,6 +90,9 @@ from genesis_bio_mcp.models import (
 )
 from genesis_bio_mcp.tools.biochem import compute_features, scan_liabilities
 from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
+from genesis_bio_mcp.tools.cheminformatics import (
+    compute_molecular_properties as _compute_molecular_properties,
+)
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals as _attach_safety_signals,
@@ -273,6 +277,19 @@ class GetCancerDependencyInput(_GeneInput):
 
 class GetCompoundsInput(_GeneInput):
     """Input for get_compounds."""
+
+
+class ComputeMolecularPropertiesInput(BaseModel):
+    """Input for compute_molecular_properties."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    smiles: str = Field(
+        ...,
+        description="SMILES string of the molecule, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin).",
+        min_length=1,
+        max_length=2000,
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
 
 
 class GetChEMBLCompoundsInput(_GeneInput):
@@ -939,6 +956,36 @@ async def get_compounds(params: GetCompoundsInput) -> str:
     result = await mcp.state.pubchem.get_compounds(symbol)
     return _fmt(
         result, params.response_format, f"No PubChem bioactivity data found for gene '{symbol}'."
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+    )
+)
+async def compute_molecular_properties(params: ComputeMolecularPropertiesInput) -> str:
+    """Compute physicochemical and drug-likeness properties for a molecule from its SMILES.
+
+    Locally computed with RDKit — deterministic, offline, no external API. Use this to
+    profile a small molecule's developability without a database lookup: molecular weight,
+    logP, TPSA, H-bond donors/acceptors, rotatable bonds, aromatic rings, fraction Csp3,
+    QED, Lipinski Rule-of-Five and Veber checks, a PAINS assay-interference flag, and the
+    Bemis-Murcko scaffold. Complements get_compounds / get_chembl_compounds (which retrieve
+    known compounds) by analyzing any arbitrary structure.
+
+    Args:
+        params (ComputeMolecularPropertiesInput): smiles, response_format.
+
+    Returns:
+        Markdown with a property table, drug-likeness assessment (Lipinski/Veber/PAINS),
+        and the Bemis-Murcko scaffold. Returns an error if the SMILES cannot be parsed.
+    """
+    result = _compute_molecular_properties(params.smiles)
+    return _fmt(
+        result,
+        params.response_format,
+        f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
     )
 
 
