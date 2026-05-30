@@ -150,10 +150,31 @@ produced, and what resolved query it answers — without parsing prose:
 }
 ```
 
-When a tool has no result it returns `{"provenance": {...}, "error": "<message>"}`
-instead of `data`. Markdown output (the default) is unchanged — provenance is a
-JSON-only contract. (`get_pathway_members` and `run_biology_workflow` return free
-text rather than a model and are not enveloped.)
+When a tool has no result it returns a **typed error** instead of `data`:
+
+```jsonc
+{
+  "provenance": { /* … */ },
+  "error": {
+    "status": "NotFound",            // machine-readable status (see below)
+    "message": "No UniProt entry found for 'ZZZ'."
+  }
+}
+```
+
+`status` is one of a fixed taxonomy so an agent can branch deterministically instead
+of string-matching prose:
+
+| `status` | Meaning |
+|---|---|
+| `NotFound` | Query was valid but no matching data exists upstream (the default) |
+| `InvalidInput` | The input itself was malformed (bad SMILES, unparseable mutation, unreadable structure) |
+| `RateLimited` | An upstream throttled the request (reserved; clients currently retry internally) |
+| `UpstreamUnavailable` | An upstream service failed, timed out, or rejected the request |
+
+Markdown output (the default) is unchanged — both provenance and the typed status are
+JSON-only contracts. (`get_pathway_members` and `run_biology_workflow` return free text
+rather than a model and are not enveloped.)
 
 Exceptions (tools with additional required fields):
 
