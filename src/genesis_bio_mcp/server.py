@@ -47,6 +47,7 @@ import asyncio
 import json as _json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Literal
@@ -102,6 +103,7 @@ from genesis_bio_mcp.tools.cheminformatics import (
     standardize_structure as _standardize_structure,
 )
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
+from genesis_bio_mcp.tools.health import build_health_report, check_upstreams, health_to_markdown
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals as _attach_safety_signals,
 )
@@ -175,6 +177,10 @@ async def lifespan(server: FastMCP):
         server.state.clinical_trials = ClinicalTrialsClient(client)
         server.state.openfda = OpenFDAClient(client)
         server.state.reactome = ReactomeClient(client)
+        # Runtime metadata for the health://status resource.
+        server.state.http_client = client
+        server.state.started_at = time.time()
+        server.state.depmap_gene_count = len(gene_dep_cache)
         yield
 
 
@@ -2204,6 +2210,33 @@ async def tool_registry_resource() -> str:
     """
     registry = build_tool_registry(mcp.state)
     return format_registry_docs(registry)
+
+
+@mcp.resource("health://status")
+async def health_status_resource() -> str:
+    """Live server health: upstream reachability, cache state, version, and uptime.
+
+    An ops/observability surface (mirroring the served model's own ``/health``) that lets a
+    client, orchestrator, or agent verify the server and its critical upstream services are
+    reachable before relying on them. Probes a representative set of upstreams concurrently
+    (each with a short timeout) and reports per-service reachability + latency.
+
+    Returns:
+        Markdown with overall status, version, tool count, uptime, DepMap cache size, and an
+        upstream-reachability table.
+    """
+    state = mcp.state
+    tools = await mcp.list_tools()
+    uptime = time.time() - getattr(state, "started_at", time.time())
+    client = getattr(state, "http_client", None)
+    upstreams = await check_upstreams(client) if client is not None else []
+    report = build_health_report(
+        n_tools=len(tools),
+        uptime_s=uptime,
+        depmap_gene_count=getattr(state, "depmap_gene_count", 0),
+        upstreams=upstreams,
+    )
+    return health_to_markdown(report)
 
 
 # ---------------------------------------------------------------------------
