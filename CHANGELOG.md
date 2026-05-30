@@ -9,7 +9,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-v0.5.0 in progress — cheminformatics core (RDKit) + agent/ops hardening (see docs/ROADMAP.md).
+_No unreleased changes._
+
+## [0.5.0] - 2026-05-30
+
+Adds a **cheminformatics core** (RDKit) and the stack's first **served ML model** (UMA-Inverse
+inverse folding) — extending the toolset from *retrieve* (databases) to also *compute*
+(RDKit) and *infer* (a deployed model). **36 tools across 24 data sources** + local RDKit +
+the UMA-Inverse service. See docs/ROADMAP.md for the remaining v0.5.x agent-contract /
+observability tracks.
 
 ### Added
 
