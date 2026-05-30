@@ -9,7 +9,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.md).
+## [0.6.0] - 2026-05-30
+
+Two themes since v0.5.0. **Agent-contract & observability hardening:** a provenance envelope and
+a typed error taxonomy on all JSON output, a `health://status` resource, and batch tools for
+agent fan-out. And the flagship — a **hybrid-retrieval corpus**: an *optional* PostgreSQL +
+pgvector store over a curated human-kinome bioactivity corpus, exposed via four read-only
+`corpus_*` tools that combine relational SQL filters with embedding / Tanimoto similarity
+(target sequence-embedding kNN, compound fingerprint similarity, and the headline SQL-filter +
+Tanimoto hybrid search), with offline CPU ingesters (ESM-2-150M for targets, ChEMBL for
+compounds/activities) and a FAIR manifest. The corpus tier is fully optional — the server runs
+unchanged without it. **42 tools across 24 data sources** + local RDKit + UMA-Inverse + the
+corpus. See docs/ROADMAP.md.
 
 ### Added
 
