@@ -11,6 +11,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **`get_chembl_compounds` low-confidence flag was dead code (same root cause).** The v0.5.0
+  ChEMBL client read `confidence_score` from `/activity` too — always null — so `ChEMBLActivity`
+  confidence was never populated and the "low target-assignment confidence (< 9)" caveat in
+  `ChEMBLCompounds.to_markdown` could **never fire**. Now enriches activities with a batched
+  `/assay` lookup, mirroring the corpus fix. Verified live: BRAF's 20 compounds went from all
+  `None` → all `9`. The shared `test_chembl_happy_path_with_assay_context` fixture updated to a
+  realistic `/activity` (no confidence) + `/assay` (supplies confidence) split.
 - **Corpus `assay_confidence_score` was always null (v0.6.0 follow-up).** A live-API stress test
   of the ChEMBL ingester revealed the `/activity` endpoint carries **no** `confidence_score`
   field — it lives on `/assay` — so the assay-confidence signal (one of the corpus's three

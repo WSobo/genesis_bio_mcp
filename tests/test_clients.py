@@ -4560,17 +4560,18 @@ _MOCK_CHEMBL_TARGET_SEARCH = {
 _MOCK_CHEMBL_ACTIVITIES = {
     "activities": [
         # Biochemical binding assay, human, high confidence — the reference row.
+        # NOTE: ChEMBL /activity rows carry NO confidence_score — it comes from /assay.
         {
             "molecule_chembl_id": "CHEMBL1336",
             "molecule_pref_name": "VEMURAFENIB",
             "standard_type": "IC50",
             "pchembl_value": "8.5",
+            "assay_chembl_id": "CHEMBL_AS1",
             "assay_description": "In vitro kinase inhibition against human BRAF V600E",
             "assay_type": "B",
             "assay_organism": "Homo sapiens",
             "assay_cell_type": None,
             "bao_label": "single protein format",
-            "confidence_score": 9,
         },
         # Functional cell-based assay in HEK293 — should render with cell type.
         {
@@ -4578,12 +4579,12 @@ _MOCK_CHEMBL_ACTIVITIES = {
             "molecule_pref_name": "DABRAFENIB",
             "standard_type": "IC50",
             "pchembl_value": "9.2",
+            "assay_chembl_id": "CHEMBL_AS2",
             "assay_description": "Inhibition of ERK phosphorylation in A375 cells",
             "assay_type": "F",
             "assay_organism": "Homo sapiens",
             "assay_cell_type": "A375",
             "bao_label": "cell-based format",
-            "confidence_score": 8,  # < 9 — should drive the low-confidence flag
         },
         # Rat assay — should surface under "Non-human assays present".
         {
@@ -4591,12 +4592,12 @@ _MOCK_CHEMBL_ACTIVITIES = {
             "molecule_pref_name": "ROCK_FOR_RAT",
             "standard_type": "Ki",
             "pchembl_value": 7.0,
+            "assay_chembl_id": "CHEMBL_AS3",
             "assay_description": "Rat liver microsome assay",
             "assay_type": "B",
             "assay_organism": "Rattus norvegicus",
             "assay_cell_type": None,
             "bao_label": "single protein format",
-            "confidence_score": 9,
         },
         # Duplicate molecule — must be deduped (only the first occurrence kept).
         {
@@ -4604,10 +4605,10 @@ _MOCK_CHEMBL_ACTIVITIES = {
             "molecule_pref_name": "VEMURAFENIB",
             "standard_type": "Ki",
             "pchembl_value": "7.0",
+            "assay_chembl_id": "CHEMBL_AS1",
             "assay_description": "dup row",
             "assay_type": "B",
             "assay_organism": "Homo sapiens",
-            "confidence_score": 9,
         },
         # Missing pchembl — must be skipped.
         {
@@ -4617,17 +4618,29 @@ _MOCK_CHEMBL_ACTIVITIES = {
             "pchembl_value": None,
             "assay_type": "B",
         },
-        # Unparseable confidence score — coerced to None, row still kept.
+        # Assay whose /assay confidence is unparseable — coerced to None, row still kept.
         {
             "molecule_chembl_id": "CHEMBL7777",
             "molecule_pref_name": "WEIRD_CONF",
             "standard_type": "IC50",
             "pchembl_value": "6.1",
+            "assay_chembl_id": "CHEMBL_AS4",
             "assay_description": "Assay with non-int confidence in source data",
             "assay_type": "B",
             "assay_organism": "Homo sapiens",
-            "confidence_score": "not-a-number",
         },
+    ]
+}
+
+
+# /assay supplies confidence_score (absent from /activity). AS2 is < 9 (drives the
+# low-confidence flag); AS4 is unparseable → coerced to None.
+_MOCK_CHEMBL_ASSAYS = {
+    "assays": [
+        {"assay_chembl_id": "CHEMBL_AS1", "confidence_score": 9},
+        {"assay_chembl_id": "CHEMBL_AS2", "confidence_score": 8},
+        {"assay_chembl_id": "CHEMBL_AS3", "confidence_score": 9},
+        {"assay_chembl_id": "CHEMBL_AS4", "confidence_score": "not-a-number"},
     ]
 }
 
@@ -4657,6 +4670,9 @@ async def test_chembl_happy_path_with_assay_context(http_client):
     )
     respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/activity").mock(
         return_value=httpx.Response(200, json=_MOCK_CHEMBL_ACTIVITIES)
+    )
+    respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/assay").mock(
+        return_value=httpx.Response(200, json=_MOCK_CHEMBL_ASSAYS)
     )
     respx.get(url__regex=r"ebi\.ac\.uk/chembl/api/data/mechanism").mock(
         return_value=httpx.Response(200, json=_MOCK_CHEMBL_MECHANISMS)

@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 _BASE = "https://www.ebi.ac.uk/chembl/api/data"
 _TARGET_SEARCH_URL = f"{_BASE}/target/search"
 _ACTIVITY_URL = f"{_BASE}/activity"
+_ASSAY_URL = f"{_BASE}/assay"
 _MECHANISM_URL = f"{_BASE}/mechanism"
 
 _SEMAPHORE = asyncio.Semaphore(settings.chembl_semaphore_limit)
@@ -124,6 +125,9 @@ class ChEMBLClient:
 
             activities: list[ChEMBLActivity] = []
             seen: set[str] = set()
+            assay_by_mol: dict[
+                str, str
+            ] = {}  # molecule → assay_chembl_id (for confidence enrichment)
 
             for a in raw:
                 mol_id = a.get("molecule_chembl_id", "")
@@ -140,13 +144,9 @@ class ChEMBLClient:
                     continue
                 seen.add(mol_id)
 
-                # Confidence score is a string in some ChEMBL rows and an int
-                # in others; coerce defensively, drop on failure.
-                conf_raw = a.get("confidence_score")
-                try:
-                    conf_score = int(conf_raw) if conf_raw is not None else None
-                except (ValueError, TypeError):
-                    conf_score = None
+                assay_id = a.get("assay_chembl_id")
+                if assay_id:
+                    assay_by_mol[mol_id] = assay_id
 
                 activities.append(
                     ChEMBLActivity(
@@ -166,9 +166,18 @@ class ChEMBLClient:
                         assay_organism=a.get("target_organism") or a.get("assay_organism") or None,
                         assay_cell_type=a.get("assay_cell_type") or None,
                         bao_format=a.get("bao_label") or a.get("bao_format") or None,
-                        confidence_score=conf_score,
+                        # /activity carries NO confidence_score (it's on /assay) — enriched below.
+                        confidence_score=None,
                     )
                 )
+
+            # ChEMBL's /activity endpoint has no confidence_score field — it lives on /assay.
+            # Enrich so the low-target-confidence caveat in to_markdown actually fires.
+            conf_map = await self._fetch_assay_confidence(set(assay_by_mol.values()))
+            for act in activities:
+                aid = assay_by_mol.get(act.molecule_chembl_id)
+                if aid and aid in conf_map:
+                    act.confidence_score = conf_map[aid]
 
             # Sort by potency descending
             activities.sort(key=lambda x: x.pchembl_value, reverse=True)
@@ -177,6 +186,37 @@ class ChEMBLClient:
         except Exception as exc:
             logger.warning("ChEMBL activity fetch failed for %s: %s", target_id, exc)
             return []
+
+    async def _fetch_assay_confidence(self, assay_ids: set[str]) -> dict[str, int]:
+        """Map assay_chembl_id → confidence_score from /assay (batched). Never raises."""
+        ids = sorted(a for a in assay_ids if a)
+        out: dict[str, int] = {}
+        for i in range(0, len(ids), 50):
+            chunk = ids[i : i + 50]
+            try:
+                async with _SEMAPHORE:
+                    resp = await self._client.get(
+                        _ASSAY_URL,
+                        params={
+                            "assay_chembl_id__in": ",".join(chunk),
+                            "format": "json",
+                            "limit": len(chunk),
+                        },
+                        timeout=20.0,
+                    )
+                    resp.raise_for_status()
+            except Exception as exc:
+                logger.warning("ChEMBL assay confidence fetch failed: %s", exc)
+                continue
+            for assay in resp.json().get("assays") or []:
+                cs = assay.get("confidence_score")
+                aid = assay.get("assay_chembl_id")
+                if aid and cs is not None:
+                    try:
+                        out[aid] = int(cs)
+                    except (TypeError, ValueError):
+                        pass
+        return out
 
     async def _fetch_mechanisms(self, target_id: str) -> tuple[float | None, list[str], list[str]]:
         """Fetch mechanism-of-action records for the target.
