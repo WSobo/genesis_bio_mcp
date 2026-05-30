@@ -1,5 +1,6 @@
 """Unit tests for the RDKit-based cheminformatics tools."""
 
+from genesis_bio_mcp.models import BatchMolecularProperties
 from genesis_bio_mcp.tools.cheminformatics import (
     compute_molecular_properties,
     standardize_structure,
@@ -80,3 +81,32 @@ def test_standardize_noop_on_clean_molecule():
 def test_standardize_invalid_smiles_returns_none():
     assert standardize_structure("not_a_smiles!!!") is None
     assert standardize_structure("") is None
+
+
+def test_batch_molecular_properties_markdown_summary():
+    # Two valid molecules + one parse failure → one summary row each, failures listed.
+    valid = [
+        compute_molecular_properties("CCO"),
+        compute_molecular_properties("CC(=O)Oc1ccccc1C(=O)O"),
+    ]
+    batch = BatchMolecularProperties(
+        results=[p for p in valid if p is not None],
+        failed=["not_a_smiles!!!"],
+        total_requested=3,
+    )
+    md = batch.to_markdown()
+    assert "3 molecules" in md
+    assert "2 computed, 1 failed" in md
+    # One table row per computed molecule
+    assert "C9H8O4" in md  # aspirin formula
+    assert "C2H6O" in md  # ethanol formula
+    assert "Failed to parse (1)" in md
+    assert "`not_a_smiles!!!`" in md
+
+
+def test_batch_molecular_properties_all_failed_has_no_table():
+    batch = BatchMolecularProperties(results=[], failed=["x", "y"], total_requested=2)
+    md = batch.to_markdown()
+    assert "0 computed, 2 failed" in md
+    assert "| # | Input |" not in md  # no property table when nothing parsed
+    assert "Failed to parse (2)" in md

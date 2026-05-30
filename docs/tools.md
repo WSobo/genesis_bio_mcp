@@ -1,8 +1,8 @@
 # Tool catalog
 
-genesis-bio-mcp exposes **35 MCP tools** across **24 biomedical data sources**
+genesis-bio-mcp exposes **37 MCP tools** across **24 biomedical data sources**
 (plus local RDKit cheminformatics and the UMA-Inverse inverse-folding service, and
-`run_biology_workflow`, the 36th, which chains the others with Claude).
+`run_biology_workflow`, the 38th, which chains the others with Claude).
 
 All tools return Markdown strings by default and accept
 `response_format="json"` for programmatic integration. Single-gene tools
@@ -27,6 +27,7 @@ Jump to:
 | Tool | Data source | Purpose |
 |---|---|---|
 | `resolve_gene` | UniProt + NCBI | Resolve aliases → canonical HGNC symbol + NCBI Gene ID + UniProt accession |
+| `batch_resolve_genes` | UniProt + NCBI | Resolve many gene names/aliases at once (1–50) → one table of canonical IDs; concurrent, unresolved entries flagged. Agent fan-out helper |
 | `get_protein_info` | UniProt Swiss-Prot | Function summary, subcellular location, disease variants, PDB cross-refs, disulfide bonds |
 | `get_protein_sequence` | UniProt FASTA | Protein sequence (optional residue slice) + biochem features + liability-motif scan — see [Protein engineering](#protein-engineering) |
 
@@ -44,6 +45,7 @@ Jump to:
 |---|---|---|
 | `get_compounds` | PubChem | Active small molecules with bioactivity hit counts (quick tractability check) |
 | `compute_molecular_properties` | RDKit (local) | SMILES → MW, logP, TPSA, HBD/HBA, rotatable bonds, QED, Lipinski/Veber checks, PAINS alert, Bemis-Murcko scaffold. Deterministic offline compute for any structure |
+| `batch_compute_molecular_properties` | RDKit (local) | Compute drug-likeness for many SMILES at once (1–100) → one summary row per molecule (formula, MW, logP, TPSA, QED, Ro5, PAINS); unparseable SMILES reported, not failed. Agent fan-out helper |
 | `standardize_structure` | RDKit (local) | SMILES → salt/solvent-stripped, neutralized, canonical-tautomer SMILES + InChI/InChIKey for exact-structure matching and cross-source deduplication |
 | `search_similar_compounds` | PubChem + RDKit | Structure search from a query SMILES: 2D Tanimoto similarity (ranked by RDKit Morgan Tanimoto) or substructure match. Returns CID, name, formula, MW, similarity |
 | `get_chembl_compounds` | ChEMBL | Quantitative potency (IC50 / Ki / Kd) with pChEMBL values and confidence scores |

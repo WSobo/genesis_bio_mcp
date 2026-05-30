@@ -13,6 +13,16 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **`batch_resolve_genes` + `batch_compute_molecular_properties` tools (v0.5.0 M8 — agent
+  fan-out, 38 tools total).** Two batch helpers that collapse N round-trips into one call for
+  agent workflows. `batch_resolve_genes` resolves up to 50 gene names/aliases concurrently to
+  canonical identifiers (HGNC symbol, NCBI Gene ID, UniProt accession), returning one table with
+  unresolved entries flagged rather than failing the batch. `batch_compute_molecular_properties`
+  computes RDKit drug-likeness for up to 100 SMILES locally and returns a compact one-row-per-
+  molecule summary (formula, MW, logP, TPSA, QED, Lipinski Ro5, PAINS); unparseable SMILES are
+  listed under `failed` instead of failing the batch. New `BatchGeneResolution` /
+  `BatchGeneResolutionItem` / `BatchMolecularProperties` models; both tools registered in
+  `run_biology_workflow`. Tests added in `test_cheminformatics.py` + `test_workflow_agent.py`.
 - **`health://status` MCP resource (v0.5.0 M7 — observability).** A live health/observability
   surface (mirroring the served model's own `/health`): reports overall status, server version,
   tool count, uptime, the DepMap cache size, and a per-service **upstream-reachability** table —

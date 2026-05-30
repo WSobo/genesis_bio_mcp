@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 36 tools for biomedical database queries:
+Exposes 38 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -36,6 +36,8 @@ Exposes 36 tools for biomedical database queries:
   - get_pathway_members           Reactome: enumerate all genes in a named pathway
   - prioritize_target             Orchestration: full target assessment report
   - compare_targets               Compare 2–5 targets side by side for an indication
+  - batch_resolve_genes           Resolve many gene names/aliases to canonical IDs in one call
+  - batch_compute_molecular_properties RDKit: drug-likeness for many SMILES in one call (local)
   - run_biology_workflow          AI agent: dynamic tool selection for multi-step questions
 
 All tools return Markdown strings for direct LLM consumption.
@@ -87,6 +89,9 @@ from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
 from genesis_bio_mcp.config.efo_resolver import EFOResolver
 from genesis_bio_mcp.config.settings import settings
 from genesis_bio_mcp.models import (
+    BatchGeneResolution,
+    BatchGeneResolutionItem,
+    BatchMolecularProperties,
     ComparisonReport,
     DMSVariantLookup,
     DrugHistory,
@@ -341,6 +346,38 @@ class SearchSimilarCompoundsInput(BaseModel):
         description="Tanimoto similarity threshold (similarity mode only; 0.4–1.0).",
     )
     max_results: int = Field(20, ge=1, le=100, description="Maximum number of hits to return.")
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class BatchComputeMolecularPropertiesInput(BaseModel):
+    """Input for batch_compute_molecular_properties."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    smiles_list: list[str] = Field(
+        ...,
+        description=(
+            "List of SMILES strings to profile in one call (1–100). Unparseable entries "
+            "are reported under 'failed' rather than failing the batch."
+        ),
+        min_length=1,
+        max_length=100,
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class BatchResolveGenesInput(BaseModel):
+    """Input for batch_resolve_genes."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    gene_names: list[str] = Field(
+        ...,
+        description=(
+            "List of gene symbols, aliases, or synonyms to resolve in one call (1–50). "
+            "Examples: ['HER2', 'p53', 'COX2', 'ErbB1']."
+        ),
+        min_length=1,
+        max_length=50,
+    )
     response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
 
 
@@ -2145,6 +2182,79 @@ async def compare_targets(params: CompareTargetsInput) -> str:
         )
         result = truncation_note + result
     return result
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def batch_resolve_genes(params: BatchResolveGenesInput) -> str:
+    """Resolve many gene names, aliases, or synonyms to canonical identifiers in one call.
+
+    Agent fan-out helper: instead of calling resolve_gene N times, pass a whole list and
+    get back one table mapping each query to its HGNC symbol, NCBI Gene ID, and UniProt
+    accession. Resolutions run concurrently; an unresolved entry is flagged in its row
+    rather than failing the batch. Use this to normalize a gene list before querying other
+    tools.
+
+    Args:
+        params (BatchResolveGenesInput): gene_names (1–50), response_format.
+
+    Returns:
+        Markdown table with one row per query (symbol, NCBI Gene, UniProt, resolved status).
+    """
+
+    async def _one(name: str) -> BatchGeneResolutionItem:
+        try:
+            res = await _resolve_gene(name, uniprot_client=mcp.state.uniprot)
+        except Exception:
+            res = None
+        resolved = bool(
+            res
+            and (res.source != "input" or res.ncbi_gene_id or res.uniprot_accession or res.hgnc_id)
+        )
+        return BatchGeneResolutionItem(query=name, resolved=resolved, resolution=res)
+
+    items = await asyncio.gather(*[_one(n) for n in params.gene_names])
+    batch = BatchGeneResolution(items=list(items), total_requested=len(params.gene_names))
+    return _fmt(batch, params.response_format, "")
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+    )
+)
+async def batch_compute_molecular_properties(
+    params: BatchComputeMolecularPropertiesInput,
+) -> str:
+    """Compute drug-likeness properties for many molecules from their SMILES in one call.
+
+    Agent fan-out helper for the local RDKit compute_molecular_properties tool: pass a list
+    of SMILES and get one compact summary table (formula, MW, logP, TPSA, QED, Lipinski Ro5,
+    PAINS) with one row per molecule. Deterministic, offline, no external API. Unparseable
+    SMILES are listed under 'failed' instead of failing the batch. Use to triage or rank a
+    set of candidate structures.
+
+    Args:
+        params (BatchComputeMolecularPropertiesInput): smiles_list (1–100), response_format.
+
+    Returns:
+        Markdown summary table over all parseable molecules plus a list of any that failed.
+    """
+    results = []
+    failed: list[str] = []
+    for smi in params.smiles_list:
+        props = _compute_molecular_properties(smi)
+        if props is None:
+            failed.append(smi)
+        else:
+            results.append(props)
+    batch = BatchMolecularProperties(
+        results=results, failed=failed, total_requested=len(params.smiles_list)
+    )
+    return _fmt(batch, params.response_format, "")
 
 
 @mcp.tool(
