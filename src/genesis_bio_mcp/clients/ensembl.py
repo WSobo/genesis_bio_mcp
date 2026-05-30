@@ -238,28 +238,41 @@ def _parse_vep_response(
     transcript_consequences = data.get("transcript_consequences") or []
     regulatory = data.get("regulatory_feature_consequences") or []
 
-    parsed: list[VEPConsequence] = []
-    for tc in transcript_consequences:
-        is_canonical = bool(tc.get("canonical"))
-        if not include_all_transcripts and not is_canonical:
-            continue
+    def _to_consequence(tc: dict) -> VEPConsequence:
         terms = tc.get("consequence_terms") or []
-        parsed.append(
-            VEPConsequence(
-                consequence_term=", ".join(terms) if terms else "unknown",
-                impact=tc.get("impact"),
-                transcript_id=tc.get("transcript_id"),
-                gene_symbol=tc.get("gene_symbol"),
-                biotype=tc.get("biotype"),
-                canonical=is_canonical,
-                sift_score=tc.get("sift_score"),
-                sift_prediction=tc.get("sift_prediction"),
-                polyphen_score=tc.get("polyphen_score"),
-                polyphen_prediction=tc.get("polyphen_prediction"),
-                amino_acids=tc.get("amino_acids"),
-                codons=tc.get("codons"),
-            )
+        return VEPConsequence(
+            consequence_term=", ".join(terms) if terms else "unknown",
+            impact=tc.get("impact"),
+            transcript_id=tc.get("transcript_id"),
+            gene_symbol=tc.get("gene_symbol"),
+            biotype=tc.get("biotype"),
+            canonical=bool(tc.get("canonical")),
+            sift_score=tc.get("sift_score"),
+            sift_prediction=tc.get("sift_prediction"),
+            polyphen_score=tc.get("polyphen_score"),
+            polyphen_prediction=tc.get("polyphen_prediction"),
+            amino_acids=tc.get("amino_acids"),
+            codons=tc.get("codons"),
         )
+
+    all_parsed = [_to_consequence(tc) for tc in transcript_consequences]
+
+    if include_all_transcripts:
+        parsed = all_parsed
+    else:
+        canonical_parsed = [c for c in all_parsed if c.canonical]
+        if canonical_parsed:
+            parsed = canonical_parsed
+        else:
+            # The VEP HGVS endpoint does NOT set the `canonical` flag on any
+            # transcript (only region-based queries do), so a strict canonical
+            # filter would drop every row and render an empty table even though
+            # most_severe_consequence is populated. Fall back to the
+            # transcript(s) whose consequence matches the most-severe term, else
+            # the first, so the per-transcript detail (SIFT/PolyPhen) still shows.
+            most_severe = data.get("most_severe_consequence")
+            matches = [c for c in all_parsed if most_severe and most_severe in c.consequence_term]
+            parsed = matches[:1] if matches else all_parsed[:1]
 
     regulatory_overlaps: list[str] = []
     for reg in regulatory:

@@ -1014,6 +1014,52 @@ async def test_ensembl_get_vep_all_transcripts(http_client):
 
 
 @respx.mock
+async def test_ensembl_vep_falls_back_when_no_canonical_flag(http_client):
+    """The VEP HGVS endpoint does NOT set the canonical flag on any transcript, so a
+    strict canonical-only filter would render an empty per-transcript table even though
+    most_severe_consequence is populated. The parser falls back to the most-severe-
+    matching transcript so SIFT/PolyPhen detail still shows."""
+    no_canonical = [
+        {
+            "most_severe_consequence": "missense_variant",
+            "assembly_name": "GRCh38",
+            "transcript_consequences": [
+                {
+                    "transcript_id": "ENST00000288602",
+                    "consequence_terms": ["missense_variant"],
+                    "canonical": None,
+                    "sift_prediction": "deleterious",
+                    "polyphen_prediction": "benign",
+                    "gene_symbol": "BRAF",
+                    "impact": "MODERATE",
+                },
+                {
+                    "transcript_id": "ENST00000496384",
+                    "consequence_terms": ["intron_variant"],
+                    "canonical": None,
+                },
+            ],
+        }
+    ]
+    respx.get(url__regex=r"rest\.ensembl\.org/vep/human/hgvs").mock(
+        return_value=httpx.Response(200, json=no_canonical)
+    )
+    client = EnsemblClient(http_client)
+    report = await client.get_vep_by_hgvs("ENST00000646891:p.Val600Glu")
+    assert report is not None
+    assert report.most_severe_consequence == "missense_variant"
+    # Fallback surfaces the most-severe-matching transcript (not an empty table).
+    assert len(report.consequences) == 1
+    assert report.consequences[0].transcript_id == "ENST00000288602"
+    assert report.consequences[0].sift_prediction == "deleterious"
+    # include_all still returns every transcript.
+    report_all = await client.get_vep_by_hgvs(
+        "ENST00000646891:p.Val600Glu", include_all_transcripts=True
+    )
+    assert len(report_all.consequences) == 2
+
+
+@respx.mock
 async def test_ensembl_get_vep_consequences_combined(http_client):
     respx.get(url__regex=r"rest\.ensembl\.org/lookup/symbol/homo_sapiens/BRAF").mock(
         return_value=httpx.Response(200, json=_MOCK_ENSEMBL_LOOKUP_BRAF)
