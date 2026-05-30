@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import logging
 
-from rdkit import Chem
-from rdkit.Chem import QED, Crippen, Descriptors, Lipinski, rdMolDescriptors
+from rdkit import Chem, DataStructs
+from rdkit.Chem import QED, Crippen, Descriptors, Lipinski, rdFingerprintGenerator, rdMolDescriptors
 from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
 from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.Chem.Scaffolds import MurckoScaffold
@@ -24,6 +24,24 @@ from rdkit.Chem.Scaffolds import MurckoScaffold
 from genesis_bio_mcp.models import MolecularProperties, StandardizedStructure
 
 logger = logging.getLogger(__name__)
+
+# Morgan (ECFP4-like) fingerprint generator, built once, for Tanimoto similarity.
+_MORGAN_GEN = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
+
+
+def tanimoto_similarity(query_smiles: str, target_smiles: str) -> float | None:
+    """Morgan-fingerprint Tanimoto similarity (0–1) between two SMILES.
+
+    Returns ``None`` if either SMILES is unparseable.
+    """
+    qm = Chem.MolFromSmiles((query_smiles or "").strip())
+    tm = Chem.MolFromSmiles((target_smiles or "").strip())
+    if qm is None or tm is None:
+        return None
+    qfp = _MORGAN_GEN.GetFingerprint(qm)
+    tfp = _MORGAN_GEN.GetFingerprint(tm)
+    return round(DataStructs.TanimotoSimilarity(qfp, tfp), 3)
+
 
 # PAINS (Pan-Assay INterference compoundS) substructure catalog — built once.
 # A match flags a molecule prone to false-positive assay readouts.

@@ -13,6 +13,14 @@ v0.5.0 in progress — cheminformatics core (RDKit) + agent/ops hardening (see d
 
 ### Added
 
+- **`search_similar_compounds` tool (v0.5.0 M3, 34 tools total).** Structure-based compound
+  search from a query SMILES via PubChem: `similarity` mode (`fastsimilarity_2d`, Tanimoto ≥
+  threshold, ranked by a locally-computed RDKit Morgan Tanimoto) or `substructure` mode
+  (`fastsubstructure`). Returns CID, name, formula, MW, and similarity — for analog/me-too
+  discovery and scaffold hopping. New `SimilarCompound` / `SimilarCompounds` models, a
+  `PubChemClient.search_similar` method (POSTs the SMILES so special characters survive),
+  `tanimoto_similarity` helper in `tools/cheminformatics.py`, `run_biology_workflow`
+  registration, and 2 client tests. Confirmed against the live PubChem PUG-REST schema.
 - **`standardize_structure` tool (v0.5.0 M2, 33 tools total).** RDKit structure
   normalization: strips salts/solvents (keeps the largest organic fragment), neutralizes
   charges, and canonicalizes the tautomer, returning a registration-ready canonical SMILES

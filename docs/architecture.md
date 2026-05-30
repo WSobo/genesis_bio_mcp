@@ -12,7 +12,7 @@ see [deployment.md](deployment.md).
 
 ```
 src/genesis_bio_mcp/
-├── server.py                       # FastMCP server: 33 tools + run_biology_workflow,
+├── server.py                       # FastMCP server: 34 tools + run_biology_workflow,
 │                                     lifespan wiring, tool://registry resource
 ├── models.py                       # Pydantic V2 output models — every one implements
 │                                     to_markdown() + model_dump_json()

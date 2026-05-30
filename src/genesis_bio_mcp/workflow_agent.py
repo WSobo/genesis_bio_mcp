@@ -215,6 +215,14 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
         return result.to_markdown()
 
+    async def _search_similar_compounds_fn(
+        smiles: str, mode: str = "similarity", threshold: float = 0.9
+    ) -> str:
+        result = await state.pubchem.search_similar(smiles, mode=mode, threshold=threshold)
+        if result is None or result.total_found == 0:
+            return f"No compounds found for '{smiles}' ({mode} search)."
+        return result.to_markdown()
+
     async def _get_protein_structure_fn(gene_symbol: str) -> str:
         protein = await state.uniprot.get_protein(gene_symbol)
         accession = protein.uniprot_accession if protein else None
@@ -677,6 +685,36 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="druggability",
             use_when="Use to normalize a molecule (salt-strip, neutralize, canonical tautomer) and get its InChIKey before comparing or deduplicating compounds across sources.",
             fn=_standardize_structure_fn,
+        ),
+        "search_similar_compounds": ToolSpec(
+            name="search_similar_compounds",
+            description=(
+                "Find compounds structurally related to a query SMILES via PubChem: 2D Tanimoto "
+                "similarity (ranked by RDKit Morgan Tanimoto) or substructure match. Returns "
+                "CID, name, formula, MW, and similarity."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "smiles": {
+                        "type": "string",
+                        "description": "Query SMILES. Example: 'CC(=O)Oc1ccccc1C(=O)O'",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["similarity", "substructure"],
+                        "description": "Search mode (default 'similarity').",
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "description": "Tanimoto threshold for similarity mode (0.4–1.0, default 0.9).",
+                    },
+                },
+                "required": ["smiles"],
+            },
+            tool_category="druggability",
+            use_when="Use to expand chemical space around a hit, find analogs, or scaffold-hop from a known structure (SMILES) — similarity or substructure search.",
+            fn=_search_similar_compounds_fn,
         ),
         "get_chembl_compounds": ToolSpec(
             name="get_chembl_compounds",

@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 33 tools for biomedical database queries:
+Exposes 34 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -10,6 +10,7 @@ Exposes 33 tools for biomedical database queries:
   - get_compounds                 PubChem: active small molecules against a target
   - compute_molecular_properties  RDKit: physicochemical + drug-likeness from a SMILES (local)
   - standardize_structure         RDKit: salt-strip/neutralize/canonical-tautomer + InChIKey (local)
+  - search_similar_compounds      PubChem + RDKit: 2D-similarity / substructure structure search
   - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
   - get_protein_structure         AlphaFold + RCSB PDB: structural data
   - get_structure_confidence      AlphaFold: per-residue pLDDT profile + disordered regions
@@ -306,6 +307,30 @@ class StandardizeStructureInput(BaseModel):
         min_length=1,
         max_length=2000,
     )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class SearchSimilarCompoundsInput(BaseModel):
+    """Input for search_similar_compounds."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    smiles: str = Field(
+        ...,
+        description="Query SMILES, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin).",
+        min_length=1,
+        max_length=2000,
+    )
+    mode: Literal["similarity", "substructure"] = Field(
+        "similarity",
+        description="'similarity' = 2D Tanimoto ≥ threshold; 'substructure' = contains the query.",
+    )
+    threshold: float = Field(
+        0.9,
+        ge=0.4,
+        le=1.0,
+        description="Tanimoto similarity threshold (similarity mode only; 0.4–1.0).",
+    )
+    max_results: int = Field(20, ge=1, le=100, description="Maximum number of hits to return.")
     response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
 
 
@@ -1031,6 +1056,42 @@ async def standardize_structure(params: StandardizeStructureInput) -> str:
         result,
         params.response_format,
         f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def search_similar_compounds(params: SearchSimilarCompoundsInput) -> str:
+    """Find compounds structurally related to a query molecule via PubChem.
+
+    Two modes: 'similarity' returns compounds with 2D Tanimoto ≥ threshold (ranked by an
+    RDKit Morgan Tanimoto computed against the query); 'substructure' returns compounds that
+    contain the query as a substructure. Use this to expand chemical space around a hit,
+    find analogs/me-too compounds, or scaffold-hop from a known structure.
+
+    Args:
+        params (SearchSimilarCompoundsInput): smiles, mode, threshold, max_results,
+            response_format.
+
+    Returns:
+        Markdown table of hits (PubChem CID, name, formula, MW, Tanimoto). Returns a
+        no-results message if nothing matches or the search could not complete.
+    """
+    result = await mcp.state.pubchem.search_similar(
+        params.smiles,
+        mode=params.mode,
+        threshold=params.threshold,
+        max_results=params.max_results,
+    )
+    if result is not None and result.total_found == 0:
+        result = None
+    return _fmt(
+        result,
+        params.response_format,
+        f"No compounds found for '{params.smiles}' ({params.mode} search).",
     )
 
 

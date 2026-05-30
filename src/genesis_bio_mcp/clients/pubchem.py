@@ -30,7 +30,8 @@ import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from genesis_bio_mcp.config.settings import settings
-from genesis_bio_mcp.models import CompoundActivity, Compounds
+from genesis_bio_mcp.models import CompoundActivity, Compounds, SimilarCompound, SimilarCompounds
+from genesis_bio_mcp.tools.cheminformatics import tanimoto_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,84 @@ class PubChemClient:
             gene_symbol=symbol,
             total_active_compounds=len(active),
             compounds=enriched,
+        )
+
+    async def search_similar(
+        self,
+        smiles: str,
+        *,
+        mode: str = "similarity",
+        threshold: float = 0.9,
+        max_results: int = 20,
+    ) -> SimilarCompounds | None:
+        """Structure-based compound search via PubChem (2D similarity or substructure).
+
+        ``mode="similarity"`` uses PubChem ``fastsimilarity_2d`` (Tanimoto ≥ ``threshold``);
+        ``mode="substructure"`` uses ``fastsubstructure``. Hits are enriched with
+        name/formula/MW/SMILES, and (similarity mode) ranked by an RDKit Morgan Tanimoto
+        computed locally against the query. Returns ``None`` on error.
+        """
+        query = (smiles or "").strip()
+        if not query:
+            return None
+
+        if mode == "substructure":
+            endpoint = f"{_PUG_BASE}/compound/fastsubstructure/smiles/cids/JSON"
+            form = {"smiles": query, "MaxRecords": str(max_results)}
+        else:
+            mode = "similarity"
+            endpoint = f"{_PUG_BASE}/compound/fastsimilarity_2d/smiles/cids/JSON"
+            form = {
+                "smiles": query,
+                "Threshold": str(int(threshold * 100)),
+                "MaxRecords": str(max_results),
+            }
+
+        # POST the SMILES (path form breaks on '#', '/', etc. in SMILES).
+        try:
+            async with _SEMAPHORE:
+                resp = await self._client.post(endpoint, data=form, timeout=30.0)
+            if resp.status_code == 404:
+                cids: list[int] = []
+            else:
+                resp.raise_for_status()
+                cids = resp.json().get("IdentifierList", {}).get("CID", []) or []
+        except Exception as exc:
+            logger.warning("PubChem %s search failed for %s: %s", mode, query, exc)
+            return None
+
+        thr = threshold if mode == "similarity" else None
+        if not cids:
+            return SimilarCompounds(
+                query_smiles=query, mode=mode, threshold=thr, total_found=0, hits=[]
+            )
+
+        cids = cids[:max_results]
+        props = await self._fetch_compound_properties(cids)
+        hits: list[SimilarCompound] = []
+        for cid in cids:
+            p = props.get(cid, {})
+            hit_smiles = p.get("smiles")
+            tani = (
+                tanimoto_similarity(query, hit_smiles)
+                if mode == "similarity" and hit_smiles
+                else None
+            )
+            hits.append(
+                SimilarCompound(
+                    cid=cid,
+                    name=p.get("name"),
+                    molecular_formula=p.get("formula"),
+                    molecular_weight=p.get("weight"),
+                    smiles=hit_smiles,
+                    tanimoto=tani,
+                )
+            )
+        if mode == "similarity":
+            hits.sort(key=lambda h: h.tanimoto if h.tanimoto is not None else -1.0, reverse=True)
+
+        return SimilarCompounds(
+            query_smiles=query, mode=mode, threshold=thr, total_found=len(hits), hits=hits
         )
 
     async def _resolve_gene_id(self, symbol: str) -> int | None:

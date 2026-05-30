@@ -1227,6 +1227,60 @@ class StandardizedStructure(BaseModel):
         return "\n".join(lines)
 
 
+class SimilarCompound(BaseModel):
+    """A compound returned by a structure-based search of PubChem."""
+
+    cid: int = Field(description="PubChem Compound ID")
+    name: str | None = Field(None, description="Compound name (IUPAC or title)")
+    molecular_formula: str | None = Field(None, description="Molecular formula")
+    molecular_weight: float | None = Field(None, description="Molecular weight (g/mol)")
+    smiles: str | None = Field(None, description="PubChem SMILES of the hit")
+    tanimoto: float | None = Field(
+        None,
+        description="Morgan-fingerprint Tanimoto similarity to the query (0–1); "
+        "None in substructure mode",
+    )
+
+
+class SimilarCompounds(BaseModel):
+    """Structure-based compound search results (PubChem similarity or substructure)."""
+
+    query_smiles: str = Field(description="The query SMILES that was searched")
+    mode: str = Field(
+        description="'similarity' (Tanimoto ≥ threshold) | 'substructure' (SMARTS/SMILES)"
+    )
+    threshold: float | None = Field(
+        None, description="Tanimoto threshold used (similarity mode only)"
+    )
+    total_found: int = Field(description="Number of hit compounds returned")
+    hits: list[SimilarCompound] = Field(
+        default_factory=list, description="Hits, sorted by Tanimoto descending in similarity mode"
+    )
+
+    def to_markdown(self) -> str:
+        mode_desc = (
+            f"Tanimoto ≥ {self.threshold}" if self.mode == "similarity" else "substructure match"
+        )
+        lines = [
+            f"## Similar Compounds (PubChem {self.mode}): `{self.query_smiles}`",
+            f"**{self.total_found} hit(s)** — {mode_desc}",
+        ]
+        if not self.hits:
+            lines += ["", "_No compounds found for this query._"]
+            return "\n".join(lines)
+        lines += ["", "| CID | Name | Formula | MW | Tanimoto |", "|---|---|---|---:|---:|"]
+        for h in self.hits[:25]:
+            name = (h.name or "—")[:32]
+            mf = h.molecular_formula or "—"
+            mw = f"{h.molecular_weight:.1f}" if h.molecular_weight is not None else "—"
+            tani = f"{h.tanimoto:.3f}" if h.tanimoto is not None else "—"
+            lines.append(
+                f"| [{h.cid}](https://pubchem.ncbi.nlm.nih.gov/compound/{h.cid}) "
+                f"| {name} | {mf} | {mw} | {tani} |"
+            )
+        return "\n".join(lines)
+
+
 class CompoundActivity(BaseModel):
     """A small molecule with measured bioactivity against the target."""
 
