@@ -85,6 +85,56 @@ class CorpusManifest(BaseModel):
         return "\n".join(lines)
 
 
+class CorpusTargetHit(BaseModel):
+    """One target returned by a sequence-embedding similarity search of the corpus."""
+
+    gene_symbol: str = Field(description="HGNC gene symbol of the neighbor target")
+    target_chembl_id: str | None = Field(None, description="ChEMBL target ID")
+    uniprot_accession: str | None = Field(None, description="UniProt accession")
+    pref_name: str | None = Field(None, description="ChEMBL preferred target name")
+    kinase_group: str | None = Field(None, description="Kinase group/family, if classified")
+    cosine_similarity: float = Field(
+        description="Cosine similarity (0–1) of the ESM-2 embedding to the query target"
+    )
+    activity_count: int = Field(
+        description="Number of bioactivity records for this target in the corpus"
+    )
+
+
+class CorpusTargetNeighbors(BaseModel):
+    """Targets in the corpus most similar to a query target by ESM-2 sequence embedding."""
+
+    query_gene: str = Field(description="The resolved query target (gene symbol) searched from")
+    hits: list[CorpusTargetHit] = Field(
+        default_factory=list, description="Neighbor targets, ranked by cosine similarity descending"
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Targets similar to {self.query_gene} (ESM-2 sequence embedding)",
+            f"**{len(self.hits)} neighbor(s)** in the corpus, ranked by cosine similarity.",
+        ]
+        if not self.hits:
+            lines += ["", "_No other embedded targets found in the corpus._"]
+            return "\n".join(lines)
+        lines += [
+            "",
+            "| Gene | Cosine | Kinase group | Activities | UniProt |",
+            "|---|---:|---|---:|---|",
+        ]
+        for h in self.hits:
+            lines.append(
+                f"| {h.gene_symbol} | {h.cosine_similarity:.3f} | {h.kinase_group or '—'} | "
+                f"{h.activity_count} | {h.uniprot_accession or '—'} |"
+            )
+        lines += [
+            "",
+            "_Similarity is a retrieval signal over sequence embeddings — not a validated "
+            "functional or pharmacological relationship._",
+        ]
+        return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Gene resolution
 # ---------------------------------------------------------------------------

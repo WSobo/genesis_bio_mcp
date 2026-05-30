@@ -181,6 +181,7 @@ def test_build_tool_registry_has_all_tools():
         "prioritize_target",
         "compare_targets",
         "corpus_describe",
+        "corpus_search_targets_by_sequence",
     }
     assert set(registry.keys()) == expected_tools
 

@@ -18,12 +18,14 @@ from typing import Any
 import anthropic
 
 from genesis_bio_mcp.config.settings import settings
-from genesis_bio_mcp.corpus import fetch_manifest
+from genesis_bio_mcp.corpus import fetch_manifest, search_similar_targets
 from genesis_bio_mcp.models import (
     BatchGeneResolution,
     BatchGeneResolutionItem,
     BatchMolecularProperties,
     ComparisonReport,
+    CorpusTargetHit,
+    CorpusTargetNeighbors,
     DMSVariantLookup,
     DrugHistory,
     TargetComparisonRow,
@@ -149,6 +151,18 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             f"{manifest['compound_count']} compounds, {manifest['activity_count']} activities "
             f"(ChEMBL {manifest.get('chembl_release') or 'n/a'})."
         )
+
+    async def _corpus_search_targets_by_sequence_fn(query: str, top_k: int = 10) -> str:
+        pool = getattr(state, "corpus_pool", None)
+        if pool is None:
+            return "Corpus store is not configured (GENESIS_CORPUS_DSN unset)."
+        found = await search_similar_targets(pool, query, top_k)
+        if found is None:
+            return f"'{query}' is not in the indexed corpus or has no embedding."
+        query_gene, hits = found
+        return CorpusTargetNeighbors(
+            query_gene=query_gene, hits=[CorpusTargetHit(**h) for h in hits]
+        ).to_markdown()
 
     async def _batch_resolve_genes_fn(gene_names: list[str]) -> str:
         async def _one(name: str) -> BatchGeneResolutionItem:
@@ -1525,6 +1539,32 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="corpus",
             use_when="Use to check what the indexed corpus covers and from which releases it was built before relying on any corpus-backed retrieval.",
             fn=_corpus_describe_fn,
+        ),
+        "corpus_search_targets_by_sequence": ToolSpec(
+            name="corpus_search_targets_by_sequence",
+            description=(
+                "Find indexed targets most similar to a query target by ESM-2 protein-sequence "
+                "embedding (pgvector cosine kNN over the corpus). Input a gene symbol or UniProt "
+                "accession already in the corpus; returns neighbor targets with similarity and "
+                "bioactivity-coverage counts. Closed-world; no model loaded at request time."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Gene symbol or UniProt accession in the corpus. Example: 'BRAF'",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Max neighbor targets to return (default 10).",
+                    },
+                },
+                "required": ["query"],
+            },
+            tool_category="corpus",
+            use_when="Use to find targets with similar protein sequence to a query (e.g. kinases in the same subfamily) within the indexed corpus, ranked by embedding similarity.",
+            fn=_corpus_search_targets_by_sequence_fn,
         ),
     }
 

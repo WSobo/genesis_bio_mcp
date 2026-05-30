@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS targets (
     organism            text,
     sequence            text,
     kinase_group        text,
-    sequence_embedding  vector(1280),   -- ESM-2 650M, mean-pooled (offline)
+    sequence_embedding  vector(640),    -- ESM-2-150M (esm2_t30_150M_UR50D), mean-pooled (offline, CPU)
     source              text,
     source_version      text,
     retrieved_at        timestamptz

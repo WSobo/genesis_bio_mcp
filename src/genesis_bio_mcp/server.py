@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 39 tools for biomedical database queries:
+Exposes 40 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -39,6 +39,7 @@ Exposes 39 tools for biomedical database queries:
   - batch_resolve_genes           Resolve many gene names/aliases to canonical IDs in one call
   - batch_compute_molecular_properties RDKit: drug-likeness for many SMILES in one call (local)
   - corpus_describe                Corpus (Postgres+pgvector): manifest — coverage + provenance
+  - corpus_search_targets_by_sequence Corpus: ESM-2 embedding kNN — targets similar to a query
   - run_biology_workflow          AI agent: dynamic tool selection for multi-step questions
 
 All tools return Markdown strings for direct LLM consumption.
@@ -90,13 +91,15 @@ from genesis_bio_mcp.clients.uniprot import UniProtClient
 from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
 from genesis_bio_mcp.config.efo_resolver import EFOResolver
 from genesis_bio_mcp.config.settings import settings
-from genesis_bio_mcp.corpus import create_corpus_pool, fetch_manifest
+from genesis_bio_mcp.corpus import create_corpus_pool, fetch_manifest, search_similar_targets
 from genesis_bio_mcp.models import (
     BatchGeneResolution,
     BatchGeneResolutionItem,
     BatchMolecularProperties,
     ComparisonReport,
     CorpusManifest,
+    CorpusTargetHit,
+    CorpusTargetNeighbors,
     DMSVariantLookup,
     DrugHistory,
     ProteinSequence,
@@ -274,12 +277,20 @@ _SOURCE_BY_MODEL: dict[str, str] = {
     "TargetPrioritizationReport": "genesis-bio-mcp (multi-source synthesis)",
     "ComparisonReport": "genesis-bio-mcp (multi-source synthesis)",
     "CorpusManifest": "genesis-bio-mcp corpus (Postgres + pgvector)",
+    "CorpusTargetNeighbors": "genesis-bio-mcp corpus (Postgres + pgvector)",
 }
 
 # Attribute names a result model may expose for each provenance field, in priority
 # order. The first present, non-empty value wins. Lets provenance pull the resolved
 # query / upstream version / confidence straight off the model with no per-tool wiring.
-_QUERY_ATTRS = ("gene_symbol", "hgnc_symbol", "query_smiles", "input_smiles", "antigen_query")
+_QUERY_ATTRS = (
+    "gene_symbol",
+    "hgnc_symbol",
+    "query_gene",
+    "query_smiles",
+    "input_smiles",
+    "antigen_query",
+)
 _VERSION_ATTRS = ("dataset_version", "release", "data_version", "source_version", "model_version")
 _CONFIDENCE_ATTRS = ("confidence", "mean_confidence", "priority_score")
 
@@ -2403,6 +2414,24 @@ class CorpusDescribeInput(BaseModel):
     response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
 
 
+class CorpusSearchTargetsInput(BaseModel):
+    """Input for corpus_search_targets_by_sequence."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    query: str = Field(
+        ...,
+        description="A target already in the corpus, given as an HGNC gene symbol (e.g. 'BRAF') "
+        "or UniProt accession. The query is matched to its stored embedding — no sequence is "
+        "embedded at request time.",
+        min_length=1,
+        max_length=50,
+    )
+    top_k: int = Field(
+        default=10, ge=1, le=50, description="Maximum number of neighbor targets to return."
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
 @mcp.tool(
     annotations=ToolAnnotations(
         readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
@@ -2453,6 +2482,56 @@ async def corpus_describe(params: CorpusDescribeInput) -> str:
         target_count=manifest.get("target_count", 0),
         compound_count=manifest.get("compound_count", 0),
         activity_count=manifest.get("activity_count", 0),
+    )
+    return _fmt(result, params.response_format, "")
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+    )
+)
+async def corpus_search_targets_by_sequence(params: CorpusSearchTargetsInput) -> str:
+    """Find indexed targets most similar to a query target by ESM-2 sequence embedding.
+
+    Closed-world similarity search over the corpus: give a target already in the corpus (gene
+    symbol or UniProt accession), and this returns the other corpus targets whose protein
+    sequence embedding is closest (pgvector cosine kNN), each with a bioactivity-coverage count.
+    Useful for finding sequence-related targets (e.g. kinases in the same subfamily) that share
+    chemical matter. No sequence is embedded at request time — the query is matched to its
+    stored vector, so this never loads an ML model. Call corpus_describe first to see coverage.
+
+    Args:
+        params (CorpusSearchTargetsInput): query (gene symbol / UniProt accession), top_k,
+            response_format.
+
+    Returns:
+        Markdown table of neighbor targets ranked by cosine similarity (with kinase group and
+        activity counts). Reports an error if the corpus is unconfigured, or if the query target
+        is not in the corpus. Similarity is a retrieval signal, not a validated relationship.
+    """
+    pool = getattr(mcp.state, "corpus_pool", None)
+    if pool is None:
+        return _fmt(
+            None,
+            params.response_format,
+            "Corpus store is not configured. Set GENESIS_CORPUS_DSN and build the corpus "
+            "(see docs/ROADMAP.md v0.6.0).",
+            error_status="UpstreamUnavailable",
+        )
+    found = await search_similar_targets(pool, params.query, params.top_k)
+    if found is None:
+        return _fmt(
+            None,
+            params.response_format,
+            f"'{params.query}' is not in the indexed corpus (the human kinome) or has no "
+            "embedding. Use corpus_describe to see what is covered.",
+            error_status="NotFound",
+        )
+    query_gene, hits = found
+    result = CorpusTargetNeighbors(
+        query_gene=query_gene,
+        hits=[CorpusTargetHit(**hit) for hit in hits],
     )
     return _fmt(result, params.response_format, "")
 

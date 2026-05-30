@@ -11,6 +11,10 @@ the request path. See docs/ROADMAP.md (v0.6.0).
 
 from __future__ import annotations
 
-from genesis_bio_mcp.corpus.db import create_corpus_pool, fetch_manifest
+from genesis_bio_mcp.corpus.db import (
+    create_corpus_pool,
+    fetch_manifest,
+    search_similar_targets,
+)
 
-__all__ = ["create_corpus_pool", "fetch_manifest"]
+__all__ = ["create_corpus_pool", "fetch_manifest", "search_similar_targets"]
