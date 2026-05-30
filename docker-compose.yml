@@ -1,0 +1,29 @@
+# Local Postgres + pgvector for the genesis-bio-mcp corpus store (v0.6.0 hybrid retrieval).
+#
+#   docker compose up -d
+#   export GENESIS_CORPUS_DSN="postgresql://genesis:genesis@localhost:5432/genesis_corpus"
+#
+# The corpus tier is optional — the MCP server runs fine without this. Bring it up only to
+# build/query the indexed bioactivity corpus. The schema is applied automatically on server
+# start (see src/genesis_bio_mcp/corpus/schema.sql).
+
+services:
+  corpus-db:
+    image: pgvector/pgvector:pg16
+    container_name: genesis-corpus-db
+    environment:
+      POSTGRES_USER: genesis
+      POSTGRES_PASSWORD: genesis
+      POSTGRES_DB: genesis_corpus
+    ports:
+      - "5432:5432"
+    volumes:
+      - corpus_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genesis -d genesis_corpus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  corpus_pgdata:

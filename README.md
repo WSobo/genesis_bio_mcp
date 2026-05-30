@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
 
-An MCP server that gives AI agents structured access to **38 tools** across
+An MCP server that gives AI agents structured access to **39 tools** across
 **24 biomedical databases** (plus local RDKit cheminformatics and the UMA-Inverse
 inverse-folding model service) for drug discovery target prioritization, experiment
 design, and protein engineering.
@@ -32,7 +32,7 @@ calls.
 
 | Doc | What it covers |
 |---|---|
-| **[docs/tools.md](docs/tools.md)** | Full catalog of all 38 tools grouped by category, input fields, and use cases |
+| **[docs/tools.md](docs/tools.md)** | Full catalog of all 39 tools grouped by category, input fields, and use cases |
 | **[docs/protein-engineering.md](docs/protein-engineering.md)** | v0.2.0 protein engineering workflows: sequence analysis, variant effects, T-cell immunogenicity, combined examples |
 | **[docs/architecture.md](docs/architecture.md)** | Directory layout, client/model patterns, design decisions, `prioritize_target` scoring model, per-database API reference |
 | **[docs/benchmark.md](docs/benchmark.md)** | 12-target benchmark matrix and example `prioritize_target` output |
@@ -101,7 +101,7 @@ configuration.
 
 ## Tools at a glance
 
-38 tools across 24 data sources (plus local RDKit cheminformatics and the UMA-Inverse model service), organized into 9 categories. Full details
+39 tools across 24 data sources (plus local RDKit cheminformatics, the UMA-Inverse model service, and an optional embedding-backed corpus store), organized into 10 categories. Full details
 in [docs/tools.md](docs/tools.md); live output samples of the headline tools in
 [examples/v0.4.0_tool_showcase.md](examples/v0.4.0_tool_showcase.md).
 
@@ -116,6 +116,7 @@ in [docs/tools.md](docs/tools.md); live output samples of the headline tools in
 | **Expression** | `get_tissue_expression`, `get_protein_atlas` | GTEx, Human Protein Atlas |
 | **Pathways** | `get_pathway_context`, `get_pathway_members` | Reactome |
 | **Synthesis** | `get_drug_history`, `prioritize_target`, `compare_targets`, `run_biology_workflow` | DGIdb + ClinicalTrials.gov + OpenFDA + Claude |
+| **Corpus (indexed)** | `corpus_describe` *(v0.6.0; more `corpus_*` tools in progress)* | Postgres + pgvector over a curated bioactivity corpus (optional) |
 
 All tools return Markdown by default; every tool accepts
 `response_format="json"` for pipeline integration.

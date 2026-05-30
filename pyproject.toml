@@ -29,6 +29,8 @@ dependencies = [
     "pydantic-settings>=2.13.1",
     "curl-cffi>=0.15.0",
     "rdkit>=2026.3.2",
+    "asyncpg>=0.31.0",
+    "pgvector>=0.4.2",
 ]
 
 [project.urls]

@@ -38,6 +38,54 @@ class Provenance(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Corpus store (v0.6.0 hybrid retrieval)
+# ---------------------------------------------------------------------------
+
+
+class CorpusManifest(BaseModel):
+    """Build manifest for the embedding-backed corpus store (FAIR provenance).
+
+    Describes what the indexed corpus covers and from which upstream releases it was built,
+    so an agent can establish coverage and provenance before trusting any corpus retrieval.
+    """
+
+    target_family: str = Field(description="The indexed target family, e.g. 'human kinome'")
+    built_at: str = Field(description="ISO-8601 UTC timestamp the corpus was last built")
+    chembl_release: str | None = Field(None, description="ChEMBL release the activities came from")
+    uniprot_snapshot: str | None = Field(
+        None, description="UniProt snapshot date for target sequences"
+    )
+    protein_embedding_model: str | None = Field(
+        None, description="Model + version used for protein sequence embeddings"
+    )
+    chem_embedding_model: str | None = Field(
+        None, description="Model + version used for compound embeddings (if any)"
+    )
+    target_count: int = Field(description="Number of indexed targets")
+    compound_count: int = Field(description="Number of indexed compounds")
+    activity_count: int = Field(description="Number of indexed bioactivity records")
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Corpus: {self.target_family}",
+            f"**Built:** {self.built_at}",
+            "",
+            "| Records | Count |",
+            "|---|---:|",
+            f"| Targets | {self.target_count} |",
+            f"| Compounds | {self.compound_count} |",
+            f"| Activities | {self.activity_count} |",
+            "",
+            "**Provenance:**",
+            f"- ChEMBL release: {self.chembl_release or '—'}",
+            f"- UniProt snapshot: {self.uniprot_snapshot or '—'}",
+            f"- Protein embeddings: {self.protein_embedding_model or '—'}",
+            f"- Compound embeddings: {self.chem_embedding_model or '—'}",
+        ]
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Gene resolution
 # ---------------------------------------------------------------------------
 

@@ -1,0 +1,76 @@
+-- genesis-bio-mcp v0.6.0 hybrid-retrieval corpus schema (Postgres + pgvector).
+--
+-- Idempotent: safe to run on every server start (CREATE ... IF NOT EXISTS).
+-- Scope = one target family (the human kinome). Embedding columns are populated
+-- by the OFFLINE ingestion tier; the serving tier only reads them.
+--
+-- Vector indexes are deliberately NOT created here: at corpus scale (~500 targets,
+-- tens of thousands of compounds) exact kNN is sub-millisecond and avoids the
+-- filtered-HNSW recall trap. Add HNSW only if the corpus grows (see docs/ROADMAP.md).
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Single-row build manifest (FAIR provenance: what was indexed, from which releases).
+CREATE TABLE IF NOT EXISTS corpus_manifest (
+    id                       integer PRIMARY KEY DEFAULT 1,
+    built_at                 timestamptz NOT NULL,
+    target_family            text NOT NULL,
+    chembl_release           text,
+    uniprot_snapshot         text,
+    protein_embedding_model  text,
+    chem_embedding_model     text,
+    target_count             integer NOT NULL DEFAULT 0,
+    compound_count           integer NOT NULL DEFAULT 0,
+    activity_count           integer NOT NULL DEFAULT 0,
+    CONSTRAINT corpus_manifest_singleton CHECK (id = 1)
+);
+
+CREATE TABLE IF NOT EXISTS targets (
+    target_chembl_id    text PRIMARY KEY,
+    uniprot_accession   text,
+    gene_symbol         text,
+    pref_name           text,
+    organism            text,
+    sequence            text,
+    kinase_group        text,
+    sequence_embedding  vector(1280),   -- ESM-2 650M, mean-pooled (offline)
+    source              text,
+    source_version      text,
+    retrieved_at        timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS compounds (
+    molecule_chembl_id  text PRIMARY KEY,
+    canonical_smiles    text,
+    inchi               text,
+    inchikey            text,
+    mol_weight          double precision,
+    morgan_fp           bit(2048),       -- ECFP4 (RDKit) — PRIMARY chemical similarity
+    chem_embedding      vector(768),     -- ChemBERTa (optional/stretch)
+    source              text,
+    source_version      text,
+    retrieved_at        timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS activities (
+    activity_id            bigint PRIMARY KEY,
+    molecule_chembl_id     text REFERENCES compounds(molecule_chembl_id),
+    target_chembl_id       text REFERENCES targets(target_chembl_id),
+    standard_type          text,          -- IC50 / Ki / Kd
+    standard_value         double precision,
+    standard_units         text,
+    pchembl_value          double precision,
+    assay_chembl_id        text,
+    assay_confidence_score integer,
+    doc_chembl_id          text,          -- provenance: source publication
+    source                 text,
+    source_version         text,
+    retrieved_at           timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_activities_target   ON activities (target_chembl_id);
+CREATE INDEX IF NOT EXISTS idx_activities_molecule ON activities (molecule_chembl_id);
+CREATE INDEX IF NOT EXISTS idx_activities_pchembl  ON activities (pchembl_value);
+CREATE INDEX IF NOT EXISTS idx_targets_gene        ON targets (gene_symbol);
+CREATE INDEX IF NOT EXISTS idx_targets_uniprot     ON targets (uniprot_accession);
+CREATE INDEX IF NOT EXISTS idx_compounds_inchikey  ON compounds (inchikey);

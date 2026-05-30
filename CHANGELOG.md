@@ -13,6 +13,19 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **Corpus store scaffold + `corpus_describe` (v0.6.0 M0 — hybrid retrieval).** Lays the
+  foundation for an embedding-backed retrieval tier: an **optional** PostgreSQL + pgvector store
+  (`src/genesis_bio_mcp/corpus/`) with the `targets`/`compounds`/`activities`/`corpus_manifest`
+  schema (idempotent DDL), an async `asyncpg` pool wired into the server lifespan that **degrades
+  gracefully** — when `GENESIS_CORPUS_DSN` is unset (or the DB is unreachable) the pool is `None`,
+  all 39 tools keep working, and the corpus tools report the store as unconfigured. New
+  `corpus_describe` tool (the FAIR/transparency entry point: manifest coverage + provenance),
+  `CorpusManifest` model, `GENESIS_CORPUS_DSN` setting, a `docker-compose.yml` (pgvector image)
+  for local dev, and a CI Postgres+pgvector service so the corpus integration test runs for real
+  (it skips locally when no DSN is set). `corpus_describe` is registered in `run_biology_workflow`
+  under a new `corpus` category and emits the M5/M6 envelope. **Tool count 38 → 39.** Heavy ML
+  (ESM-2) stays strictly in the offline ingestion tier — no `torch` on the request path. The
+  query `corpus_*` tools land in subsequent v0.6.0 milestones (M1–M3); see docs/ROADMAP.md.
 - **Typed error taxonomy for JSON output (v0.5.0 M6 — agent contract).** JSON error
   responses now carry a machine-readable `status` instead of a bare prose string:
   `{"provenance": {...}, "error": {"status": "...", "message": "..."}}`. The taxonomy is

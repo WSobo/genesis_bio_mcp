@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 38 tools for biomedical database queries:
+Exposes 39 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -38,6 +38,7 @@ Exposes 38 tools for biomedical database queries:
   - compare_targets               Compare 2–5 targets side by side for an indication
   - batch_resolve_genes           Resolve many gene names/aliases to canonical IDs in one call
   - batch_compute_molecular_properties RDKit: drug-likeness for many SMILES in one call (local)
+  - corpus_describe                Corpus (Postgres+pgvector): manifest — coverage + provenance
   - run_biology_workflow          AI agent: dynamic tool selection for multi-step questions
 
 All tools return Markdown strings for direct LLM consumption.
@@ -89,11 +90,13 @@ from genesis_bio_mcp.clients.uniprot import UniProtClient
 from genesis_bio_mcp.clients.variant_effects import VariantEffectsClient
 from genesis_bio_mcp.config.efo_resolver import EFOResolver
 from genesis_bio_mcp.config.settings import settings
+from genesis_bio_mcp.corpus import create_corpus_pool, fetch_manifest
 from genesis_bio_mcp.models import (
     BatchGeneResolution,
     BatchGeneResolutionItem,
     BatchMolecularProperties,
     ComparisonReport,
+    CorpusManifest,
     DMSVariantLookup,
     DrugHistory,
     ProteinSequence,
@@ -184,11 +187,19 @@ async def lifespan(server: FastMCP):
         server.state.clinical_trials = ClinicalTrialsClient(client)
         server.state.openfda = OpenFDAClient(client)
         server.state.reactome = ReactomeClient(client)
+        # Optional embedding-backed corpus store (v0.6.0). None when GENESIS_CORPUS_DSN is
+        # unset or the DB is unreachable — corpus_* tools degrade gracefully, rest is unaffected.
+        server.state.corpus_pool = await create_corpus_pool()
+
         # Runtime metadata for the health://status resource.
         server.state.http_client = client
         server.state.started_at = time.time()
         server.state.depmap_gene_count = len(gene_dep_cache)
-        yield
+        try:
+            yield
+        finally:
+            if server.state.corpus_pool is not None:
+                await server.state.corpus_pool.close()
 
 
 mcp = FastMCP("genesis_bio_mcp", lifespan=lifespan)
@@ -262,6 +273,7 @@ _SOURCE_BY_MODEL: dict[str, str] = {
     "PathwayContext": "Reactome",
     "TargetPrioritizationReport": "genesis-bio-mcp (multi-source synthesis)",
     "ComparisonReport": "genesis-bio-mcp (multi-source synthesis)",
+    "CorpusManifest": "genesis-bio-mcp corpus (Postgres + pgvector)",
 }
 
 # Attribute names a result model may expose for each provenance field, in priority
@@ -2382,6 +2394,67 @@ async def batch_compute_molecular_properties(
         results=results, failed=failed, total_requested=len(params.smiles_list)
     )
     return _fmt(batch, params.response_format, "")
+
+
+class CorpusDescribeInput(BaseModel):
+    """Input for corpus_describe."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+    )
+)
+async def corpus_describe(params: CorpusDescribeInput) -> str:
+    """Describe the embedding-backed corpus store: coverage, counts, and provenance.
+
+    The corpus is a curated, indexed bioactivity store (Postgres + pgvector) that the other
+    corpus_* tools query — distinct from the live-API tools. Call this FIRST to establish what
+    the corpus covers (target family, record counts) and from which upstream releases it was
+    built (ChEMBL release, UniProt snapshot, embedding models) before trusting any corpus
+    retrieval. Closed-world: results come only from the indexed corpus, not live APIs.
+
+    Args:
+        params (CorpusDescribeInput): response_format.
+
+    Returns:
+        Markdown manifest (target family, target/compound/activity counts, source versions,
+        embedding models, build date). Reports an error if the corpus is not configured
+        (no GENESIS_CORPUS_DSN) or has not been built yet.
+    """
+    pool = getattr(mcp.state, "corpus_pool", None)
+    if pool is None:
+        return _fmt(
+            None,
+            params.response_format,
+            "Corpus store is not configured. Set GENESIS_CORPUS_DSN to a Postgres+pgvector "
+            "instance and build the corpus (see docs/ROADMAP.md v0.6.0).",
+            error_status="UpstreamUnavailable",
+        )
+    manifest = await fetch_manifest(pool)
+    if manifest is None:
+        return _fmt(
+            None,
+            params.response_format,
+            "Corpus store is configured but has not been built yet — run the ingestion "
+            "pipeline to populate it.",
+            error_status="NotFound",
+        )
+    result = CorpusManifest(
+        target_family=manifest["target_family"],
+        built_at=manifest["built_at"].isoformat() if manifest.get("built_at") else "",
+        chembl_release=manifest.get("chembl_release"),
+        uniprot_snapshot=manifest.get("uniprot_snapshot"),
+        protein_embedding_model=manifest.get("protein_embedding_model"),
+        chem_embedding_model=manifest.get("chem_embedding_model"),
+        target_count=manifest.get("target_count", 0),
+        compound_count=manifest.get("compound_count", 0),
+        activity_count=manifest.get("activity_count", 0),
+    )
+    return _fmt(result, params.response_format, "")
 
 
 @mcp.tool(
