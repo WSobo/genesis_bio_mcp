@@ -118,17 +118,123 @@ registration + tests + count-sync + CHANGELOG) and ships as its own atomic PR.
 
 ---
 
-## v0.6.0 and beyond *(directional, not committed)*
+## v0.6.0 — Hybrid retrieval (embedding-backed corpus) *(committed)*
+
+**Theme:** add a second retrieval pattern alongside the live-API tools — a persistent,
+indexed **PostgreSQL + pgvector** store over a *curated bioactivity corpus*, exposed through
+new `corpus_*` MCP tools that do **hybrid retrieval** (relational SQL filters + similarity
+search) and return results with persistent IDs, source/version provenance, and honestly-
+separated confidence signals. The existing 38 tools proxy live APIs and stay stateless; this
+adds an indexed tier. Closes the portfolio's no-production-SQL gap with a real relational +
+vector schema, and is the first place the M5 `source_version` provenance field gets richly
+populated (ChEMBL release, UniProt snapshot — formalized in a corpus manifest).
+
+**Scope:** one target family — the **human kinome** (~500 kinases) and ChEMBL small molecules
+with measured bioactivity against them (~tens of thousands of compounds, ~50–100k activity
+records). Fit-for-purpose by design; whole store stays under ~1 GB. Full ChEMBL, multiple
+families, and per-residue embeddings are explicitly **out of scope for v1**.
+
+### Locked architectural decisions
+
+1. **No `torch` on the request path — all heavy ML is offline.** ESM-2 protein embeddings are
+   computed once in the ingestion tier (RunPod GPU). The serving tier never loads a model.
+   Packaging enforces this: ML deps (`torch`, `fair-esm`/`transformers`) live in an **optional
+   `ingest` dependency group**, never in the core/serving install.
+2. **Chemical similarity = Morgan/Tanimoto (primary), ChemBERTa = stretch + measured baseline.**
+   Reuse the existing `tanimoto_similarity` (Morgan radius-2) and InChIKey standardization from
+   v0.5.0 — CPU, in-process, no GPU, no request-path model load. This removes the larger GPU
+   batch *and* keeps the compound path torch-free. ChemBERTa dense embeddings become a
+   **stretch goal whose deliverable is a retrieval-quality comparison vs Tanimoto** (the eval
+   artifact), not a request-path dependency. (Consider the RDKit Postgres cartridge `bfp` type
+   for in-DB Tanimoto so the hybrid query is one SQL round-trip.)
+3. **Protein search over *stored* vectors only.** Serving accepts inputs that resolve to a
+   stored embedding (gene symbol / UniProt accession). Embedding a novel raw sequence at
+   request time is out of scope for v1 (it would pull ESM-2 onto the request path). This tool
+   is framed as a *technique demonstration* — it overlaps existing `get_structural_homologs`
+   (Foldseek) on utility.
+4. **Exact search at this corpus size; HNSW documented, not reflexive.** ~500 protein vectors
+   and tens of thousands of compound vectors are small enough that exact/flat cosine is
+   sub-millisecond. Use **SQL-filter-then-exact-kNN** to sidestep the filtered-HNSW recall
+   trap, and document the threshold at which HNSW becomes necessary. The vector layer is a
+   deliberate *demonstration* of the pattern at portfolio scale, not a performance necessity —
+   stated honestly.
+5. **ChEMBL: route by task.** Bulk ingestion pulls from the **EBI ChEMBL Postgres/SQLite dump**
+   (fast, SQL-sliceable); the existing REST `ChEMBLClient` stays for interactive single-target
+   lookups. Right tool for each job.
+6. **The corpus DB is optional.** With no `GENESIS_CORPUS_DSN` configured, the server still
+   starts and all 38 live-API tools work unchanged; `corpus_*` tools return a typed
+   `UpstreamUnavailable` error explaining the corpus isn't configured. Preserves the zero-config
+   experience and keeps the existing test suite green.
+7. **Same agent contract as everything else.** `corpus_*` tools emit the M5 provenance envelope
+   + M6 typed errors; the three confidence signals (vector/Tanimoto similarity, ChEMBL assay
+   confidence, `pchembl_value`) are **structured fields in the JSON `data`**, never collapsed
+   into one fake score. `readOnlyHint=True`, `openWorldHint=False` (bounded corpus — a
+   deliberate contrast with the live-API tools' `openWorldHint=True`).
+
+### Tiers
+- **Ingestion (offline)** — `genesis_bio_mcp.ingest` CLI (or `scripts/`), not on the request
+  path. Extract (kinase targets+sequences via UniProt/ChEMBL; bioactivities via the ChEMBL
+  dump) → Transform (RDKit canonical SMILES + InChIKey + Morgan FP; ESM-2 mean-pooled protein
+  vectors on RunPod) → Load (rows + vectors → Postgres; write the `corpus_manifest`).
+  Idempotent and re-runnable.
+- **Serving (FastMCP)** — read-only `corpus_*` tools query the store at request time via an
+  async driver (`asyncpg`), DSN from env. Same Pydantic V2 / `uv` / `ruff` / markdown-out /
+  provenance+typed-error conventions.
+
+### Data model
+`targets` (target_chembl_id PK, uniprot_accession, gene_symbol, pref_name, organism, sequence,
+kinase_group, `sequence_embedding vector(1280)` ESM-2 mean-pooled, source/version/retrieved_at);
+`compounds` (molecule_chembl_id PK, canonical_smiles, inchi, inchikey, mol_weight,
+**`morgan_fp` ECFP4 — primary similarity**, `chem_embedding vector(768)` ChemBERTa *optional/
+stretch*, source/version/retrieved_at); `activities` (activity_id PK, FKs, standard_type/value/
+units, pchembl_value, assay_chembl_id, assay_confidence_score, doc_chembl_id, source/version/
+retrieved_at); `corpus_manifest` (build timestamp, ChEMBL release, UniProt snapshot, embedding
+model+version per modality, row counts, family scope).
+
+### Tools (all read-only, closed-world, paginated, provenance + typed errors)
+- **`corpus_describe`** — return the manifest (coverage + provenance + build date). The FAIR/
+  transparency entry point.
+- **`corpus_search_targets_by_sequence`** — gene/UniProt → stored ESM-2 vector → exact cosine
+  kNN over targets; returns top-k targets + per-target bioactivity-coverage count.
+- **`corpus_search_compounds`** *(headline hybrid tool)* — SQL filters (target gene/UniProt,
+  standard_type, min_pchembl, max_mol_weight) + optional Morgan/Tanimoto similarity from a query
+  SMILES; returns compounds with activity values, provenance IDs, and the three confidence
+  fields. Paginated.
+- **`corpus_find_similar_compounds`** — query SMILES → Morgan/Tanimoto kNN; returns analogs +
+  each analog's known target activities in the corpus.
+
+### Testing / CI
+Ephemeral Postgres in CI via `testcontainers` / `pytest-postgresql` (honest integration tests,
+no live network). Existing respx-mocked suite is untouched because the corpus layer is optional.
+
+### Milestones (one atomic PR each)
+- **M0 — Schema + infra.** dockerized pgvector (`docker compose`), schema migrations, manifest
+  table, optional async DB pool wired into the server lifespan (degrades gracefully when unset),
+  `asyncpg`/`pgvector` deps, CI Postgres service, `corpus_describe` stub against an empty store.
+- **M1 — Ingest targets.** Kinase targets + sequences → ESM-2 mean-pool on RunPod → load
+  `targets`; implement `corpus_search_targets_by_sequence`.
+- **M2 — Ingest compounds + activities.** ChEMBL dump slice → RDKit canonical SMILES + InChIKey
+  + Morgan FP → load `compounds`/`activities`; implement `corpus_find_similar_compounds`.
+- **M3 — Headline hybrid tool.** `corpus_search_compounds` (SQL filter + Tanimoto kNN),
+  pagination, error handling, MCP Inspector verification.
+- **M4 — Eval + docs.** 10 evaluation QA pairs (independent, read-only, multi-call, verifiable);
+  README + docs/tools.md sections; demo script.
+- **Stretch.** ChemBERTa embeddings + a Tanimoto-vs-ChemBERTa retrieval-quality comparison; a
+  hosted managed (Neon/Supabase) demo with latency notes.
+
+---
+
+## v0.7.0 and beyond *(directional, not committed)*
 
 - **Computed ADMET (`assess_admet`)** — predicted solubility, permeability, CYP/hERG/tox via an
-  open model (e.g. ADMET-AI). Deferred from v0.5.0 because it adds an ML dependency + latency.
+  open model (e.g. ADMET-AI). Deferred because it adds an ML dependency + latency.
 - **Structure-based methods** — pocket detection / druggability (fpocket-style), lightweight
   docking or binding-affinity scoring.
 - **Generative / design** — scaffold hopping, R-group enumeration.
 - **Proprietary-data seam (`Architecture4Insight`)** — `docs/private-data-sources.md` + an
   auth scaffold (API-key/OAuth per client) and config-driven enable/disable, so an org can
   plug an internal compound registry / assay DB / ELN-LIMS behind the *same* MCP interface and
-  tool contract. (Enables enterprise adoption without shipping any proprietary data.)
+  tool contract. (The v0.6.0 corpus layer is the natural substrate for this.)
 - **Indication→tissue mapping (EFO→UBERON)**, Reactome parent-pathway labeling, and the
   remaining deferred v0.3.x items.
 
