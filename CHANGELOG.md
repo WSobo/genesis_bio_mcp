@@ -13,6 +13,20 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **`corpus_search_targets_by_sequence` + ESM-2-150M decision (v0.6.0 M1 — target similarity).**
+  The first corpus *query* tool: closed-world cosine-kNN over target protein-sequence embeddings
+  (pgvector `<=>`). Give a target already in the corpus (gene symbol / UniProt accession) and it
+  returns the most sequence-similar corpus targets, each with a bioactivity-coverage count —
+  useful for finding e.g. kinases in the same subfamily that share chemical matter. The query is
+  matched to its **stored** vector, so **no ML model is loaded at request time** (the "no torch on
+  the request path" rule in practice). Picked **ESM-2-150M** (`esm2_t30_150M_UR50D`, 640-dim) for a
+  comfortable CPU runtime — the schema `sequence_embedding` column is now `vector(640)`. New
+  `CorpusTargetHit` / `CorpusTargetNeighbors` models; `search_similar_targets` in the corpus layer;
+  `db.create_corpus_pool` now registers the pgvector codec (after ensuring the extension). Tool
+  registered in `run_biology_workflow`; emits the M5/M6 envelope; similarity is surfaced as a
+  retrieval signal, not a validated relationship. **Tool count 39 → 40.** New CI integration test
+  inserts synthetic 640-d vectors and verifies the kNN ranking against real pgvector. The ESM-2
+  ingestion pipeline (which populates the vectors, CPU-only) lands next.
 - **Corpus store scaffold + `corpus_describe` (v0.6.0 M0 — hybrid retrieval).** Lays the
   foundation for an embedding-backed retrieval tier: an **optional** PostgreSQL + pgvector store
   (`src/genesis_bio_mcp/corpus/`) with the `targets`/`compounds`/`activities`/`corpus_manifest`

@@ -1,8 +1,8 @@
 # Tool catalog
 
-genesis-bio-mcp exposes **38 MCP tools** across **24 biomedical data sources**
+genesis-bio-mcp exposes **39 MCP tools** across **24 biomedical data sources**
 (plus local RDKit cheminformatics, the UMA-Inverse inverse-folding service, and an optional
-embedding-backed corpus store), and `run_biology_workflow`, the 39th, which chains the
+embedding-backed corpus store), and `run_biology_workflow`, the 40th, which chains the
 others with Claude.
 
 All tools return Markdown strings by default and accept
@@ -129,9 +129,10 @@ unconfigured. See [docs/ROADMAP.md](ROADMAP.md) (v0.6.0) for the full design.
 | Tool | Data source | Purpose |
 |---|---|---|
 | `corpus_describe` | Corpus manifest (Postgres + pgvector) | Coverage + provenance of the indexed corpus: target family, target/compound/activity counts, ChEMBL release, UniProt snapshot, embedding models, build date. Call first to establish what the corpus covers. |
+| `corpus_search_targets_by_sequence` | Corpus targets (ESM-2 + pgvector) | Targets most similar to a query target by ESM-2 protein-sequence embedding (cosine kNN), with per-target bioactivity-coverage counts. Query is a gene symbol / UniProt accession already in the corpus — its stored vector is used, so **no model is loaded at request time**. Similarity is a retrieval signal, not a validated relationship. |
 
-_More `corpus_*` tools (`corpus_search_targets_by_sequence`, `corpus_search_compounds`,
-`corpus_find_similar_compounds`) land in subsequent v0.6.0 milestones._
+_More `corpus_*` tools (`corpus_search_compounds`, `corpus_find_similar_compounds`) land in
+subsequent v0.6.0 milestones._
 
 ---
 
@@ -215,7 +216,7 @@ Exceptions (tools with additional required fields):
 ## MCP Resource: `tool://registry`
 
 Any MCP client can read the `tool://registry` resource to get a structured
-Markdown catalogue of all 38 tools grouped by category, with the
+Markdown catalogue of all 39 tools grouped by category, with the
 embedding-searchable `use_when` guidance the workflow agent uses for
 semantic retrieval. No tool call needed — useful for agent frameworks doing
 capability auditing or embedding-based tool selection.

@@ -18,7 +18,12 @@ from genesis_bio_mcp import server
 from genesis_bio_mcp.corpus import create_corpus_pool, fetch_manifest
 from genesis_bio_mcp.corpus import db as corpus_db
 from genesis_bio_mcp.models import CorpusManifest
-from genesis_bio_mcp.server import CorpusDescribeInput, corpus_describe
+from genesis_bio_mcp.server import (
+    CorpusDescribeInput,
+    CorpusSearchTargetsInput,
+    corpus_describe,
+    corpus_search_targets_by_sequence,
+)
 
 
 def test_schema_sql_is_bundled_and_nonempty():
@@ -105,6 +110,67 @@ def test_corpus_manifest_markdown():
 
 
 # ---------------------------------------------------------------------------
+# corpus_search_targets_by_sequence — unit tests (DB mocked)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_targets_unconfigured_returns_upstream_unavailable():
+    server.mcp.state = SimpleNamespace(corpus_pool=None)
+    out = await corpus_search_targets_by_sequence(
+        CorpusSearchTargetsInput(query="BRAF", response_format="json")
+    )
+    env = json.loads(out)
+    assert env["error"]["status"] == "UpstreamUnavailable"
+
+
+@pytest.mark.asyncio
+async def test_search_targets_not_in_corpus_returns_not_found(monkeypatch):
+    server.mcp.state = SimpleNamespace(corpus_pool=object())
+
+    async def _none(_pool, _q, _k):
+        return None
+
+    monkeypatch.setattr(server, "search_similar_targets", _none)
+    out = await corpus_search_targets_by_sequence(
+        CorpusSearchTargetsInput(query="NOTAKINASE", response_format="json")
+    )
+    env = json.loads(out)
+    assert env["error"]["status"] == "NotFound"
+
+
+@pytest.mark.asyncio
+async def test_search_targets_returns_ranked_neighbors(monkeypatch):
+    server.mcp.state = SimpleNamespace(corpus_pool=object())
+
+    async def _hits(_pool, _q, _k):
+        return (
+            "BRAF",
+            [
+                {
+                    "gene_symbol": "ARAF",
+                    "target_chembl_id": "CHEMBL123",
+                    "uniprot_accession": "P10398",
+                    "pref_name": "Serine/threonine-protein kinase A-Raf",
+                    "kinase_group": "TKL",
+                    "cosine_similarity": 0.99,
+                    "activity_count": 42,
+                }
+            ],
+        )
+
+    monkeypatch.setattr(server, "search_similar_targets", _hits)
+    out = await corpus_search_targets_by_sequence(
+        CorpusSearchTargetsInput(query="braf", response_format="json")
+    )
+    env = json.loads(out)
+    assert env["provenance"]["source"] == "genesis-bio-mcp corpus (Postgres + pgvector)"
+    assert env["provenance"]["query"] == "BRAF"  # resolved query_gene
+    assert env["data"]["hits"][0]["gene_symbol"] == "ARAF"
+    assert env["data"]["hits"][0]["cosine_similarity"] == 0.99
+
+
+# ---------------------------------------------------------------------------
 # Integration: real Postgres + pgvector. Runs only when GENESIS_CORPUS_DSN is set
 # (the CI job provides one; local runs without Docker skip these).
 # ---------------------------------------------------------------------------
@@ -127,4 +193,50 @@ async def test_integration_pool_applies_schema_on_empty_store():
         env = json.loads(out)
         assert env["error"]["status"] == "NotFound"
     finally:
+        await pool.close()
+
+
+def _vec(*head: float) -> list[float]:
+    """A 640-d ESM-2-150M-shaped vector with the given leading components, zero-padded."""
+    v = list(head) + [0.0] * (640 - len(head))
+    return v
+
+
+@_skip_no_db
+@pytest.mark.asyncio
+async def test_integration_target_similarity_knn_ranks_by_cosine():
+    # Insert synthetic targets with known 640-d vectors and verify pgvector cosine kNN
+    # returns the nearest neighbor first via corpus_search_targets_by_sequence.
+    pool = await create_corpus_pool()
+    assert pool is not None
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM targets")
+            rows = [
+                ("CHEMBL_BRAF", "BRAF", "P15056", _vec(1.0, 0.0)),  # query
+                ("CHEMBL_ARAF", "ARAF", "P10398", _vec(0.9, 0.1)),  # near (cos ~0.993)
+                ("CHEMBL_FAR", "FARGENE", "Q00000", _vec(0.0, 1.0)),  # orthogonal (cos 0)
+            ]
+            for tid, gene, acc, vec in rows:
+                await conn.execute(
+                    "INSERT INTO targets (target_chembl_id, gene_symbol, uniprot_accession, "
+                    "sequence_embedding) VALUES ($1, $2, $3, $4)",
+                    tid,
+                    gene,
+                    acc,
+                    vec,
+                )
+
+        server.mcp.state = SimpleNamespace(corpus_pool=pool)
+        out = await corpus_search_targets_by_sequence(
+            CorpusSearchTargetsInput(query="BRAF", response_format="json")
+        )
+        env = json.loads(out)
+        hits = env["data"]["hits"]
+        assert [h["gene_symbol"] for h in hits] == ["ARAF", "FARGENE"]  # nearest first
+        assert hits[0]["cosine_similarity"] > hits[1]["cosine_similarity"]
+        assert hits[0]["cosine_similarity"] > 0.9
+    finally:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM targets")
         await pool.close()
