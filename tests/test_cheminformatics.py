@@ -3,8 +3,31 @@
 from genesis_bio_mcp.models import BatchMolecularProperties
 from genesis_bio_mcp.tools.cheminformatics import (
     compute_molecular_properties,
+    morgan_fp_bits,
     standardize_structure,
+    standardized_compound_fields,
 )
+
+
+def test_standardized_compound_fields_strips_salt_and_neutralizes():
+    # Sodium acetate must be standardized to its parent (acetic acid) before fingerprinting,
+    # so corpus InChIKey dedup and Tanimoto reflect the parent, not the counter-ion.
+    fields = standardized_compound_fields("CC(=O)[O-].[Na+]")
+    assert fields is not None
+    canonical, _inchi, inchikey, mw, fp = fields
+    assert canonical == "CC(=O)O"  # Na+ stripped, carboxylate neutralized
+    assert inchikey == "QTBSBXVTEAMEQO-UHFFFAOYSA-N"  # acetic acid
+    assert round(mw) == 60
+    assert len(fp) == 2048
+
+
+def test_morgan_fp_bits_salt_matches_parent():
+    # Query and stored fingerprints must agree: a salt and its parent fingerprint identically.
+    assert morgan_fp_bits("CC(=O)[O-].[Na+]") == morgan_fp_bits("CC(=O)O")
+
+
+def test_standardized_compound_fields_invalid_smiles_returns_none():
+    assert standardized_compound_fields("not_a_smiles!!!") is None
 
 
 def test_compute_properties_aspirin():

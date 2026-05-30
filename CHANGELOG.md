@@ -11,6 +11,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Corpus compounds weren't actually standardized — salts/charges polluted dedup + similarity.**
+  A live edge-case probe showed `standardized_compound_fields` / `morgan_fp_bits` only
+  *canonicalized* (`MolFromSmiles` → `MolToSmiles`), despite the name — so a ChEMBL salt (e.g.
+  sodium acetate) was stored with its counter-ion intact: the InChIKey wouldn't match the parent
+  (breaking dedup/join) and the Morgan fingerprint carried counter-ion bits (polluting Tanimoto).
+  Both stored and query sides now salt-strip + neutralize to the parent (`rdMolStandardize`
+  Cleanup → FragmentParent → Uncharger, with a re-`SanitizeMol` so fingerprinting doesn't hit
+  "RingInfo not initialized"). Verified: sodium acetate → acetic acid; 29 real BRAF ChEMBL
+  compounds build cleanly with no multi-component residue. (Tautomer canonicalization is
+  intentionally skipped for bulk-ingestion speed.)
 - **`get_chembl_compounds` low-confidence flag was dead code (same root cause).** The v0.5.0
   ChEMBL client read `confidence_score` from `/activity` too — always null — so `ChEMBLActivity`
   confidence was never populated and the "low target-assignment confidence (< 9)" caveat in

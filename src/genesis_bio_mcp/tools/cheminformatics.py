@@ -29,40 +29,63 @@ logger = logging.getLogger(__name__)
 _MORGAN_GEN = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
 
 
+def _standardized_parent(mol):
+    """Salt-strip + neutralize a molecule to its parent for consistent corpus dedup/similarity.
+
+    Cleanup → FragmentParent (drop counter-ions/solvents) → Uncharger (neutralize). Tautomer
+    canonicalization is intentionally skipped here — it's too slow for bulk ingestion; salt and
+    charge normalization is the high-value part for InChIKey dedup and clean fingerprints.
+    Returns the original molecule if standardization raises on a pathological input.
+    """
+    try:
+        parent = rdMolStandardize.FragmentParent(rdMolStandardize.Cleanup(mol))
+        parent = rdMolStandardize.Uncharger().uncharge(parent)
+        # Uncharger's output lacks initialized ring info — re-sanitize before any
+        # fingerprint/descriptor call, or GetFingerprint raises "RingInfo not initialized".
+        Chem.SanitizeMol(parent)
+        return parent
+    except Exception:
+        return mol
+
+
 def standardized_compound_fields(
     smiles: str,
 ) -> tuple[str, str | None, str | None, float, str] | None:
     """Derive corpus-ingestion fields for a compound SMILES, or None if unparseable.
 
-    Returns ``(canonical_smiles, inchi, inchikey, mol_weight, morgan_fp_bits)`` — everything
-    the ``compounds`` table needs — computed with the same RDKit primitives the corpus query
-    side uses, so stored and queried fingerprints are identical.
+    The molecule is **standardized** (salt-stripped + neutralized) first, so the stored
+    canonical SMILES / InChIKey / fingerprint reflect the parent compound — not its salt or
+    charge state — which is what makes InChIKey dedup and Tanimoto similarity meaningful.
+    Returns ``(canonical_smiles, inchi, inchikey, mol_weight, morgan_fp_bits)`` on the parent,
+    using the same standardization the corpus query side applies so fingerprints are identical.
     """
     mol = Chem.MolFromSmiles((smiles or "").strip())
     if mol is None:
         return None
-    canonical = Chem.MolToSmiles(mol)
+    parent = _standardized_parent(mol)
+    canonical = Chem.MolToSmiles(parent)
     try:
-        inchi = Chem.MolToInchi(mol) or None
-        inchikey = Chem.MolToInchiKey(mol) or None
+        inchi = Chem.MolToInchi(parent) or None
+        inchikey = Chem.MolToInchiKey(parent) or None
     except Exception:
         inchi, inchikey = None, None
-    mw = round(Descriptors.MolWt(mol), 2)
-    fp_bits = _MORGAN_GEN.GetFingerprint(mol).ToBitString()
+    mw = round(Descriptors.MolWt(parent), 2)
+    fp_bits = _MORGAN_GEN.GetFingerprint(parent).ToBitString()
     return canonical, inchi, inchikey, mw, fp_bits
 
 
 def morgan_fp_bits(smiles: str) -> str | None:
     """Return the ECFP4 Morgan fingerprint as a 2048-char '0'/'1' bitstring, or None.
 
-    The same generator used for ``tanimoto_similarity`` (radius 2, 2048 bits), so the corpus
-    ingestion and the corpus query produce identical fingerprints. The bitstring maps directly
-    to a Postgres ``bit(2048)`` column for pgvector Jaccard (= 1 − Tanimoto) similarity search.
+    Standardizes (salt-strip + neutralize) the molecule first — identically to corpus
+    ingestion (``standardized_compound_fields``) — so a query fingerprint matches the stored
+    parent fingerprints. Maps directly to a Postgres ``bit(2048)`` column for pgvector Jaccard
+    (= 1 − Tanimoto) similarity search.
     """
     mol = Chem.MolFromSmiles((smiles or "").strip())
     if mol is None:
         return None
-    return _MORGAN_GEN.GetFingerprint(mol).ToBitString()
+    return _MORGAN_GEN.GetFingerprint(_standardized_parent(mol)).ToBitString()
 
 
 def tanimoto_similarity(query_smiles: str, target_smiles: str) -> float | None:
