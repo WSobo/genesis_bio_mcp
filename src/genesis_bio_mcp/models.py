@@ -135,6 +135,50 @@ class CorpusTargetNeighbors(BaseModel):
         return "\n".join(lines)
 
 
+class CorpusCompoundHit(BaseModel):
+    """One compound returned by a Morgan/Tanimoto similarity search of the corpus."""
+
+    molecule_chembl_id: str = Field(description="ChEMBL molecule ID")
+    canonical_smiles: str | None = Field(None, description="RDKit canonical SMILES")
+    inchikey: str | None = Field(None, description="Standard InChIKey")
+    mol_weight: float | None = Field(None, description="Molecular weight (Da)")
+    tanimoto: float = Field(description="Tanimoto similarity (0–1) to the query (ECFP4)")
+    activity_count: int = Field(
+        description="Number of this compound's bioactivity records in the corpus"
+    )
+
+
+class CorpusSimilarCompounds(BaseModel):
+    """Corpus compounds most similar to a query molecule by Morgan-fingerprint Tanimoto."""
+
+    query_smiles: str = Field(description="The query SMILES that was searched")
+    hits: list[CorpusCompoundHit] = Field(
+        default_factory=list, description="Compounds ranked by Tanimoto similarity descending"
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Corpus compounds similar to `{self.query_smiles}` (ECFP4 Tanimoto)",
+            f"**{len(self.hits)} hit(s)** in the corpus.",
+        ]
+        if not self.hits:
+            lines += ["", "_No fingerprinted compounds in the corpus._"]
+            return "\n".join(lines)
+        lines += [
+            "",
+            "| ChEMBL ID | Tanimoto | MW | Activities | SMILES |",
+            "|---|---:|---:|---:|---|",
+        ]
+        for h in self.hits:
+            mw = f"{h.mol_weight:.1f}" if h.mol_weight is not None else "—"
+            smi = (h.canonical_smiles or "—")[:40]
+            lines.append(
+                f"| {h.molecule_chembl_id} | {h.tanimoto:.3f} | {mw} | "
+                f"{h.activity_count} | `{smi}` |"
+            )
+        return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Gene resolution
 # ---------------------------------------------------------------------------

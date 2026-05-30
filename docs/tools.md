@@ -1,8 +1,8 @@
 # Tool catalog
 
-genesis-bio-mcp exposes **39 MCP tools** across **24 biomedical data sources**
+genesis-bio-mcp exposes **40 MCP tools** across **24 biomedical data sources**
 (plus local RDKit cheminformatics, the UMA-Inverse inverse-folding service, and an optional
-embedding-backed corpus store), and `run_biology_workflow`, the 40th, which chains the
+embedding-backed corpus store), and `run_biology_workflow`, the 41st, which chains the
 others with Claude.
 
 All tools return Markdown strings by default and accept
@@ -130,9 +130,10 @@ unconfigured. See [docs/ROADMAP.md](ROADMAP.md) (v0.6.0) for the full design.
 |---|---|---|
 | `corpus_describe` | Corpus manifest (Postgres + pgvector) | Coverage + provenance of the indexed corpus: target family, target/compound/activity counts, ChEMBL release, UniProt snapshot, embedding models, build date. Call first to establish what the corpus covers. |
 | `corpus_search_targets_by_sequence` | Corpus targets (ESM-2 + pgvector) | Targets most similar to a query target by ESM-2 protein-sequence embedding (cosine kNN), with per-target bioactivity-coverage counts. Query is a gene symbol / UniProt accession already in the corpus — its stored vector is used, so **no model is loaded at request time**. Similarity is a retrieval signal, not a validated relationship. |
+| `corpus_find_similar_compounds` | Corpus compounds (RDKit Morgan + pgvector) | Compounds most similar to a query SMILES by ECFP4 Tanimoto (pgvector Jaccard over `bit(2048)` fingerprints), with each hit's corpus bioactivity count. Query fingerprint is computed locally with RDKit (no ML model). Similarity is a retrieval signal, not a validated activity prediction. |
 
-_More `corpus_*` tools (`corpus_search_compounds`, `corpus_find_similar_compounds`) land in
-subsequent v0.6.0 milestones._
+_The hybrid `corpus_search_compounds` (SQL filter + Tanimoto) lands in the next v0.6.0
+milestone._
 
 ---
 
@@ -216,7 +217,7 @@ Exceptions (tools with additional required fields):
 ## MCP Resource: `tool://registry`
 
 Any MCP client can read the `tool://registry` resource to get a structured
-Markdown catalogue of all 39 tools grouped by category, with the
+Markdown catalogue of all 40 tools grouped by category, with the
 embedding-searchable `use_when` guidance the workflow agent uses for
 semantic retrieval. No tool call needed — useful for agent frameworks doing
 capability auditing or embedding-based tool selection.

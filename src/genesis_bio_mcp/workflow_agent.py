@@ -18,12 +18,14 @@ from typing import Any
 import anthropic
 
 from genesis_bio_mcp.config.settings import settings
-from genesis_bio_mcp.corpus import fetch_manifest, search_similar_targets
+from genesis_bio_mcp.corpus import fetch_manifest, search_similar_compounds, search_similar_targets
 from genesis_bio_mcp.models import (
     BatchGeneResolution,
     BatchGeneResolutionItem,
     BatchMolecularProperties,
     ComparisonReport,
+    CorpusCompoundHit,
+    CorpusSimilarCompounds,
     CorpusTargetHit,
     CorpusTargetNeighbors,
     DMSVariantLookup,
@@ -33,6 +35,9 @@ from genesis_bio_mcp.models import (
 from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 from genesis_bio_mcp.tools.cheminformatics import (
     compute_molecular_properties as _compute_molecular_properties,
+)
+from genesis_bio_mcp.tools.cheminformatics import (
+    morgan_fp_bits as _morgan_fp_bits,
 )
 from genesis_bio_mcp.tools.cheminformatics import (
     standardize_structure as _standardize_structure,
@@ -162,6 +167,20 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
         query_gene, hits = found
         return CorpusTargetNeighbors(
             query_gene=query_gene, hits=[CorpusTargetHit(**h) for h in hits]
+        ).to_markdown()
+
+    async def _corpus_find_similar_compounds_fn(smiles: str, top_k: int = 20) -> str:
+        pool = getattr(state, "corpus_pool", None)
+        if pool is None:
+            return "Corpus store is not configured (GENESIS_CORPUS_DSN unset)."
+        fp_bits = _morgan_fp_bits(smiles)
+        if fp_bits is None:
+            return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
+        rows = await search_similar_compounds(pool, fp_bits, top_k)
+        if not rows:
+            return "No fingerprinted compounds are indexed yet."
+        return CorpusSimilarCompounds(
+            query_smiles=smiles, hits=[CorpusCompoundHit(**r) for r in rows]
         ).to_markdown()
 
     async def _batch_resolve_genes_fn(gene_names: list[str]) -> str:
@@ -1565,6 +1584,32 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="corpus",
             use_when="Use to find targets with similar protein sequence to a query (e.g. kinases in the same subfamily) within the indexed corpus, ranked by embedding similarity.",
             fn=_corpus_search_targets_by_sequence_fn,
+        ),
+        "corpus_find_similar_compounds": ToolSpec(
+            name="corpus_find_similar_compounds",
+            description=(
+                "Find indexed compounds most similar to a query SMILES by ECFP4 Tanimoto "
+                "(pgvector Jaccard over Morgan fingerprints). Returns analog compounds with "
+                "Tanimoto and their corpus bioactivity counts. Query fingerprint is computed "
+                "locally with RDKit; closed-world over the corpus."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "smiles": {
+                        "type": "string",
+                        "description": "Query SMILES. Example: 'CC(=O)Oc1ccccc1C(=O)O'",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Max similar compounds to return (default 20).",
+                    },
+                },
+                "required": ["smiles"],
+            },
+            tool_category="corpus",
+            use_when="Use to find analogs / known chemical matter near a query molecule within the indexed corpus, ranked by Tanimoto similarity.",
+            fn=_corpus_find_similar_compounds_fn,
         ),
     }
 
