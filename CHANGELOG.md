@@ -13,6 +13,21 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **CPU ESM-2 target ingestion pipeline (v0.6.0 M1 — offline ETL).** The pipeline that
+  populates the corpus's targets: `genesis_bio_mcp/ingest/` with `kinome.py` (fetch the human
+  kinome — reviewed human UniProt entries with the Kinase keyword KW-0418 — accession + gene +
+  sequence, one paged query, no key), `embed.py` (ESM-2-150M mean-pooled embeddings **on CPU**,
+  lazy torch/fair-esm import), `load.py` (asyncpg upsert + manifest refresh), and a CLI:
+  `uv run python -m genesis_bio_mcp.ingest targets [LIMIT]`. The ML deps live in a new
+  **optional `ingest` dependency group** (`uv sync --group ingest`) — **not** in the serving
+  install or CI, and imported lazily, so the server never loads torch. `targets` is now keyed on
+  **UniProt accession** (the FAIR cross-source ID; ChEMBL target id kept as a nullable column),
+  so target ingestion needs no per-protein ChEMBL round-trip and the UniProt↔ChEMBL join in M2
+  is clean. Tests: pooling math, UniProt parse/pagination (respx), the missing-extras
+  `ImportError` guard, and a CI integration test that loads targets into real Postgres and
+  verifies the manifest via `corpus_describe`. `docker-compose.yml` + a README "Building the
+  corpus" section. No new MCP tool (count stays 40). *Running the actual embedding batch is a
+  local CPU step — the search half it feeds (M1 part 1) is already CI-verified.*
 - **`corpus_search_targets_by_sequence` + ESM-2-150M decision (v0.6.0 M1 — target similarity).**
   The first corpus *query* tool: closed-world cosine-kNN over target protein-sequence embeddings
   (pgvector `<=>`). Give a target already in the corpus (gene symbol / UniProt accession) and it

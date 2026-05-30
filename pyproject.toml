@@ -56,6 +56,13 @@ dev = [
     "respx>=0.23.1",
     "ruff>=0.15.10",
 ]
+# OFFLINE ingestion only — heavy ML for computing ESM-2 protein embeddings (CPU).
+# NOT installed by the serving install or CI; the corpus tools never import these.
+# Build the corpus:  uv sync --group ingest  &&  uv run python -m genesis_bio_mcp.ingest targets
+ingest = [
+    "torch>=2.2.0",
+    "fair-esm>=2.0.0",
+]
 
 [tool.ruff]
 target-version = "py311"

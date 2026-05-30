@@ -54,9 +54,14 @@ src/genesis_bio_mcp/
 │   ├── cheminformatics.py          # RDKit compute: properties, standardize, Tanimoto (local)
 │   ├── health.py                   # health://status: upstream reachability + runtime state
 │   └── variant_parser.py           # Parse R175H / p.Arg175His / Arg175His → canonical form
-└── corpus/                         # v0.6.0 hybrid retrieval (optional Postgres + pgvector)
-    ├── db.py                       # async pool (optional/never-raise) + schema apply + manifest
-    └── schema.sql                  # targets / compounds / activities / corpus_manifest DDL
+├── corpus/                         # v0.6.0 hybrid retrieval (optional Postgres + pgvector)
+│   ├── db.py                       # async pool (optional/never-raise) + schema + manifest + kNN
+│   └── schema.sql                  # targets / compounds / activities / corpus_manifest DDL
+└── ingest/                         # v0.6.0 OFFLINE corpus ETL (not on the request path)
+    ├── kinome.py                   # fetch human kinome targets + sequences (UniProt)
+    ├── embed.py                    # ESM-2-150M mean-pool embeddings (lazy torch; `ingest` extra)
+    ├── load.py                     # asyncpg upsert targets + refresh manifest
+    └── __main__.py                 # CLI: python -m genesis_bio_mcp.ingest targets [LIMIT]
 ```
 
 ---
