@@ -81,7 +81,7 @@ SELECT t.target_chembl_id,
        t.pref_name,
        t.kinase_group,
        1 - (t.sequence_embedding <=> $1) AS cosine_similarity,
-       (SELECT count(*) FROM activities a WHERE a.target_chembl_id = t.target_chembl_id)
+       (SELECT count(*) FROM activities a WHERE a.uniprot_accession = t.uniprot_accession)
            AS activity_count
 FROM targets t
 WHERE t.gene_symbol <> $2 AND t.sequence_embedding IS NOT NULL

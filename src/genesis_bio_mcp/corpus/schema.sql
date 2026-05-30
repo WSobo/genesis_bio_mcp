@@ -25,9 +25,11 @@ CREATE TABLE IF NOT EXISTS corpus_manifest (
     CONSTRAINT corpus_manifest_singleton CHECK (id = 1)
 );
 
+-- Keyed on UniProt accession — the FAIR cross-source identifier. ChEMBL's own
+-- target id is kept as a (nullable) column and filled when activities are ingested.
 CREATE TABLE IF NOT EXISTS targets (
-    target_chembl_id    text PRIMARY KEY,
-    uniprot_accession   text,
+    uniprot_accession   text PRIMARY KEY,
+    target_chembl_id    text,
     gene_symbol         text,
     pref_name           text,
     organism            text,
@@ -55,7 +57,8 @@ CREATE TABLE IF NOT EXISTS compounds (
 CREATE TABLE IF NOT EXISTS activities (
     activity_id            bigint PRIMARY KEY,
     molecule_chembl_id     text REFERENCES compounds(molecule_chembl_id),
-    target_chembl_id       text REFERENCES targets(target_chembl_id),
+    uniprot_accession      text REFERENCES targets(uniprot_accession),
+    target_chembl_id       text,          -- ChEMBL's own target id (provenance)
     standard_type          text,          -- IC50 / Ki / Kd
     standard_value         double precision,
     standard_units         text,
@@ -68,9 +71,8 @@ CREATE TABLE IF NOT EXISTS activities (
     retrieved_at           timestamptz
 );
 
-CREATE INDEX IF NOT EXISTS idx_activities_target   ON activities (target_chembl_id);
+CREATE INDEX IF NOT EXISTS idx_activities_target   ON activities (uniprot_accession);
 CREATE INDEX IF NOT EXISTS idx_activities_molecule ON activities (molecule_chembl_id);
 CREATE INDEX IF NOT EXISTS idx_activities_pchembl  ON activities (pchembl_value);
 CREATE INDEX IF NOT EXISTS idx_targets_gene        ON targets (gene_symbol);
-CREATE INDEX IF NOT EXISTS idx_targets_uniprot     ON targets (uniprot_accession);
 CREATE INDEX IF NOT EXISTS idx_compounds_inchikey  ON compounds (inchikey);

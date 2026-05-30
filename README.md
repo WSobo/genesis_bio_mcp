@@ -121,6 +121,23 @@ in [docs/tools.md](docs/tools.md); live output samples of the headline tools in
 All tools return Markdown by default; every tool accepts
 `response_format="json"` for pipeline integration.
 
+### Corpus store (optional, v0.6.0)
+
+The `corpus_*` tools query an indexed PostgreSQL + pgvector store over a curated bioactivity
+corpus (the human kinome). It is **entirely optional** — without it the other 38 tools run
+unchanged. To build it locally (free, no API keys, CPU-only):
+
+```bash
+docker compose up -d                  # local Postgres + pgvector
+export GENESIS_CORPUS_DSN="postgresql://genesis:genesis@localhost:5432/genesis_corpus"
+
+uv sync --group ingest                # ML extras (torch + fair-esm) — ONLY for ingestion
+uv run python -m genesis_bio_mcp.ingest targets   # fetch kinome → ESM-2-150M embeddings (CPU) → load
+```
+
+The heavy ML (ESM-2) is used only by the offline ingestion step; the MCP server never loads
+it. See [docs/ROADMAP.md](docs/ROADMAP.md) (v0.6.0) for the full design.
+
 ---
 
 ## Try it
