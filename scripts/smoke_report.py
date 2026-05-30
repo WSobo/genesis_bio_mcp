@@ -96,7 +96,8 @@ async def run_one(
     if resolved != gene.upper():
         print(f"  Resolved: {gene!r} → {resolved}")
 
-    print(f"  Score:    {result.priority_score:.1f}/10  [{result.priority_tier}]")
+    profile = ", ".join(f"{a.name.split()[0]}:{a.rating}" for a in result.evidence_profile)
+    print(f"  Profile:  {profile or 'none'}")
     print(f"  Gaps:     {result.data_gaps or 'none'}")
     print(f"  Errors:   {list(result.errors.keys()) or 'none'}")
 
@@ -136,8 +137,7 @@ async def run_one(
         "gene_input": gene,
         "resolved": resolved,
         "indication": indication,
-        "score": result.priority_score,
-        "tier": result.priority_tier,
+        "evidence_profile": {a.name: a.rating for a in result.evidence_profile},
         "data_gaps": result.data_gaps,
         "errors": list(result.errors.keys()),
         "depmap_real": result.cancer_dependency is not None
