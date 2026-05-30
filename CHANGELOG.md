@@ -13,6 +13,13 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **Corpus evaluation suite + demo (v0.6.0 M4).** `docs/corpus-eval.md` — 10 evaluation
+  question/answer pairs for the `corpus_*` tools following MCP eval best practice (independent,
+  read-only, multi-call/filter-bearing, and **verifiable** — filter obeyed, ordering, or typed
+  error, not vibes), including robustness checks (target-not-in-corpus → `NotFound`; no DSN →
+  `UpstreamUnavailable`). Plus `scripts/corpus_demo.py`, a runnable end-to-end demonstration of
+  the corpus tools (describe → target similarity → compound similarity → hybrid search) against a
+  built corpus. README links the eval suite. No code/tool change (count stays 42).
 - **`corpus_search_compounds` — hybrid relational + similarity search (v0.6.0 M3, the headline
   corpus tool).** Combines SQL-style filters (target gene/UniProt, assay type, minimum pChEMBL
   potency, maximum molecular weight) with **optional Morgan/Tanimoto similarity** to a query

@@ -38,7 +38,8 @@ calls.
 | **[docs/benchmark.md](docs/benchmark.md)** | 12-target benchmark matrix and example `prioritize_target` output |
 | **[docs/deployment.md](docs/deployment.md)** | Environment variables, Docker setup, Claude Desktop config, production checklist |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | 7-step walkthrough for adding a new data source |
-| **[docs/ROADMAP.md](docs/ROADMAP.md)** | Direction through v0.5.x (cheminformatics + agent/ops hardening) and beyond |
+| **[docs/ROADMAP.md](docs/ROADMAP.md)** | Direction through v0.6.0 (hybrid retrieval / pgvector corpus) and beyond |
+| **[docs/corpus-eval.md](docs/corpus-eval.md)** | 10-question evaluation suite for the `corpus_*` hybrid-retrieval tools |
 | **[CHANGELOG.md](CHANGELOG.md)** | Version history |
 
 ---
