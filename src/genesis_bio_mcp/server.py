@@ -1879,6 +1879,15 @@ async def run_biology_workflow(params: RunBiologyWorkflowInput) -> str:
     Returns:
         Synthesized Markdown answer with citations from all consulted databases.
     """
+    if not __import__("os").environ.get("ANTHROPIC_API_KEY"):
+        return (
+            "**run_biology_workflow unavailable:** `ANTHROPIC_API_KEY` is not set.\n\n"
+            "This tool drives an internal Claude agent to chain database queries, which "
+            "requires an Anthropic API key. Set `ANTHROPIC_API_KEY=<your-key>` in the server "
+            "environment (e.g. under `env` in claude_desktop_config.json), then restart the "
+            "server. The individual tools (e.g. `prioritize_target`, `get_target_disease_association`) "
+            "work without it."
+        )
     registry = build_tool_registry(mcp.state)
     return await run_agent_loop(params.question, registry)
 

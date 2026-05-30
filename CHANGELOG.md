@@ -11,6 +11,23 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 _No unreleased changes._
 
+## [0.4.2] - 2026-05-29
+
+Patch release completing the full 31-tool live-probe sweep — two remaining UX/output gaps.
+
+### Fixed
+
+- **`get_variant_consequences` returned an empty per-transcript table.** Ensembl's VEP
+  *HGVS* endpoint does not set the `canonical` flag on any transcript (only region-based
+  queries do), so the strict canonical-only filter dropped every row — the tool showed the
+  most-severe consequence but "_No transcript consequences returned_" with no SIFT/PolyPhen
+  detail. The parser now falls back to the most-severe-matching transcript when none is
+  flagged canonical (region queries and `include_all_transcripts` are unchanged).
+- **`run_biology_workflow` leaked a raw SDK auth error when `ANTHROPIC_API_KEY` is unset.**
+  It now returns a clear, actionable message (mirroring the BioGRID missing-key handling)
+  explaining that the internal agent needs the key and that the individual tools work
+  without it.
+
 ## [0.4.1] - 2026-05-29
 
 Patch release: production-hardening fixes found during a live MCP probe of the toolset,
