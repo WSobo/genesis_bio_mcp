@@ -111,3 +111,30 @@ async def search_similar_targets(
             return None
         hits = await conn.fetch(_NEIGHBOR_SQL, row["sequence_embedding"], row["gene_symbol"], top_k)
     return row["gene_symbol"], [dict(h) for h in hits]
+
+
+_COMPOUND_SQL = """
+SELECT c.molecule_chembl_id,
+       c.canonical_smiles,
+       c.inchikey,
+       c.mol_weight,
+       1 - (c.morgan_fp <%> $1::bit(2048)) AS tanimoto,
+       (SELECT count(*) FROM activities a WHERE a.molecule_chembl_id = c.molecule_chembl_id)
+           AS activity_count
+FROM compounds c
+WHERE c.morgan_fp IS NOT NULL
+ORDER BY c.morgan_fp <%> $1::bit(2048)
+LIMIT $2
+"""
+
+
+async def search_similar_compounds(pool: asyncpg.Pool, fp_bits: str, top_k: int) -> list[dict]:
+    """Rank corpus compounds by Tanimoto to a query Morgan fingerprint (pgvector Jaccard).
+
+    ``fp_bits`` is a 2048-char '0'/'1' bitstring (see ``cheminformatics.morgan_fp_bits``).
+    Tanimoto = 1 − Jaccard distance (``<%>``). Returns up to ``top_k`` compound dicts ordered
+    by descending Tanimoto; empty if the corpus has no fingerprinted compounds.
+    """
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(_COMPOUND_SQL, fp_bits, top_k)
+    return [dict(r) for r in rows]

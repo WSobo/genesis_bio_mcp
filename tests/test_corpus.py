@@ -17,13 +17,17 @@ import pytest
 from genesis_bio_mcp import server
 from genesis_bio_mcp.corpus import create_corpus_pool, fetch_manifest
 from genesis_bio_mcp.corpus import db as corpus_db
+from genesis_bio_mcp.ingest.load import CompoundRecord, load_compounds
 from genesis_bio_mcp.models import CorpusManifest
 from genesis_bio_mcp.server import (
     CorpusDescribeInput,
+    CorpusFindSimilarCompoundsInput,
     CorpusSearchTargetsInput,
     corpus_describe,
+    corpus_find_similar_compounds,
     corpus_search_targets_by_sequence,
 )
+from genesis_bio_mcp.tools.cheminformatics import morgan_fp_bits
 
 
 def test_schema_sql_is_bundled_and_nonempty():
@@ -171,6 +175,69 @@ async def test_search_targets_returns_ranked_neighbors(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# corpus_find_similar_compounds — unit tests (DB mocked / RDKit real)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_find_similar_compounds_unconfigured():
+    server.mcp.state = SimpleNamespace(corpus_pool=None)
+    out = await corpus_find_similar_compounds(
+        CorpusFindSimilarCompoundsInput(smiles="CCO", response_format="json")
+    )
+    assert json.loads(out)["error"]["status"] == "UpstreamUnavailable"
+
+
+@pytest.mark.asyncio
+async def test_find_similar_compounds_invalid_smiles():
+    server.mcp.state = SimpleNamespace(corpus_pool=object())
+    out = await corpus_find_similar_compounds(
+        CorpusFindSimilarCompoundsInput(smiles="not_a_smiles!!!", response_format="json")
+    )
+    assert json.loads(out)["error"]["status"] == "InvalidInput"
+
+
+@pytest.mark.asyncio
+async def test_find_similar_compounds_empty_corpus(monkeypatch):
+    server.mcp.state = SimpleNamespace(corpus_pool=object())
+
+    async def _empty(_pool, _fp, _k):
+        return []
+
+    monkeypatch.setattr(server, "_corpus_search_similar_compounds", _empty)
+    out = await corpus_find_similar_compounds(
+        CorpusFindSimilarCompoundsInput(smiles="CCO", response_format="json")
+    )
+    assert json.loads(out)["error"]["status"] == "NotFound"
+
+
+@pytest.mark.asyncio
+async def test_find_similar_compounds_returns_hits(monkeypatch):
+    server.mcp.state = SimpleNamespace(corpus_pool=object())
+
+    async def _hits(_pool, _fp, _k):
+        return [
+            {
+                "molecule_chembl_id": "CHEMBL25",
+                "canonical_smiles": "CC(=O)Oc1ccccc1C(=O)O",
+                "inchikey": "BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
+                "mol_weight": 180.16,
+                "tanimoto": 1.0,
+                "activity_count": 7,
+            }
+        ]
+
+    monkeypatch.setattr(server, "_corpus_search_similar_compounds", _hits)
+    out = await corpus_find_similar_compounds(
+        CorpusFindSimilarCompoundsInput(smiles="CC(=O)Oc1ccccc1C(=O)O", response_format="json")
+    )
+    env = json.loads(out)
+    assert env["provenance"]["source"] == "genesis-bio-mcp corpus (Postgres + pgvector)"
+    assert env["data"]["hits"][0]["molecule_chembl_id"] == "CHEMBL25"
+    assert env["data"]["hits"][0]["tanimoto"] == 1.0
+
+
+# ---------------------------------------------------------------------------
 # Integration: real Postgres + pgvector. Runs only when GENESIS_CORPUS_DSN is set
 # (the CI job provides one; local runs without Docker skip these).
 # ---------------------------------------------------------------------------
@@ -239,4 +306,52 @@ async def test_integration_target_similarity_knn_ranks_by_cosine():
     finally:
         async with pool.acquire() as conn:
             await conn.execute("DELETE FROM targets")
+        await pool.close()
+
+
+@_skip_no_db
+@pytest.mark.asyncio
+async def test_integration_compound_tanimoto_knn_ranks_by_similarity():
+    # Load real RDKit Morgan fingerprints and verify pgvector Jaccard (= 1 − Tanimoto)
+    # ranks the exact query first and a dissimilar molecule last.
+    pool = await create_corpus_pool()
+    assert pool is not None
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM compounds")
+        records = [
+            CompoundRecord(
+                "CHEMBL_ASA",
+                "CC(=O)Oc1ccccc1C(=O)O",
+                None,
+                None,
+                180.16,
+                morgan_fp_bits("CC(=O)Oc1ccccc1C(=O)O"),
+            ),
+            CompoundRecord(
+                "CHEMBL_SAL",
+                "O=C(O)c1ccccc1O",
+                None,
+                None,
+                138.12,
+                morgan_fp_bits("O=C(O)c1ccccc1O"),
+            ),  # salicylic acid (related)
+            CompoundRecord("CHEMBL_ETOH", "CCO", None, None, 46.07, morgan_fp_bits("CCO")),  # far
+        ]
+        await load_compounds(pool, records, source_version="ChEMBL test")
+
+        server.mcp.state = SimpleNamespace(corpus_pool=pool)
+        out = await corpus_find_similar_compounds(
+            CorpusFindSimilarCompoundsInput(
+                smiles="CC(=O)Oc1ccccc1C(=O)O", top_k=10, response_format="json"
+            )
+        )
+        hits = json.loads(out)["data"]["hits"]
+        assert hits[0]["molecule_chembl_id"] == "CHEMBL_ASA"  # exact match first
+        assert hits[0]["tanimoto"] == pytest.approx(1.0, abs=1e-6)
+        assert hits[-1]["molecule_chembl_id"] == "CHEMBL_ETOH"  # least similar last
+        assert hits[0]["tanimoto"] > hits[-1]["tanimoto"]
+    finally:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM compounds")
         await pool.close()

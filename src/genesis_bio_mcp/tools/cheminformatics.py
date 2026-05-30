@@ -29,6 +29,19 @@ logger = logging.getLogger(__name__)
 _MORGAN_GEN = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
 
 
+def morgan_fp_bits(smiles: str) -> str | None:
+    """Return the ECFP4 Morgan fingerprint as a 2048-char '0'/'1' bitstring, or None.
+
+    The same generator used for ``tanimoto_similarity`` (radius 2, 2048 bits), so the corpus
+    ingestion and the corpus query produce identical fingerprints. The bitstring maps directly
+    to a Postgres ``bit(2048)`` column for pgvector Jaccard (= 1 − Tanimoto) similarity search.
+    """
+    mol = Chem.MolFromSmiles((smiles or "").strip())
+    if mol is None:
+        return None
+    return _MORGAN_GEN.GetFingerprint(mol).ToBitString()
+
+
 def tanimoto_similarity(query_smiles: str, target_smiles: str) -> float | None:
     """Morgan-fingerprint Tanimoto similarity (0–1) between two SMILES.
 

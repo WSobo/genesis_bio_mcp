@@ -7,6 +7,7 @@ Pure asyncpg writes — no ML here. The pgvector codec is registered on the pool
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import asyncpg
@@ -15,6 +16,19 @@ from genesis_bio_mcp.ingest.embed import ESM2_MODEL
 from genesis_bio_mcp.ingest.kinome import TargetRecord
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CompoundRecord:
+    """A compound to index: ChEMBL-keyed, standardized, with its Morgan fingerprint bits."""
+
+    molecule_chembl_id: str
+    canonical_smiles: str | None
+    inchi: str | None
+    inchikey: str | None
+    mol_weight: float | None
+    morgan_fp_bits: str | None  # 2048-char '0'/'1' bitstring, or None if unparseable
+
 
 _UPSERT_TARGET = """
 INSERT INTO targets (uniprot_accession, gene_symbol, pref_name, organism, sequence,
@@ -93,4 +107,53 @@ async def load_targets(
             )
         await _refresh_manifest(conn, now, target_family)
     logger.info("Loaded %d targets into the corpus.", len(records))
+    return len(records)
+
+
+_UPSERT_COMPOUND = """
+INSERT INTO compounds (molecule_chembl_id, canonical_smiles, inchi, inchikey, mol_weight,
+                       morgan_fp, source, source_version, retrieved_at)
+VALUES ($1, $2, $3, $4, $5, $6::bit(2048), $7, $8, $9)
+ON CONFLICT (molecule_chembl_id) DO UPDATE SET
+    canonical_smiles = EXCLUDED.canonical_smiles,
+    inchi = EXCLUDED.inchi,
+    inchikey = EXCLUDED.inchikey,
+    mol_weight = EXCLUDED.mol_weight,
+    morgan_fp = EXCLUDED.morgan_fp,
+    source = EXCLUDED.source,
+    source_version = EXCLUDED.source_version,
+    retrieved_at = EXCLUDED.retrieved_at
+"""
+
+
+async def load_compounds(
+    pool: asyncpg.Pool,
+    records: list[CompoundRecord],
+    *,
+    source_version: str,
+    target_family: str = "human kinome",
+) -> int:
+    """Upsert compound rows (with Morgan fingerprints) in one transaction, refresh the manifest.
+
+    The fingerprint is stored as a ``bit(2048)`` (passed as a '0'/'1' bitstring, cast in SQL),
+    so pgvector Jaccard (= 1 − Tanimoto) similarity search works directly on it. Returns the
+    number of compound rows written.
+    """
+    now = datetime.now(UTC)
+    async with pool.acquire() as conn, conn.transaction():
+        for rec in records:
+            await conn.execute(
+                _UPSERT_COMPOUND,
+                rec.molecule_chembl_id,
+                rec.canonical_smiles,
+                rec.inchi,
+                rec.inchikey,
+                rec.mol_weight,
+                rec.morgan_fp_bits,
+                "ChEMBL",
+                source_version,
+                now,
+            )
+        await _refresh_manifest(conn, now, target_family)
+    logger.info("Loaded %d compounds into the corpus.", len(records))
     return len(records)

@@ -182,6 +182,7 @@ def test_build_tool_registry_has_all_tools():
         "compare_targets",
         "corpus_describe",
         "corpus_search_targets_by_sequence",
+        "corpus_find_similar_compounds",
     }
     assert set(registry.keys()) == expected_tools
 

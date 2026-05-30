@@ -13,6 +13,18 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **`corpus_find_similar_compounds` (v0.6.0 M2 — compound similarity search).** Closed-world
+  chemical-similarity search over the corpus: the query SMILES is fingerprinted locally with
+  RDKit (ECFP4 Morgan — no ML model) and matched by Tanimoto using **pgvector's native bit-vector
+  Jaccard operator** (`<%>`, = 1 − Tanimoto) over the `morgan_fp bit(2048)` column — so the
+  similarity search runs **in-DB in one query** with the same pgvector extension, no RDKit
+  Postgres cartridge. Returns analog compounds with Tanimoto and each hit's corpus bioactivity
+  count. New `CorpusCompoundHit` / `CorpusSimilarCompounds` models, `morgan_fp_bits()` helper
+  (reused at ingest and query so fingerprints match), `search_similar_compounds` in the corpus
+  layer, and a `load_compounds` loader (`CompoundRecord`). Registered in `run_biology_workflow`;
+  emits the M5/M6 envelope. **Tool count 40 → 41.** New CI integration test loads real RDKit
+  fingerprints into Postgres and verifies the Tanimoto ranking (exact match first, dissimilar
+  last) against real pgvector. The ChEMBL bulk compound/activity ingester lands next (M2 part 2).
 - **CPU ESM-2 target ingestion pipeline (v0.6.0 M1 — offline ETL).** The pipeline that
   populates the corpus's targets: `genesis_bio_mcp/ingest/` with `kinome.py` (fetch the human
   kinome — reviewed human UniProt entries with the Kinase keyword KW-0418 — accession + gene +
