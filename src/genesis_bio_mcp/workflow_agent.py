@@ -25,6 +25,9 @@ from genesis_bio_mcp.models import (
     TargetComparisonRow,
 )
 from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
+from genesis_bio_mcp.tools.cheminformatics import (
+    compute_molecular_properties as _compute_molecular_properties,
+)
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals,
@@ -195,6 +198,12 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
         result = await state.pubchem.get_compounds(gene_symbol)
         if result is None:
             return f"No PubChem bioactivity data found for '{gene_symbol}'."
+        return result.to_markdown()
+
+    async def _compute_molecular_properties_fn(smiles: str) -> str:
+        result = _compute_molecular_properties(smiles)
+        if result is None:
+            return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
         return result.to_markdown()
 
     async def _get_protein_structure_fn(gene_symbol: str) -> str:
@@ -617,6 +626,27 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="druggability",
             use_when="Use to assess whether active chemical matter exists for a target. Count >50 indicates well-explored chemical space.",
             fn=_get_compounds_fn,
+        ),
+        "compute_molecular_properties": ToolSpec(
+            name="compute_molecular_properties",
+            description=(
+                "Compute physicochemical and drug-likeness properties for a molecule from its "
+                "SMILES (RDKit, local): MW, logP, TPSA, HBD/HBA, rotatable bonds, QED, "
+                "Lipinski/Veber checks, PAINS alert, and Bemis-Murcko scaffold."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "smiles": {
+                        "type": "string",
+                        "description": "SMILES string. Example: 'CC(=O)Oc1ccccc1C(=O)O' (aspirin)",
+                    }
+                },
+                "required": ["smiles"],
+            },
+            tool_category="druggability",
+            use_when="Use to profile the drug-likeness of a specific molecule given its SMILES (Lipinski/Veber/QED/PAINS), independent of any database.",
+            fn=_compute_molecular_properties_fn,
         ),
         "get_chembl_compounds": ToolSpec(
             name="get_chembl_compounds",

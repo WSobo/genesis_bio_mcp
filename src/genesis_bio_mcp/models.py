@@ -1110,6 +1110,82 @@ class GwasEvidence(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class MolecularProperties(BaseModel):
+    """RDKit-computed physicochemical and drug-likeness properties for a molecule.
+
+    Locally computed from a SMILES string — deterministic, offline, no upstream API.
+    """
+
+    input_smiles: str = Field(description="The SMILES string as provided")
+    canonical_smiles: str = Field(description="RDKit canonical SMILES")
+    molecular_formula: str = Field(description="Molecular formula (Hill notation)")
+    molecular_weight: float = Field(description="Average molecular weight (Da)")
+    logp: float = Field(description="Crippen calculated logP (lipophilicity)")
+    tpsa: float = Field(description="Topological polar surface area (Å²)")
+    h_bond_donors: int = Field(description="Number of hydrogen-bond donors")
+    h_bond_acceptors: int = Field(description="Number of hydrogen-bond acceptors")
+    rotatable_bonds: int = Field(description="Number of rotatable bonds (flexibility)")
+    aromatic_rings: int = Field(description="Number of aromatic rings")
+    heavy_atom_count: int = Field(description="Number of non-hydrogen atoms")
+    fraction_csp3: float = Field(
+        description="Fraction of sp3-hybridized carbons (0–1; higher = more 3D character)"
+    )
+    qed: float = Field(
+        description="Quantitative Estimate of Drug-likeness (0–1; higher is more drug-like)"
+    )
+    lipinski_violations: int = Field(
+        description="Count of Lipinski Rule-of-Five violations (MW>500, logP>5, HBD>5, HBA>10)"
+    )
+    passes_lipinski: bool = Field(description="True if ≤1 Lipinski Ro5 violation (oral-drug-like)")
+    passes_veber: bool = Field(
+        description="True if rotatable bonds ≤10 and TPSA ≤140 (oral bioavailability heuristic)"
+    )
+    pains_alert: bool = Field(
+        description="True if the molecule matches a PAINS substructure (assay-interference risk)"
+    )
+    murcko_scaffold: str | None = Field(
+        None, description="Bemis-Murcko scaffold SMILES (None for acyclic molecules)"
+    )
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Molecular Properties: `{self.canonical_smiles}`",
+            f"**Formula:** {self.molecular_formula} | **MW:** {self.molecular_weight} Da | "
+            f"**Heavy atoms:** {self.heavy_atom_count}",
+            "",
+            "| Property | Value |",
+            "|---|---|",
+            f"| logP (Crippen) | {self.logp} |",
+            f"| TPSA | {self.tpsa} Å² |",
+            f"| H-bond donors | {self.h_bond_donors} |",
+            f"| H-bond acceptors | {self.h_bond_acceptors} |",
+            f"| Rotatable bonds | {self.rotatable_bonds} |",
+            f"| Aromatic rings | {self.aromatic_rings} |",
+            f"| Fraction Csp3 | {self.fraction_csp3} |",
+            f"| QED (drug-likeness) | {self.qed} |",
+        ]
+        lip = (
+            f"✅ pass ({self.lipinski_violations} violation"
+            f"{'s' if self.lipinski_violations != 1 else ''})"
+            if self.passes_lipinski
+            else f"⚠️ fail ({self.lipinski_violations} violations)"
+        )
+        veber = "✅ pass" if self.passes_veber else "⚠️ fail"
+        pains = (
+            "⚠️ PAINS match (assay-interference risk)" if self.pains_alert else "✅ no PAINS alert"
+        )
+        lines += [
+            "",
+            "**Drug-likeness:**",
+            f"- Lipinski Ro5: {lip}",
+            f"- Veber: {veber}",
+            f"- {pains}",
+        ]
+        if self.murcko_scaffold:
+            lines += ["", f"**Bemis-Murcko scaffold:** `{self.murcko_scaffold}`"]
+        return "\n".join(lines)
+
+
 class CompoundActivity(BaseModel):
     """A small molecule with measured bioactivity against the target."""
 

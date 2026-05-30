@@ -9,7 +9,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-_No unreleased changes._
+v0.5.0 in progress — cheminformatics core (RDKit) + agent/ops hardening (see docs/ROADMAP.md).
+
+### Added
+
+- **`compute_molecular_properties` tool (v0.5.0 M1, 32 tools total).** The first
+  *computed-method* tool (RDKit, local, deterministic, no network): given a SMILES, returns
+  molecular formula/weight, logP, TPSA, H-bond donors/acceptors, rotatable bonds, aromatic
+  rings, fraction Csp3, QED, Lipinski Rule-of-Five and Veber checks, a PAINS
+  assay-interference flag, and the Bemis-Murcko scaffold. Complements `get_compounds` /
+  `get_chembl_compounds` (which retrieve known compounds) by profiling any arbitrary
+  structure. New `tools/cheminformatics.py`, `MolecularProperties` model, RDKit dependency,
+  `run_biology_workflow` registration, and `tests/test_cheminformatics.py`. Tool annotated
+  `openWorldHint=False` (pure local compute).
 
 ## [0.4.2] - 2026-05-29
 

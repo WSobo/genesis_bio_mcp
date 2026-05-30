@@ -28,6 +28,7 @@ dependencies = [
     "anthropic>=0.94.0",
     "pydantic-settings>=2.13.1",
     "curl-cffi>=0.15.0",
+    "rdkit>=2026.3.2",
 ]
 
 [project.urls]
