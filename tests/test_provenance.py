@@ -11,8 +11,18 @@ import json
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
 from genesis_bio_mcp.models import GeneResolution, Provenance
-from genesis_bio_mcp.server import _build_provenance, _fmt, _now_iso
+from genesis_bio_mcp.server import (
+    ComputeMolecularPropertiesInput,
+    _build_provenance,
+    _fmt,
+    _now_iso,
+)
+from genesis_bio_mcp.server import (
+    compute_molecular_properties as compute_molecular_properties_tool,
+)
 from genesis_bio_mcp.tools.cheminformatics import compute_molecular_properties
 
 
@@ -30,14 +40,32 @@ def test_json_success_envelope_wraps_data_and_provenance():
     datetime.strptime(prov["retrieved_at"], "%Y-%m-%dT%H:%M:%SZ")
 
 
-def test_json_error_envelope_carries_provenance():
+def test_json_error_envelope_carries_provenance_and_typed_status():
     out = _fmt(None, "json", "No data found for FOO.")
     env = json.loads(out)
     assert set(env.keys()) == {"provenance", "error"}
-    assert env["error"] == "No data found for FOO."
+    # M6: error is a typed object, not a bare string.
+    assert env["error"] == {"status": "NotFound", "message": "No data found for FOO."}
     # Source is unknown for a missing result → generic server label, never crashes.
     assert env["provenance"]["source"] == "genesis-bio-mcp"
     assert env["provenance"]["query"] is None
+
+
+def test_json_error_status_defaults_to_not_found():
+    env = json.loads(_fmt(None, "json", "nope"))
+    assert env["error"]["status"] == "NotFound"
+
+
+def test_json_error_status_can_be_overridden():
+    for status in ("InvalidInput", "RateLimited", "UpstreamUnavailable"):
+        env = json.loads(_fmt(None, "json", "boom", error_status=status))
+        assert env["error"]["status"] == status
+        assert env["error"]["message"] == "boom"
+
+
+def test_markdown_error_unaffected_by_status():
+    # The typed status is JSON-only; Markdown error text stays clean.
+    assert _fmt(None, "markdown", "boom", error_status="InvalidInput") == "**Error:** boom"
 
 
 def test_markdown_output_is_unchanged_by_provenance():
@@ -65,3 +93,14 @@ def test_now_iso_is_utc_z_format():
     ts = _now_iso()
     assert ts.endswith("Z")
     datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+
+
+@pytest.mark.asyncio
+async def test_tool_emits_invalid_input_status_for_bad_smiles():
+    # End-to-end: a real tool classifies a malformed SMILES as InvalidInput, not NotFound.
+    out = await compute_molecular_properties_tool(
+        ComputeMolecularPropertiesInput(smiles="not_a_smiles!!!", response_format="json")
+    )
+    env = json.loads(out)
+    assert env["error"]["status"] == "InvalidInput"
+    assert "could not be parsed" in env["error"]["message"]

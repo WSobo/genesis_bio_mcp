@@ -302,23 +302,45 @@ def _build_provenance(result: object) -> Provenance:
     )
 
 
-def _fmt(result: object, response_format: str, error_msg: str) -> str:
+# Typed error taxonomy (agent contract) — machine-readable status an agent can
+# branch on deterministically instead of string-matching prose. Surfaced in JSON
+# error output only; Markdown error text is unchanged.
+#   NotFound            — query was valid but no matching data exists upstream (default)
+#   InvalidInput        — the input itself was malformed (bad SMILES, unparseable mutation)
+#   RateLimited         — an upstream throttled the request (reserved; clients currently retry)
+#   UpstreamUnavailable — an upstream service failed, timed out, or rejected the request
+ErrorStatus = Literal["NotFound", "InvalidInput", "RateLimited", "UpstreamUnavailable"]
+
+
+def _fmt(
+    result: object,
+    response_format: str,
+    error_msg: str,
+    *,
+    error_status: ErrorStatus = "NotFound",
+) -> str:
     """Format a Pydantic model as Markdown or JSON, or return an error representation.
 
     For ``response_format="json"`` the model is wrapped in a consistent agent contract
     envelope — ``{"provenance": {...}, "data": {...}}`` on success, or
-    ``{"provenance": {...}, "error": "..."}`` when there is no result — so an agent
-    always knows the source, timestamp, and resolved query. Markdown output is unchanged.
+    ``{"provenance": {...}, "error": {"status": ..., "message": ...}}`` when there is no
+    result — so an agent always knows the source, timestamp, resolved query, and a
+    machine-readable error status it can branch on. Markdown output is unchanged.
 
     Args:
         result: Pydantic model with .to_markdown() and .model_dump_json(), or None.
         response_format: "markdown" (default) or "json".
         error_msg: Human-readable error used when result is None.
+        error_status: Typed status for the no-result case (see ``ErrorStatus``). Defaults
+            to ``"NotFound"`` — the common "query valid, no data" case.
     """
     if result is None:
         if response_format == "json":
             return _json.dumps(
-                {"provenance": _build_provenance(None).model_dump(), "error": error_msg},
+                {
+                    "provenance": _build_provenance(None).model_dump(),
+                    "error": {"status": error_status, "message": error_msg},
+                },
                 indent=2,
             )
         return f"**Error:** {error_msg}"
@@ -1213,6 +1235,7 @@ async def compute_molecular_properties(params: ComputeMolecularPropertiesInput) 
         result,
         params.response_format,
         f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
+        error_status="InvalidInput",
     )
 
 
@@ -1241,6 +1264,7 @@ async def standardize_structure(params: StandardizeStructureInput) -> str:
         result,
         params.response_format,
         f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
+        error_status="InvalidInput",
     )
 
 
@@ -1447,6 +1471,7 @@ async def design_sequence_for_structure(params: DesignSequenceInput) -> str:
             None,
             params.response_format,
             "Could not read the structure (empty input, or the PDB URL could not be fetched).",
+            error_status="InvalidInput",
         )
     result = await mcp.state.uma_inverse.design(
         pdb, ligand=params.ligand, temperature=params.temperature
@@ -1456,6 +1481,7 @@ async def design_sequence_for_structure(params: DesignSequenceInput) -> str:
         params.response_format,
         "UMA-Inverse design did not complete — the structure may exceed the service's "
         "residue cap (256 on the live endpoint), or the service is unavailable.",
+        error_status="UpstreamUnavailable",
     )
 
 
@@ -1490,6 +1516,7 @@ async def score_structure(params: ScoreStructureInput) -> str:
             None,
             params.response_format,
             "Could not read the structure (empty input, or the PDB URL could not be fetched).",
+            error_status="InvalidInput",
         )
     result = await mcp.state.uma_inverse.score(pdb, sequence=params.sequence, mode=params.mode)
     return _fmt(
@@ -1497,6 +1524,7 @@ async def score_structure(params: ScoreStructureInput) -> str:
         params.response_format,
         "UMA-Inverse scoring did not complete — the structure may exceed the service's "
         "residue cap (256 on the live endpoint), or the service is unavailable.",
+        error_status="UpstreamUnavailable",
     )
 
 
@@ -1599,14 +1627,13 @@ async def get_antibody_structures(params: GetAntibodyStructuresInput) -> str:
     result = await mcp.state.sabdab.get_antibody_structures(
         params.antigen_query, max_results=params.max_results
     )
-    if result is None:
-        return (
-            f"SAbDab data temporarily unavailable for '{params.antigen_query}'. "
-            "The SAbDab summary TSV could not be downloaded. Try again later."
-        )
-    if params.response_format == "json":
-        return result.model_dump_json(indent=2)
-    return result.to_markdown()
+    return _fmt(
+        result,
+        params.response_format,
+        f"SAbDab data temporarily unavailable for '{params.antigen_query}'. "
+        "The SAbDab summary TSV could not be downloaded. Try again later.",
+        error_status="UpstreamUnavailable",
+    )
 
 
 @mcp.tool(
@@ -1693,12 +1720,13 @@ async def get_mhc_binding(params: GetMHCBindingInput) -> str:
             method=params.method,
         )
     except ValueError as exc:
-        return _fmt(None, params.response_format, str(exc))
+        return _fmt(None, params.response_format, str(exc), error_status="InvalidInput")
     return _fmt(
         result,
         params.response_format,
         "IEDB NextGen Tools prediction failed — the service may be "
         "temporarily unavailable. Retry shortly.",
+        error_status="UpstreamUnavailable",
     )
 
 
@@ -1771,7 +1799,7 @@ async def get_variant_effects(params: GetVariantEffectsInput) -> str:
             symbol, params.mutation
         )
     except ValueError as exc:
-        return _fmt(None, params.response_format, str(exc))
+        return _fmt(None, params.response_format, str(exc), error_status="InvalidInput")
     return _fmt(result, params.response_format, "")
 
 
@@ -1995,7 +2023,12 @@ async def get_dms_variant_score(params: GetDmsVariantScoreInput) -> str:
     try:
         orig, pos, new = parse_protein_change(params.mutation)
     except ValueError as exc:
-        return f"Could not parse mutation '{params.mutation}': {exc}"
+        return _fmt(
+            None,
+            params.response_format,
+            f"Could not parse mutation '{params.mutation}': {exc}",
+            error_status="InvalidInput",
+        )
     hgvs_p = canonical_three_letter(orig, pos, new)
     dms = await mcp.state.mavedb.get_dms_scores(symbol)
     scores = await mcp.state.mavedb.get_variant_scores_for_gene(symbol, hgvs_p)
@@ -2093,13 +2126,13 @@ async def get_drug_history(params: GetDrugHistoryInput) -> str:
         trial_counts_by_phase=ct_counts,
         recent_trials=ct_trials[:10],
     )
-    if params.response_format == "json":
-        return result.model_dump_json(indent=2)
-    if not drugs and not ct_trials:
+    # Empty-but-valid result gets a friendly Markdown note; JSON still returns the
+    # (empty) model wrapped in the provenance envelope so the contract stays uniform.
+    if not drugs and not ct_trials and params.response_format != "json":
         return (
             f"**No drug history found for '{symbol}'.** This may be a first-in-class opportunity."
         )
-    return result.to_markdown()
+    return _fmt(result, params.response_format, "")
 
 
 @mcp.tool(

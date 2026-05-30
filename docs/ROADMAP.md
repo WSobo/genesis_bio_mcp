@@ -1,7 +1,9 @@
 # Roadmap
 
-Current release: **v0.4.2** — 31 tools across 24 public biomedical data sources, plus
-`prioritize_target` / `compare_targets` orchestration and the `run_biology_workflow` agent.
+Current release: **v0.5.0** — 38 tools across 24 public biomedical data sources (plus local
+RDKit cheminformatics and the UMA-Inverse model service), with `prioritize_target` /
+`compare_targets` orchestration, the `run_biology_workflow` agent, and the agent-contract
+provenance/typed-error envelope on all JSON output.
 
 ## North star
 
@@ -107,7 +109,7 @@ Touches all tools, so do it once, early.
 2. **M3** (similarity/substructure — most-requested chem capability)
 3. **M4** (UMA-Inverse integration — closes the structure→score→redesign loop; the marquee
    "served model" capability)
-4. **M5** + **M6** (agent contract; cross-cutting, do once) — *shipped: M5 provenance envelope*
+4. **M5** + **M6** (agent contract; cross-cutting, do once) — *shipped: M5 provenance envelope, M6 typed error taxonomy*
 5. **M7** + **M8** (ops/agent-readiness) — *shipped: M7 `health://status`, M8 batch tools*
 6. `analyze_sar` stretch if time permits
 

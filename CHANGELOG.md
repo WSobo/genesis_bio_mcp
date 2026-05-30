@@ -13,6 +13,18 @@ v0.5.x in progress — agent-contract / observability tracks (see docs/ROADMAP.m
 
 ### Added
 
+- **Typed error taxonomy for JSON output (v0.5.0 M6 — agent contract).** JSON error
+  responses now carry a machine-readable `status` instead of a bare prose string:
+  `{"provenance": {...}, "error": {"status": "...", "message": "..."}}`. The taxonomy is
+  `NotFound` (valid query, no data — the default), `InvalidInput` (malformed input — bad
+  SMILES, unparseable mutation, unreadable structure), `RateLimited` (reserved), and
+  `UpstreamUnavailable` (an upstream service failed/timed out — UMA-Inverse design/score,
+  SAbDab, IEDB NextGen Tools). An agent can branch on `status` deterministically instead of
+  string-matching. Markdown error text is unchanged. Implemented at the `_fmt` seam via a new
+  `error_status` parameter (`ErrorStatus` literal). **Also closes two provenance gaps from M5:**
+  `get_antibody_structures` and `get_drug_history` hand-rolled their JSON output and bypassed the
+  envelope — both now route through `_fmt`, so they gain provenance *and* typed errors. 5 new
+  tests in `test_provenance.py`. `docs/tools.md` documents the taxonomy.
 - **Provenance envelope for JSON output (v0.5.0 M5 — agent contract).** Every
   `response_format="json"` result is now wrapped in a consistent envelope —
   `{"provenance": {...}, "data": {...}}` on success, `{"provenance": {...}, "error": "..."}`
