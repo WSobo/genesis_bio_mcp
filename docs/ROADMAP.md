@@ -7,6 +7,14 @@ profile** rather than a composite score), the `run_biology_workflow` agent, the 
 provenance/typed-error envelope on all JSON output, and the v0.6.0 hybrid-retrieval `corpus_*` tools
 (Postgres + pgvector).
 
+## Evidence-driven direction
+
+Roadmap priorities are now set by the **evaluation harness** ([docs/eval.md](eval.md)), not by
+hand-poking. Its baseline run answers 23/24 tasks across all eight tool categories and flags four
+**capability gaps** no current tool can address — **ADMET/PK prediction**, **kinome-wide selectivity**,
+**patents / freedom-to-operate**, and **retrosynthesis**. These are the candidate next builds; the gap
+report is the artifact that decides which leads.
+
 ## North star
 
 > Evolve genesis-bio-mcp from a target-evidence **retrieval** server into an AI-native,
