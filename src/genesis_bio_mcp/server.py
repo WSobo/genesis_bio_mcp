@@ -160,6 +160,56 @@ _HEADERS = {
 }
 
 
+def build_app_state(
+    client: httpx.AsyncClient,
+    gene_dep_cache: dict | None = None,
+    *,
+    corpus_pool: object | None = None,
+) -> SimpleNamespace:
+    """Construct the shared client graph that every tool reads from ``mcp.state``.
+
+    Extracted from ``lifespan`` so the eval harness (and any out-of-server caller)
+    can wire the exact same ~25 clients against a live ``httpx.AsyncClient`` without
+    duplicating constructors. The async preludes — DepMap cache (``load_depmap_cache``)
+    and corpus pool (``create_corpus_pool``) — are the caller's responsibility and
+    passed in. ``gene_dep_cache`` defaults to empty (DepMap then uses its OT proxy).
+    """
+    state = SimpleNamespace()
+    state.uniprot = UniProtClient(client)
+    state.open_targets = OpenTargetsClient(client)
+    state.depmap = DepMapClient(client, gene_dep_cache or {})
+    state.gwas = GwasClient(client, efo_resolver=EFOResolver(client))
+    state.gnomad = GnomADClient(client)
+    state.interpro = InterProClient(client)
+    state.pubchem = PubChemClient(client)
+    state.chembl = ChEMBLClient(client)
+    state.alphafold = AlphaFoldClient(client)
+    state.foldseek = FoldseekClient(client, alphafold=state.alphafold)
+    state.uma_inverse = UMAInverseClient(client)
+    state.string_db = StringDbClient(client)
+    state.biogrid = BioGRIDClient(client)
+    state.sabdab = SAbDabClient(client)
+    state.iedb = IEDBClient(client)
+    state.iedb_tools = IEDBToolsClient(client)
+    state.mavedb = MaveDBClient(client)
+    state.myvariant = MyVariantClient(client)
+    state.ensembl = EnsemblClient(client)
+    state.gtex = GTExClient(client, ensembl=state.ensembl)
+    state.hpa = HPAClient(client)
+    state.variant_effects = VariantEffectsClient(
+        gnomad=state.gnomad,
+        myvariant=state.myvariant,
+        mavedb=state.mavedb,
+        ensembl=state.ensembl,
+    )
+    state.dgidb = DGIdbClient(client)
+    state.clinical_trials = ClinicalTrialsClient(client)
+    state.openfda = OpenFDAClient(client)
+    state.reactome = ReactomeClient(client)
+    state.corpus_pool = corpus_pool
+    return state
+
+
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """Manage a shared httpx.AsyncClient and pre-load the DepMap gene cache."""
@@ -175,42 +225,11 @@ async def lifespan(server: FastMCP):
     ) as client:
         # Fetch DepMap gene_dep_summary once at startup for instant lookups
         gene_dep_cache = await load_depmap_cache(client)
-
-        server.state = SimpleNamespace()
-        server.state.uniprot = UniProtClient(client)
-        server.state.open_targets = OpenTargetsClient(client)
-        server.state.depmap = DepMapClient(client, gene_dep_cache)
-        server.state.gwas = GwasClient(client, efo_resolver=EFOResolver(client))
-        server.state.gnomad = GnomADClient(client)
-        server.state.interpro = InterProClient(client)
-        server.state.pubchem = PubChemClient(client)
-        server.state.chembl = ChEMBLClient(client)
-        server.state.alphafold = AlphaFoldClient(client)
-        server.state.foldseek = FoldseekClient(client, alphafold=server.state.alphafold)
-        server.state.uma_inverse = UMAInverseClient(client)
-        server.state.string_db = StringDbClient(client)
-        server.state.biogrid = BioGRIDClient(client)
-        server.state.sabdab = SAbDabClient(client)
-        server.state.iedb = IEDBClient(client)
-        server.state.iedb_tools = IEDBToolsClient(client)
-        server.state.mavedb = MaveDBClient(client)
-        server.state.myvariant = MyVariantClient(client)
-        server.state.ensembl = EnsemblClient(client)
-        server.state.gtex = GTExClient(client, ensembl=server.state.ensembl)
-        server.state.hpa = HPAClient(client)
-        server.state.variant_effects = VariantEffectsClient(
-            gnomad=server.state.gnomad,
-            myvariant=server.state.myvariant,
-            mavedb=server.state.mavedb,
-            ensembl=server.state.ensembl,
-        )
-        server.state.dgidb = DGIdbClient(client)
-        server.state.clinical_trials = ClinicalTrialsClient(client)
-        server.state.openfda = OpenFDAClient(client)
-        server.state.reactome = ReactomeClient(client)
         # Optional embedding-backed corpus store (v0.6.0). None when GENESIS_CORPUS_DSN is
         # unset or the DB is unreachable — corpus_* tools degrade gracefully, rest is unaffected.
-        server.state.corpus_pool = await create_corpus_pool()
+        corpus_pool = await create_corpus_pool()
+
+        server.state = build_app_state(client, gene_dep_cache, corpus_pool=corpus_pool)
 
         # Runtime metadata for the health://status resource.
         server.state.http_client = client
