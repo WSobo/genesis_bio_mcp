@@ -1703,17 +1703,39 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
     }
 
 
+@dataclass
+class AgentRun:
+    """Structured result of an agentic loop — exposes the tool-call trace.
+
+    ``run_agent_loop`` returns only ``final_text``; the eval harness and
+    observability callers use ``run_agent_loop_traced`` to also see which tools
+    were selected (in order) and how the loop terminated.
+    """
+
+    final_text: str
+    tool_calls: list[str]
+    iterations: int
+    stop_reason: str  # end_turn | max_iterations | no_api_key | error | unexpected:<reason>
+
+
+_NO_KEY_MESSAGE = (
+    "**run_biology_workflow is unavailable:** `ANTHROPIC_API_KEY` is not set in the "
+    "MCP server environment. Add it to `claude_desktop_config.json` under `env`, "
+    "then restart Claude Desktop. For Claude Desktop users, calling individual tools "
+    "directly (get_drug_history, prioritize_target, etc.) provides equivalent capability."
+)
+
+
 async def run_agent_loop(
     question: str,
     registry: dict[str, ToolSpec],
     *,
     max_iterations: int = 8,
 ) -> str:
-    """Run a Claude-powered agentic loop to answer a biology question.
+    """Run a Claude-powered agentic loop and return the synthesized Markdown answer.
 
-    Dynamically selects and chains tools from the registry based on Claude's
-    reasoning about the question. Parallel tool calls within a single turn are
-    executed concurrently via asyncio.gather.
+    Thin wrapper over ``run_agent_loop_traced`` — use that directly when you also
+    need the tool-call trace (e.g. the eval harness).
 
     Args:
         question: Free-text biology or drug discovery question.
@@ -1723,15 +1745,36 @@ async def run_agent_loop(
     Returns:
         Synthesized Markdown answer.
     """
-    try:
-        client = anthropic.AsyncAnthropic()
-    except Exception as exc:
-        return (
-            "**run_biology_workflow is unavailable:** `ANTHROPIC_API_KEY` is not set in the "
-            "MCP server environment. Add it to `claude_desktop_config.json` under `env`, "
-            "then restart Claude Desktop. For Claude Desktop users, calling individual tools "
-            f"directly (get_drug_history, prioritize_target, etc.) provides equivalent capability.\n\nDetail: {exc}"
-        )
+    run = await run_agent_loop_traced(question, registry, max_iterations=max_iterations)
+    return run.final_text
+
+
+async def run_agent_loop_traced(
+    question: str,
+    registry: dict[str, ToolSpec],
+    *,
+    max_iterations: int = 8,
+    client: Any = None,
+) -> AgentRun:
+    """Run the agentic loop and return an ``AgentRun`` with the full tool-call trace.
+
+    Dynamically selects and chains tools from the registry based on Claude's
+    reasoning. Parallel tool calls within a turn run concurrently via asyncio.gather.
+    ``client`` may be injected (e.g. by tests); otherwise an ``AsyncAnthropic`` is
+    created, which requires ``ANTHROPIC_API_KEY``. Never raises — failures are
+    captured in ``stop_reason`` with an explanatory ``final_text``.
+    """
+    tool_calls: list[str] = []
+    if client is None:
+        try:
+            client = anthropic.AsyncAnthropic()
+        except Exception as exc:
+            return AgentRun(
+                final_text=f"{_NO_KEY_MESSAGE}\n\nDetail: {exc}",
+                tool_calls=tool_calls,
+                iterations=0,
+                stop_reason="no_api_key",
+            )
 
     tools_for_claude = [
         {
@@ -1756,20 +1799,31 @@ async def run_agent_loop(
                 messages=messages,
             )
         except anthropic.AuthenticationError:
-            return (
-                "**run_biology_workflow is unavailable:** `ANTHROPIC_API_KEY` is not set in the "
-                "MCP server environment. Add it to `claude_desktop_config.json` under `env`, "
-                "then restart Claude Desktop. For Claude Desktop users, calling individual tools "
-                "directly (get_drug_history, prioritize_target, etc.) provides equivalent capability."
+            return AgentRun(
+                final_text=_NO_KEY_MESSAGE,
+                tool_calls=tool_calls,
+                iterations=iteration,
+                stop_reason="no_api_key",
             )
         except Exception as exc:
-            return f"**run_biology_workflow failed:** {exc}"
+            return AgentRun(
+                final_text=f"**run_biology_workflow failed:** {exc}",
+                tool_calls=tool_calls,
+                iterations=iteration,
+                stop_reason="error",
+            )
 
         if response.stop_reason == "end_turn":
-            return _extract_text(response)
+            return AgentRun(
+                final_text=_extract_text(response),
+                tool_calls=tool_calls,
+                iterations=iteration + 1,
+                stop_reason="end_turn",
+            )
 
         if response.stop_reason == "tool_use":
             tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
+            tool_calls.extend(b.name for b in tool_use_blocks)
 
             # Execute all requested tools concurrently
             results = await asyncio.gather(
@@ -1802,11 +1856,22 @@ async def run_agent_loop(
         else:
             # Unexpected stop reason — return whatever text is available
             logger.warning("Unexpected stop_reason: %s", response.stop_reason)
-            return _extract_text(response) or f"Agent stopped unexpectedly: {response.stop_reason}"
+            return AgentRun(
+                final_text=_extract_text(response)
+                or f"Agent stopped unexpectedly: {response.stop_reason}",
+                tool_calls=tool_calls,
+                iterations=iteration + 1,
+                stop_reason=f"unexpected:{response.stop_reason}",
+            )
 
-    return (
-        "The agent reached the maximum number of iterations without producing a final answer. "
-        "Try a more specific question or call individual tools directly."
+    return AgentRun(
+        final_text=(
+            "The agent reached the maximum number of iterations without producing a final answer. "
+            "Try a more specific question or call individual tools directly."
+        ),
+        tool_calls=tool_calls,
+        iterations=max_iterations,
+        stop_reason="max_iterations",
     )
 
 
