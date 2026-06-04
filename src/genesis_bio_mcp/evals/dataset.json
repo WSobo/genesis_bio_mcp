@@ -1,0 +1,242 @@
+[
+  {
+    "id": "her2-uniprot-accession",
+    "question": "HER2 is the clinical name for the receptor tyrosine kinase amplified in breast cancer, but its canonical HGNC symbol differs. Resolve the gene, then give its UniProt Swiss-Prot accession.",
+    "category": "gene_annotation",
+    "tool_calls": [
+      {"name": "resolve_gene", "args": {"gene_name": "HER2"}},
+      {"name": "get_protein_info", "args": {"gene_symbol": "ERBB2"}}
+    ],
+    "expected_tools": ["resolve_gene", "get_protein_info"],
+    "grader": {"type": "contains", "value": "P04626"}
+  },
+  {
+    "id": "cox2-canonical-symbol",
+    "question": "COX2 is the common name for the enzyme inhibited by celecoxib, but it is not the approved HGNC symbol. What is the canonical symbol?",
+    "category": "gene_annotation",
+    "tool_calls": [{"name": "resolve_gene", "args": {"gene_name": "COX2"}}],
+    "expected_tools": ["resolve_gene"],
+    "grader": {"type": "contains", "value": "PTGS2"}
+  },
+  {
+    "id": "tp53-reviewed-swissprot",
+    "question": "Is the human TP53 UniProt entry reviewed (Swiss-Prot)?",
+    "category": "gene_annotation",
+    "tool_calls": [{"name": "get_protein_info", "args": {"gene_symbol": "TP53"}}],
+    "expected_tools": ["get_protein_info"],
+    "grader": {"type": "regex", "value": "review|swiss-?prot"}
+  },
+  {
+    "id": "ins-pancreas-expression",
+    "question": "In which tissue is the insulin gene (INS) most highly expressed according to GTEx?",
+    "category": "gene_annotation",
+    "tool_calls": [{"name": "get_tissue_expression", "args": {"gene_symbol": "INS"}}],
+    "expected_tools": ["get_tissue_expression"],
+    "grader": {"type": "contains", "value": "Pancreas"}
+  },
+  {
+    "id": "egfr-nsclc-clinical-evidence",
+    "question": "Does the EGFR / non-small cell lung carcinoma association in Open Targets show approved-drug / clinical evidence?",
+    "category": "disease_evidence",
+    "tool_calls": [
+      {"name": "get_target_disease_association", "args": {"gene_symbol": "EGFR", "disease_name": "non-small cell lung carcinoma"}}
+    ],
+    "expected_tools": ["get_target_disease_association"],
+    "grader": {"type": "regex", "value": "Approved Drug|clinical"}
+  },
+  {
+    "id": "braf-melanoma-association",
+    "question": "Is BRAF associated with melanoma in Open Targets?",
+    "category": "disease_evidence",
+    "tool_calls": [
+      {"name": "get_target_disease_association", "args": {"gene_symbol": "BRAF", "disease_name": "melanoma"}}
+    ],
+    "expected_tools": ["get_target_disease_association"],
+    "grader": {"type": "all_of", "value": ["BRAF", "score"]}
+  },
+  {
+    "id": "fto-not-pan-essential",
+    "question": "According to DepMap CRISPR data, is FTO a pan-essential gene?",
+    "category": "disease_evidence",
+    "tool_calls": [{"name": "get_cancer_dependency", "args": {"gene_symbol": "FTO"}}],
+    "expected_tools": ["get_cancer_dependency"],
+    "grader": {"type": "contains", "value": "FTO"}
+  },
+  {
+    "id": "pcsk9-gwas-ldl",
+    "question": "Does PCSK9 have GWAS evidence linking it to LDL cholesterol / coronary artery disease?",
+    "category": "disease_evidence",
+    "tool_calls": [
+      {"name": "get_gwas_evidence", "args": {"gene_symbol": "PCSK9", "trait": "LDL cholesterol"}}
+    ],
+    "expected_tools": ["get_gwas_evidence"],
+    "grader": {"type": "contains", "value": "PCSK9"}
+  },
+  {
+    "id": "braf-chembl-best-pchembl",
+    "question": "What is the best (highest) pChEMBL potency reported for compounds against BRAF in ChEMBL?",
+    "category": "druggability",
+    "tool_calls": [{"name": "get_chembl_compounds", "args": {"gene_symbol": "BRAF"}}],
+    "expected_tools": ["get_chembl_compounds"],
+    "grader": {"type": "numeric", "near": "pChEMBL", "min": 8.0}
+  },
+  {
+    "id": "egfr-drug-history",
+    "question": "What approved EGFR-targeted drugs exist?",
+    "category": "druggability",
+    "tool_calls": [{"name": "get_drug_history", "args": {"gene_symbol": "EGFR"}}],
+    "expected_tools": ["get_drug_history"],
+    "grader": {"type": "regex", "value": "gefitinib|erlotinib|osimertinib|afatinib|cetuximab"}
+  },
+  {
+    "id": "aspirin-molecular-weight",
+    "question": "What is the molecular weight of aspirin (SMILES CC(=O)Oc1ccccc1C(=O)O)?",
+    "category": "druggability",
+    "tool_calls": [{"name": "compute_molecular_properties", "args": {"smiles": "CC(=O)Oc1ccccc1C(=O)O"}}],
+    "expected_tools": ["compute_molecular_properties"],
+    "grader": {"type": "numeric", "value": 180.16, "tolerance": 1.0}
+  },
+  {
+    "id": "caffeine-lipinski",
+    "question": "Does caffeine (SMILES Cn1cnc2c1c(=O)n(C)c(=O)n2C) pass Lipinski's rule of five?",
+    "category": "druggability",
+    "tool_calls": [{"name": "compute_molecular_properties", "args": {"smiles": "Cn1cnc2c1c(=O)n(C)c(=O)n2C"}}],
+    "expected_tools": ["compute_molecular_properties"],
+    "grader": {"type": "contains", "value": "Lipinski"}
+  },
+  {
+    "id": "sodium-acetate-saltstrip",
+    "question": "Standardize sodium acetate (SMILES CC(=O)[O-].[Na+]) to its parent structure.",
+    "category": "druggability",
+    "tool_calls": [{"name": "standardize_structure", "args": {"smiles": "CC(=O)[O-].[Na+]"}}],
+    "expected_tools": ["standardize_structure"],
+    "grader": {"type": "contains", "value": "CC(=O)O"}
+  },
+  {
+    "id": "braf-structure-confidence",
+    "question": "What is the AlphaFold per-residue confidence (pLDDT) profile for BRAF?",
+    "category": "structure",
+    "tool_calls": [{"name": "get_structure_confidence", "args": {"gene_symbol": "BRAF"}}],
+    "expected_tools": ["get_structure_confidence"],
+    "grader": {"type": "contains", "value": "pLDDT"}
+  },
+  {
+    "id": "braf-experimental-structures",
+    "question": "Are there experimental PDB structures for BRAF?",
+    "category": "structure",
+    "tool_calls": [{"name": "get_protein_structure", "args": {"gene_symbol": "BRAF"}}],
+    "expected_tools": ["get_protein_structure"],
+    "grader": {"type": "regex", "value": "PDB|[0-9][A-Za-z0-9]{3}"}
+  },
+  {
+    "id": "braf-mapk-pathway",
+    "question": "What signaling pathway is BRAF part of, according to Reactome?",
+    "category": "pathways",
+    "tool_calls": [{"name": "get_pathway_context", "args": {"gene_symbol": "BRAF"}}],
+    "expected_tools": ["get_pathway_context"],
+    "grader": {"type": "regex", "value": "MAPK|MAP kinase|RAF"}
+  },
+  {
+    "id": "braf-domain-kinase",
+    "question": "What functional domain does BRAF contain?",
+    "category": "protein_engineering",
+    "tool_calls": [{"name": "get_domain_annotation", "args": {"gene_symbol": "BRAF"}}],
+    "expected_tools": ["get_domain_annotation"],
+    "grader": {"type": "contains", "value": "kinase"}
+  },
+  {
+    "id": "brca1-constraint",
+    "question": "What is the gnomAD loss-of-function constraint (pLI / LOEUF) for BRCA1?",
+    "category": "protein_engineering",
+    "tool_calls": [{"name": "get_variant_constraints", "args": {"gene_symbol": "BRCA1"}}],
+    "expected_tools": ["get_variant_constraints"],
+    "grader": {"type": "regex", "value": "LOEUF|pLI"}
+  },
+  {
+    "id": "tp53-r175h-effect",
+    "question": "Is the TP53 R175H variant predicted pathogenic?",
+    "category": "protein_engineering",
+    "tool_calls": [{"name": "get_variant_effects", "args": {"gene_symbol": "TP53", "mutation": "R175H"}}],
+    "expected_tools": ["get_variant_effects"],
+    "grader": {"type": "regex", "value": "pathogenic|damaging|deleterious"}
+  },
+  {
+    "id": "her2-antibody-structures",
+    "question": "Are there antibody structures targeting HER2 / ERBB2 in SAbDab?",
+    "category": "antibody",
+    "tool_calls": [{"name": "get_antibody_structures", "args": {"antigen_query": "HER2"}}],
+    "expected_tools": ["get_antibody_structures"],
+    "grader": {"type": "regex", "value": "PDB|structure|antibod|nanobod|Fab"}
+  },
+  {
+    "id": "prioritize-braf-melanoma",
+    "question": "Give a full target assessment of BRAF for melanoma.",
+    "category": "synthesis",
+    "tool_calls": [{"name": "prioritize_target", "args": {"gene_symbol": "BRAF", "indication": "melanoma"}}],
+    "expected_tools": ["prioritize_target"],
+    "grader": {"type": "all_of", "value": ["Evidence Profile", "Disease association"]}
+  },
+  {
+    "id": "compare-mapk-targets",
+    "question": "Compare BRAF, EGFR, and KRAS as targets for melanoma.",
+    "category": "synthesis",
+    "tool_calls": [
+      {"name": "compare_targets", "args": {"gene_symbols": ["BRAF", "EGFR", "KRAS"], "indication": "melanoma"}}
+    ],
+    "expected_tools": ["compare_targets"],
+    "grader": {"type": "all_of", "value": ["Rank", "BRAF", "KRAS"]}
+  },
+  {
+    "id": "batch-resolve-aliases",
+    "question": "Resolve the aliases HER2, COX2, and p53 to canonical symbols in one call.",
+    "category": "gene_annotation",
+    "tool_calls": [{"name": "batch_resolve_genes", "args": {"gene_names": ["HER2", "COX2", "p53"]}}],
+    "expected_tools": ["batch_resolve_genes"],
+    "grader": {"type": "all_of", "value": ["ERBB2", "PTGS2", "TP53"]}
+  },
+  {
+    "id": "kras-chembl-tractable",
+    "question": "Does KRAS have any ChEMBL compounds with sub-100 nM potency (pChEMBL > 7)?",
+    "category": "druggability",
+    "tool_calls": [{"name": "get_chembl_compounds", "args": {"gene_symbol": "KRAS"}}],
+    "expected_tools": ["get_chembl_compounds"],
+    "grader": {"type": "numeric", "near": "pChEMBL", "min": 7.0}
+  },
+
+  {
+    "id": "probe-imatinib-admet",
+    "question": "What is the predicted ADMET profile of imatinib — specifically its hERG cardiotoxicity risk and CYP3A4 inhibition liability?",
+    "category": "druggability",
+    "tool_calls": [],
+    "expected_tools": [],
+    "grader": {"type": "regex", "value": "hERG|CYP3A4"},
+    "probe": true
+  },
+  {
+    "id": "probe-panraf-selectivity",
+    "question": "What is the kinome-wide selectivity profile of a pan-RAF inhibitor — which off-target kinases would it also inhibit?",
+    "category": "druggability",
+    "tool_calls": [],
+    "expected_tools": [],
+    "grader": {"type": "contains", "value": "selectivity"},
+    "probe": true
+  },
+  {
+    "id": "probe-krasg12c-patents",
+    "question": "What are the key patents and freedom-to-operate considerations for KRAS G12C covalent inhibitors?",
+    "category": "druggability",
+    "tool_calls": [],
+    "expected_tools": [],
+    "grader": {"type": "regex", "value": "patent|freedom-to-operate"},
+    "probe": true
+  },
+  {
+    "id": "probe-retrosynthesis",
+    "question": "Propose a retrosynthetic route and assess the synthesizability of vemurafenib.",
+    "category": "druggability",
+    "tool_calls": [],
+    "expected_tools": [],
+    "grader": {"type": "regex", "value": "retrosynth|synthetic route"},
+    "probe": true
+  }
+]
