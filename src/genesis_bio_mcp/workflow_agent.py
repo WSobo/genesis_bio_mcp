@@ -40,6 +40,7 @@ from genesis_bio_mcp.models import (
     DrugHistory,
     TargetComparisonRow,
 )
+from genesis_bio_mcp.tools.admet import assess_admet as _assess_admet
 from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 from genesis_bio_mcp.tools.cheminformatics import (
     compute_molecular_properties as _compute_molecular_properties,
@@ -324,6 +325,12 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
 
     async def _compute_molecular_properties_fn(smiles: str) -> str:
         result = _compute_molecular_properties(smiles)
+        if result is None:
+            return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
+        return result.to_markdown()
+
+    async def _predict_admet_fn(smiles: str) -> str:
+        result = _assess_admet(smiles)
         if result is None:
             return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
         return result.to_markdown()
@@ -838,6 +845,28 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="druggability",
             use_when="Use to profile the drug-likeness of a specific molecule given its SMILES (Lipinski/Veber/QED/PAINS), independent of any database.",
             fn=_compute_molecular_properties_fn,
+        ),
+        "predict_admet": ToolSpec(
+            name="predict_admet",
+            description=(
+                "Screen a molecule (SMILES) for ADMET / developability liabilities (RDKit, local, "
+                "rule-based heuristics — screening signals, not validated predictions): ESOL aqueous "
+                "solubility, GI-absorption / BBB heuristics, a hERG cardiotoxicity flag, a CYP3A4 "
+                "metabolic-liability flag, Brenk/PAINS structural alerts, and SAscore synthesizability."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "smiles": {
+                        "type": "string",
+                        "description": "SMILES string. Example: 'CC(=O)Oc1ccccc1C(=O)O' (aspirin)",
+                    }
+                },
+                "required": ["smiles"],
+            },
+            tool_category="druggability",
+            use_when="Use to flag ADMET/tox liabilities (hERG, CYP3A4, solubility), structural alerts, or synthetic accessibility of a specific molecule given its SMILES.",
+            fn=_predict_admet_fn,
         ),
         "batch_compute_molecular_properties": ToolSpec(
             name="batch_compute_molecular_properties",

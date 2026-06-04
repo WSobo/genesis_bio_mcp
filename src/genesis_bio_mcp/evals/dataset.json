@@ -204,13 +204,24 @@
   },
 
   {
-    "id": "probe-imatinib-admet",
-    "question": "What is the predicted ADMET profile of imatinib — specifically its hERG cardiotoxicity risk and CYP3A4 inhibition liability?",
+    "id": "imatinib-admet-liabilities",
+    "question": "What are the ADMET liabilities of imatinib — specifically its hERG cardiotoxicity risk and CYP3A4 metabolic liability?",
     "category": "druggability",
-    "tool_calls": [],
-    "expected_tools": [],
-    "grader": {"type": "regex", "value": "hERG|CYP3A4"},
-    "probe": true
+    "tool_calls": [
+      {"name": "predict_admet", "args": {"smiles": "Cc1ccc(NC(=O)c2ccc(CN3CCN(C)CC3)cc2)cc1Nc1nccc(-c2cccnc2)n1"}}
+    ],
+    "expected_tools": ["predict_admet"],
+    "grader": {"type": "all_of", "value": ["hERG", "CYP3A4"]}
+  },
+  {
+    "id": "vemurafenib-synthesizability",
+    "question": "How synthetically accessible is vemurafenib (SMILES CCCS(=O)(=O)Nc1ccc(F)c(C(=O)c2c[nH]c3ncc(Cl)cc23)c1F)?",
+    "category": "druggability",
+    "tool_calls": [
+      {"name": "predict_admet", "args": {"smiles": "CCCS(=O)(=O)Nc1ccc(F)c(C(=O)c2c[nH]c3ncc(Cl)cc23)c1F"}}
+    ],
+    "expected_tools": ["predict_admet"],
+    "grader": {"type": "regex", "value": "SAscore|synthetic accessibility|synthesizability"}
   },
   {
     "id": "probe-panraf-selectivity",
@@ -231,12 +242,12 @@
     "probe": true
   },
   {
-    "id": "probe-retrosynthesis",
-    "question": "Propose a retrosynthetic route and assess the synthesizability of vemurafenib.",
+    "id": "probe-retrosynthesis-route",
+    "question": "Propose a full retrosynthetic route — the actual sequence of synthetic steps and building blocks — for vemurafenib.",
     "category": "druggability",
     "tool_calls": [],
     "expected_tools": [],
-    "grader": {"type": "regex", "value": "retrosynth|synthetic route"},
+    "grader": {"type": "regex", "value": "retrosynth|synthetic route|step 1|disconnection"},
     "probe": true
   }
 ]

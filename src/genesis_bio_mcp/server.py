@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 42 tools for biomedical database queries:
+Exposes 43 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -9,6 +9,7 @@ Exposes 42 tools for biomedical database queries:
   - get_gwas_evidence             GWAS Catalog: genetic associations for a trait
   - get_compounds                 PubChem: active small molecules against a target
   - compute_molecular_properties  RDKit: physicochemical + drug-likeness from a SMILES (local)
+  - predict_admet                 RDKit: ADMET liability panel (hERG/CYP/ESOL/alerts/SAscore) (local)
   - standardize_structure         RDKit: salt-strip/neutralize/canonical-tautomer + InChIKey (local)
   - search_similar_compounds      PubChem + RDKit: 2D-similarity / substructure structure search
   - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
@@ -122,6 +123,7 @@ from genesis_bio_mcp.models import (
     TargetComparisonRow,
     VariantEffects,
 )
+from genesis_bio_mcp.tools.admet import assess_admet as _assess_admet
 from genesis_bio_mcp.tools.biochem import compute_features, scan_liabilities
 from genesis_bio_mcp.tools.cdr_developability import assess_cdr_developability
 from genesis_bio_mcp.tools.cheminformatics import (
@@ -286,6 +288,7 @@ _SOURCE_BY_MODEL: dict[str, str] = {
     "GwasEvidence": "GWAS Catalog",
     "Compounds": "PubChem",
     "MolecularProperties": "RDKit (local)",
+    "ADMETProfile": "RDKit (local)",
     "BatchMolecularProperties": "RDKit (local)",
     "StandardizedStructure": "RDKit (local)",
     "SimilarCompounds": "PubChem + RDKit",
@@ -480,6 +483,19 @@ class GetCompoundsInput(_GeneInput):
 
 class ComputeMolecularPropertiesInput(BaseModel):
     """Input for compute_molecular_properties."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    smiles: str = Field(
+        ...,
+        description="SMILES string of the molecule, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin).",
+        min_length=1,
+        max_length=2000,
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class PredictADMETInput(BaseModel):
+    """Input for predict_admet."""
 
     model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
     smiles: str = Field(
@@ -1294,6 +1310,40 @@ async def compute_molecular_properties(params: ComputeMolecularPropertiesInput) 
         and the Bemis-Murcko scaffold. Returns an error if the SMILES cannot be parsed.
     """
     result = _compute_molecular_properties(params.smiles)
+    return _fmt(
+        result,
+        params.response_format,
+        f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
+        error_status="InvalidInput",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+    )
+)
+async def predict_admet(params: PredictADMETInput) -> str:
+    """Screen a molecule for ADMET / developability liabilities from its SMILES.
+
+    Locally computed with RDKit — deterministic, offline, no external API. Returns a
+    triage panel: Delaney **ESOL** aqueous solubility, GI-absorption / blood-brain-barrier
+    heuristics, a **hERG** cardiotoxicity flag (basic amine + high lipophilicity), a
+    **CYP3A4** metabolic-liability flag, Brenk + PAINS structural alerts, and Ertl **SAscore**
+    synthetic accessibility. Use this to flag risks on a candidate or a virtual/enumerated
+    structure before committing to it.
+
+    IMPORTANT: every flag is a rule-based heuristic — a screening signal, NOT a validated
+    prediction. Treat hERG/CYP/solubility calls as triage, not ground truth.
+
+    Args:
+        params (PredictADMETInput): smiles, response_format.
+
+    Returns:
+        Markdown panel of ADMET liability flags, structural alerts, and synthesizability.
+        Returns an error if the SMILES cannot be parsed.
+    """
+    result = _assess_admet(params.smiles)
     return _fmt(
         result,
         params.response_format,
