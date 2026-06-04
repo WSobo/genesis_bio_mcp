@@ -9,6 +9,30 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Task-based evaluation harness** (`genesis_bio_mcp.evals`). A curated dataset of ~24 drug-discovery
+  questions with verifiable expectations + deliberate capability **probes**, scored in two layers: a
+  keyless **deterministic** layer (call each item's declared tools directly and grade the output) and an
+  optional **agentic** layer (`--agentic`, needs `ANTHROPIC_API_KEY`) that scores the workflow agent's
+  tool selection and answer. Run: `uv run python -m genesis_bio_mcp.evals --out report.md`. The report's
+  **Capability gaps** section is the evidence-driven roadmap. New `docs/eval.md`; harness machinery is
+  unit-tested in `tests/test_evals.py` (CI-safe). Baseline run: 23/24 tasks answerable, 4 gaps (ADMET,
+  kinome selectivity, patents/FTO, retrosynthesis).
+
+### Changed
+
+- `run_agent_loop` now delegates to `run_agent_loop_traced`, which returns an `AgentRun`
+  (`final_text`, `tool_calls`, `iterations`, `stop_reason`) so callers can see the agent's tool-call
+  trace. Behavior of `run_agent_loop`/`run_biology_workflow` is unchanged.
+- Extracted `build_app_state(client, ...)` from the server `lifespan` so the eval runner (and any
+  out-of-server caller) can wire the identical client graph without duplicating constructors.
+
+### Removed
+
+- Orphaned `evaluation.xml` (its runner `scripts/evaluation.py` was never built) — its questions are
+  superseded by `evals/dataset.json`.
+
 ## [0.7.0] - 2026-05-30
 
 Replaces the composite `prioritize_target` score with a transparent, per-axis **evidence

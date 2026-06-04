@@ -34,8 +34,9 @@ calls.
 |---|---|
 | **[docs/tools.md](docs/tools.md)** | Full catalog of all 42 tools grouped by category, input fields, and use cases |
 | **[docs/protein-engineering.md](docs/protein-engineering.md)** | v0.2.0 protein engineering workflows: sequence analysis, variant effects, T-cell immunogenicity, combined examples |
-| **[docs/architecture.md](docs/architecture.md)** | Directory layout, client/model patterns, design decisions, `prioritize_target` scoring model, per-database API reference |
-| **[docs/benchmark.md](docs/benchmark.md)** | 12-target benchmark matrix and example `prioritize_target` output |
+| **[docs/architecture.md](docs/architecture.md)** | Directory layout, client/model patterns, design decisions, the `prioritize_target` evidence-profile model, per-database API reference |
+| **[docs/benchmark.md](docs/benchmark.md)** | 12-target coverage/latency benchmark and example `prioritize_target` output |
+| **[docs/eval.md](docs/eval.md)** | Task-based evaluation harness (deterministic + agentic) and the capability-gap report driving the roadmap |
 | **[docs/deployment.md](docs/deployment.md)** | Environment variables, Docker setup, Claude Desktop config, production checklist |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | 7-step walkthrough for adding a new data source |
 | **[docs/ROADMAP.md](docs/ROADMAP.md)** | Direction through v0.6.0 (hybrid retrieval / pgvector corpus) and beyond |
