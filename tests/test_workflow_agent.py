@@ -153,6 +153,7 @@ def test_build_tool_registry_has_all_tools():
         "get_gwas_evidence",
         "get_compounds",
         "compute_molecular_properties",
+        "predict_admet",
         "standardize_structure",
         "search_similar_compounds",
         "get_chembl_compounds",

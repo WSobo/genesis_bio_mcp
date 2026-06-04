@@ -12,7 +12,7 @@ see [deployment.md](deployment.md).
 
 ```
 src/genesis_bio_mcp/
-├── server.py                       # FastMCP server: 42 tools + run_biology_workflow,
+├── server.py                       # FastMCP server: 43 tools + run_biology_workflow,
 │                                     lifespan wiring, tool://registry + health://status resources
 ├── models.py                       # Pydantic V2 output models — every one implements
 │                                     to_markdown() + model_dump_json()
@@ -49,9 +49,10 @@ src/genesis_bio_mcp/
 │   └── variant_effects.py          # Aggregator combining gnomAD + MyVariant + MaveDB + Ensembl VEP per-mutation
 ├── tools/
 │   ├── gene_resolver.py            # Multi-source alias resolution
-│   ├── target_prioritization.py    # asyncio.gather orchestration + scoring + confidence CI
+│   ├── target_prioritization.py    # asyncio.gather orchestration + per-axis evidence profile
 │   ├── biochem.py                  # Pure-Python MW/pI/GRAVY/ε₂₈₀ + liability-motif scanner
 │   ├── cheminformatics.py          # RDKit compute: properties, standardize, Tanimoto (local)
+│   ├── admet.py                    # RDKit ADMET panel: ESOL/hERG/CYP/alerts/SAscore (local)
 │   ├── health.py                   # health://status: upstream reachability + runtime state
 │   └── variant_parser.py           # Parse R175H / p.Arg175His / Arg175His → canonical form
 ├── corpus/                         # v0.6.0 hybrid retrieval (optional Postgres + pgvector)

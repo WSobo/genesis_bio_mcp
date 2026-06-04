@@ -246,10 +246,52 @@ no live network). Existing respx-mocked suite is untouched because the corpus la
 
 ---
 
+## v0.8.0 — Small-molecule depth *(committed; eval-driven)*
+
+The four milestones below are **the four capability gaps the eval harness flagged**
+([docs/eval.md](eval.md)) — ADMET/PK, kinome selectivity, patents/FTO, and retrosynthesis.
+The eval picked this theme; each milestone exists to flip its probe from GAP → pass.
+
+**Principles (the project's signature):**
+- **Keyless / local-compute first** — ship a pure-RDKit tier with no API key, no paid service,
+  CPU-only; gate heavier ML behind an *optional* dependency group (never on the serving path).
+- **Honest confidence** — every prediction carries an explicit applicability/confidence caveat.
+  ADMET, selectivity, and patent calls are *screening signals*, not ground truth — the same
+  discipline as the evidence profile and the eval itself.
+- **Reuse assets** — RDKit, the ChEMBL client, the kinome corpus (ESM-2 neighbors + activities),
+  Tanimoto, and the `_fmt` provenance/typed-error envelope.
+- **Each milestone re-runs the eval** to watch its probe flip — the harness is the acceptance test.
+
+### M1 — ADMET / developability panel + synthesizability *(closes `probe-imatinib-admet` + the synthesizability probe)*
+- **Tier A (keyless, pure RDKit):** `predict_admet` — ESOL aqueous solubility (Delaney), GI-absorption
+  / passive-permeability and BBB heuristics, a **hERG** liability flag (basic amine + high logP), a
+  **CYP3A4** metabolic-liability flag, and Brenk/PAINS structural alerts — each with an honest "rule-based
+  alert, not a validated prediction" caveat. **SAscore** (ships with RDKit Contrib — confirmed) for
+  synthetic accessibility.
+- **Tier B (optional `admet` dep group, later):** quantitative ML endpoints (hERG, CYP1A2/2C9/2D6/3A4,
+  clearance, t½) via ADMET-AI (Chemprop) or sklearn-on-TDC — returned with applicability-domain notes.
+- New `tools/admet.py` (pure compute) + `ADMETProfile` model + `predict_admet` tool.
+
+### M2 — Kinome selectivity / off-target *(closes `probe-panraf-selectivity`)*
+The **corpus payoff**. `assess_selectivity` returns **measured** off-targets (ChEMBL + corpus
+`activities`) and **predicted** off-target risk (ESM-2 sequence-neighbor kinases for a target;
+Tanimoto-to-known-binders, SEA-style, for a compound) — honestly separated, with a coverage note.
+Measured layer is keyless; the predicted layer wants a built corpus (gated `requires: ["corpus"]`).
+
+### M3 — Patents / freedom-to-operate *(closes `probe-krasg12c-patents`)*
+`search_patents` over **SureChEMBL** (compound→patent, chemistry-native) + optional PatentsView/USPTO
+landscape, carrying a **permanent "informational, not FTO legal advice" disclaimer** (the OpenFDA
+disclaimer pattern). Scoped honestly: chemistry-in-patents, US-centric. Highest external-data friction →
+sequenced last of the keyless-ish set.
+
+### M4 (stretch) — Retrosynthetic route planning *(closes the route-planning probe)*
+AiZynthFinder (AstraZeneca, MIT) in an optional dep group with downloaded templates. Heavy, lowest ROI
+→ explicit stretch after M1–M3.
+
+**Sequence:** M1 → M2 → M3, then the M4 stretch. After each, re-run `python -m genesis_bio_mcp.evals`.
+
 ## v0.7.0 and beyond *(directional, not committed)*
 
-- **Computed ADMET (`assess_admet`)** — predicted solubility, permeability, CYP/hERG/tox via an
-  open model (e.g. ADMET-AI). Deferred because it adds an ML dependency + latency.
 - **Structure-based methods** — pocket detection / druggability (fpocket-style), lightweight
   docking or binding-affinity scoring.
 - **Generative / design** — scaffold hopping, R-group enumeration.

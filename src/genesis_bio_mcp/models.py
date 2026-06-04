@@ -1494,6 +1494,79 @@ class StandardizedStructure(BaseModel):
         return "\n".join(lines)
 
 
+class ADMETProfile(BaseModel):
+    """A locally computed ADMET / developability screening panel for one molecule.
+
+    **All flags are rule-based RDKit heuristics — screening alerts, not validated
+    predictions.** Solubility is the Delaney ESOL estimate; hERG / CYP3A4 / absorption /
+    BBB are coarse physicochemical and pharmacophore rules; structural alerts are the
+    Brenk + PAINS catalogs; synthetic accessibility is Ertl's SAscore. Quantitative ML
+    endpoints are an explicit future (optional) tier — see docs/ROADMAP.md.
+    """
+
+    input_smiles: str = Field(description="The SMILES string as provided")
+    canonical_smiles: str = Field(description="Canonical SMILES of the standardized parent")
+    molecular_weight: float = Field(description="Molecular weight (g/mol) of the parent")
+    logp: float = Field(description="Crippen logP (lipophilicity)")
+    tpsa: float = Field(description="Topological polar surface area (Å²)")
+    esol_logs: float = Field(description="Estimated aqueous solubility log S (mol/L), Delaney ESOL")
+    solubility_class: str = Field(
+        description="ESOL bucket: highly soluble | soluble | poorly soluble | insoluble"
+    )
+    gi_absorption: str = Field(description="Heuristic GI absorption: 'High' or 'Low'")
+    bbb_permeant: bool = Field(description="Heuristic blood-brain-barrier permeability flag")
+    herg_risk: str = Field(
+        description="Heuristic hERG cardiotoxicity risk: Low | Moderate | Elevated"
+    )
+    herg_reason: str = Field(description="Why the hERG flag fired (the rule that matched)")
+    cyp3a4_liability: str = Field(
+        description="Heuristic CYP3A4 metabolic liability: Low | Elevated"
+    )
+    cyp3a4_reason: str = Field(description="Why the CYP3A4 flag fired")
+    structural_alerts: list[str] = Field(
+        default_factory=list, description="Brenk / PAINS structural-alert descriptions matched"
+    )
+    sa_score: float | None = Field(
+        None,
+        description="Ertl synthetic-accessibility score, 1 (easy) – 10 (hard); None if unavailable",
+    )
+    synthesizability: str = Field(
+        description="SAscore bucket: Easy | Moderate | Difficult | Unknown"
+    )
+
+    def to_markdown(self) -> str:
+        sa = f"{self.sa_score:.2f}" if self.sa_score is not None else "—"
+        lines = [
+            f"## ADMET / developability panel: `{self.canonical_smiles}`",
+            "",
+            "> **Heuristic screening alerts — not validated predictions.** Rule-based RDKit "
+            "computations; use as triage signals, not ground truth.",
+            "",
+            "| Property | Value |",
+            "|---|---|",
+            f"| Molecular weight | {self.molecular_weight:.2f} |",
+            f"| logP | {self.logp:.2f} |",
+            f"| TPSA | {self.tpsa:.2f} Å² |",
+            f"| Aqueous solubility (ESOL log S) | {self.esol_logs:.2f} — {self.solubility_class} |",
+            f"| GI absorption (heuristic) | {self.gi_absorption} |",
+            f"| BBB permeant (heuristic) | {'yes' if self.bbb_permeant else 'no'} |",
+            f"| **hERG** risk (heuristic) | {self.herg_risk} — {self.herg_reason} |",
+            f"| **CYP3A4** metabolic liability (heuristic) | {self.cyp3a4_liability} — {self.cyp3a4_reason} |",
+            f"| Synthetic accessibility (SAscore) | {sa} — {self.synthesizability} |",
+        ]
+        lines += ["", "### Structural alerts (Brenk / PAINS)"]
+        if self.structural_alerts:
+            lines += [f"- {a}" for a in self.structural_alerts]
+        else:
+            lines.append("- None matched")
+        lines += [
+            "",
+            f"_Input:_ `{self.input_smiles}`. Quantitative ML ADMET endpoints (hERG/CYP IC50, "
+            "clearance, t½) are a planned optional tier.",
+        ]
+        return "\n".join(lines)
+
+
 class SimilarCompound(BaseModel):
     """A compound returned by a structure-based search of PubChem."""
 

@@ -1,8 +1,8 @@
 # Tool catalog
 
-genesis-bio-mcp exposes **41 MCP tools** across **24 biomedical data sources**
+genesis-bio-mcp exposes **42 MCP tools** across **24 biomedical data sources**
 (plus local RDKit cheminformatics, the UMA-Inverse inverse-folding service, and an optional
-embedding-backed corpus store), and `run_biology_workflow`, the 42nd, which chains the
+embedding-backed corpus store), and `run_biology_workflow`, the 43rd, which chains the
 others with Claude.
 
 All tools return Markdown strings by default and accept
@@ -47,6 +47,7 @@ Jump to:
 |---|---|---|
 | `get_compounds` | PubChem | Active small molecules with bioactivity hit counts (quick tractability check) |
 | `compute_molecular_properties` | RDKit (local) | SMILES → MW, logP, TPSA, HBD/HBA, rotatable bonds, QED, Lipinski/Veber checks, PAINS alert, Bemis-Murcko scaffold. Deterministic offline compute for any structure |
+| `predict_admet` | RDKit (local) | SMILES → ADMET/developability triage: Delaney ESOL solubility, GI-absorption/BBB heuristics, a hERG flag, a CYP3A4 metabolic-liability flag, Brenk+PAINS structural alerts, SAscore synthesizability. **Rule-based screening signals, not validated predictions** |
 | `batch_compute_molecular_properties` | RDKit (local) | Compute drug-likeness for many SMILES at once (1–100) → one summary row per molecule (formula, MW, logP, TPSA, QED, Ro5, PAINS); unparseable SMILES reported, not failed. Agent fan-out helper |
 | `standardize_structure` | RDKit (local) | SMILES → salt/solvent-stripped, neutralized, canonical-tautomer SMILES + InChI/InChIKey for exact-structure matching and cross-source deduplication |
 | `search_similar_compounds` | PubChem + RDKit | Structure search from a query SMILES: 2D Tanimoto similarity (ranked by RDKit Morgan Tanimoto) or substructure match. Returns CID, name, formula, MW, similarity |
