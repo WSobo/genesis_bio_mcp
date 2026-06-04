@@ -11,6 +11,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **`predict_admet`** (v0.8.0 M1) — a keyless, local RDKit ADMET / developability panel: Delaney **ESOL**
+  aqueous solubility, GI-absorption / blood-brain-barrier heuristics, a **hERG** cardiotoxicity flag
+  (basic amine + high logP), a **CYP3A4** metabolic-liability flag, **Brenk + PAINS** structural alerts,
+  and Ertl **SAscore** synthetic accessibility (ships with RDKit Contrib). Every flag is an honest
+  rule-based *screening signal, not a validated prediction*; quantitative ML endpoints are a planned
+  optional tier. Closes two eval capability gaps (ADMET + synthesizability); the eval dataset was
+  updated to convert those probes into real items. New `tools/admet.py` + `ADMETProfile` model. **43 tools.**
 - **Task-based evaluation harness** (`genesis_bio_mcp.evals`). A curated dataset of ~24 drug-discovery
   questions with verifiable expectations + deliberate capability **probes**, scored in two layers: a
   keyless **deterministic** layer (call each item's declared tools directly and grade the output) and an
