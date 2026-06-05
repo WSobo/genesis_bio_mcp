@@ -19,6 +19,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# GWAS Catalog SNP->association fan-out can be wide; cap it.
+_SEMAPHORE = asyncio.Semaphore(3)
+
 _BASE_URL = "https://www.ebi.ac.uk/gwas/rest/api"
 
 
@@ -253,7 +256,8 @@ class GwasClient:
     async def _fetch_associations_from_snps(self, url: str, params: dict) -> list[GwasHit]:
         """Fetch SNPs, follow their association links concurrently, resolve study data."""
         try:
-            resp = await self._client.get(url, params=params, timeout=15.0)
+            async with _SEMAPHORE:
+                resp = await self._client.get(url, params=params, timeout=15.0)
             if resp.status_code in (404, 400):
                 return []
             resp.raise_for_status()
@@ -265,7 +269,8 @@ class GwasClient:
                 if not assoc_href:
                     return []
                 try:
-                    ar = await self._client.get(assoc_href, timeout=8.0)
+                    async with _SEMAPHORE:
+                        ar = await self._client.get(assoc_href, timeout=8.0)
                     ar.raise_for_status()
                     ab = ar.json()
                     return ab.get("_embedded", {}).get("associations", [])[:3]
@@ -303,7 +308,8 @@ class GwasClient:
 
         async def _fetch_study(link: str) -> tuple[str, dict]:
             try:
-                sr = await self._client.get(link, timeout=5.0)
+                async with _SEMAPHORE:
+                    sr = await self._client.get(link, timeout=5.0)
                 sr.raise_for_status()
                 return link, sr.json()
             except Exception:
@@ -323,7 +329,8 @@ class GwasClient:
         try:
             # 25s: primary path is one HTTP call; GWAS Catalog can be slow for
             # gene IDs with many associations (TNF, FTO were timing out at 15s).
-            resp = await self._client.get(url, params=params, timeout=25.0)
+            async with _SEMAPHORE:
+                resp = await self._client.get(url, params=params, timeout=25.0)
             if resp.status_code in (404, 400):
                 return []
             resp.raise_for_status()

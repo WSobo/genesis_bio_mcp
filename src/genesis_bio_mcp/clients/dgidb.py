@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -9,6 +10,9 @@ import httpx
 from genesis_bio_mcp.models import DrugInteraction
 
 logger = logging.getLogger(__name__)
+
+# DGIdb has no stated rate limit; keep fan-out polite.
+_SEMAPHORE = asyncio.Semaphore(3)
 
 _DGIDB_URL = "https://dgidb.org/api/graphql"
 
@@ -50,12 +54,13 @@ class DGIdbClient:
     async def get_drug_interactions(self, gene_symbol: str) -> list[DrugInteraction]:
         """Return drugs known to interact with the gene from DGIdb."""
         try:
-            resp = await self._client.post(
-                _DGIDB_URL,
-                json={"query": _QUERY, "variables": {"gene": gene_symbol}},
-                headers={"Content-Type": "application/json"},
-                timeout=20.0,
-            )
+            async with _SEMAPHORE:
+                resp = await self._client.post(
+                    _DGIDB_URL,
+                    json={"query": _QUERY, "variables": {"gene": gene_symbol}},
+                    headers={"Content-Type": "application/json"},
+                    timeout=20.0,
+                )
             resp.raise_for_status()
             body = resp.json()
             if "errors" in body:
