@@ -68,7 +68,10 @@ class MyVariantClient:
             return self._cache[key]
         async with _SEMAPHORE:
             result = await self._fetch(key)
-        self._cache[key] = result
+        # Only cache successful lookups: caching None would turn a transient
+        # network error into a permanent miss for this key all session.
+        if result is not None:
+            self._cache[key] = result
         return result
 
     async def _fetch(self, hgvs: str) -> VariantAnnotation | None:
@@ -139,7 +142,8 @@ class MyVariantClient:
         hit = hits[0]
         hgvs = hit.get("_id") or f"{gene_symbol}:p.{position}{alt_aa}"
         result = _parse_annotation(hgvs, hit)
-        self._cache[cache_key] = result
+        if result is not None:
+            self._cache[cache_key] = result
         return result
 
 

@@ -37,7 +37,10 @@ class UniProtClient:
         if data is None:
             data = await self._search(symbol, reviewed_only=False)
         result = _parse_entry(data, symbol) if data is not None else None
-        self._cache[symbol] = result
+        # Only cache successful parses: caching None on a transient search
+        # failure would permanently mask this gene for the session.
+        if result is not None:
+            self._cache[symbol] = result
         return result
 
     async def get_sequence(
