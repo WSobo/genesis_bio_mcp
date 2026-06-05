@@ -243,12 +243,12 @@ class MaveDBClient:
                 text = resp.text
             except Exception as exc:
                 logger.warning("MaveDB scores fetch failed for %s: %s", urn, exc)
-                self._scores_cache[urn] = []
+                # Never cache a transient failure (would poison this URN all session).
                 return []
         try:
             rows = [dict(row) for row in csv.DictReader(io.StringIO(text))]
         except Exception as exc:
             logger.warning("MaveDB scores CSV parse failed for %s: %s", urn, exc)
-            rows = []
+            return []
         self._scores_cache[urn] = rows
         return rows

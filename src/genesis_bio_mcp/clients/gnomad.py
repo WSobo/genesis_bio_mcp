@@ -198,7 +198,8 @@ class GnomADClient:
                 data = resp.json()
             except Exception as exc:
                 logger.warning("gnomAD variants fetch failed for %s: %s", symbol, exc)
-                self._variants_cache[symbol] = None
+                # Never cache a transient failure — a network blip would
+                # otherwise poison this gene for the rest of the session.
                 return None
         gene = (data.get("data") or {}).get("gene")
         variants = (gene or {}).get("variants") if gene else None
