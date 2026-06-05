@@ -536,3 +536,68 @@ async def test_integration_hybrid_search_filters_and_ranks():
             await conn.execute("DELETE FROM compounds")
             await conn.execute("DELETE FROM targets")
         await pool.close()
+
+
+@_skip_no_db
+@pytest.mark.asyncio
+async def test_integration_predict_off_targets_by_similarity():
+    # predict_off_targets_by_similarity maps a query fingerprint → kinases hit by chemically
+    # similar corpus binders. Aspirin is active on BRAF in the corpus, so querying with aspirin's
+    # own fingerprint (Tanimoto 1.0 to itself) predicts BRAF as an off-target; a high threshold
+    # that nothing clears returns nothing.
+    pool = await create_corpus_pool()
+    assert pool is not None
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM activities")
+            await conn.execute("DELETE FROM compounds")
+            await conn.execute("DELETE FROM targets")
+        await load_targets(
+            pool,
+            [TargetRecord("P15056", "BRAF", "BRAF", "Homo sapiens", "MAAL")],
+            [[0.1] * EMBED_DIM],
+            source_version="UniProt test",
+        )
+        aspirin = "CC(=O)Oc1ccccc1C(=O)O"
+        await load_compounds(
+            pool, [build_compound_record("CHEMBL_ASA", aspirin)], source_version="ChEMBL test"
+        )
+        await load_activities(
+            pool,
+            [
+                ActivityRecord(
+                    activity_id=1,
+                    molecule_chembl_id="CHEMBL_ASA",
+                    uniprot_accession="P15056",
+                    target_chembl_id="CHEMBL5145",
+                    standard_type="IC50",
+                    standard_value=None,
+                    standard_units="nM",
+                    pchembl_value=8.5,
+                    assay_chembl_id="A",
+                    assay_confidence_score=9,
+                    doc_chembl_id="D",
+                )
+            ],
+            source_version="ChEMBL test",
+        )
+
+        hits = await corpus_db.predict_off_targets_by_similarity(
+            pool, morgan_fp_bits(aspirin), min_tanimoto=0.3
+        )
+        assert [h["gene_symbol"] for h in hits] == ["BRAF"]
+        assert hits[0]["max_tanimoto"] == pytest.approx(1.0, abs=1e-6)
+        assert hits[0]["analog_best_pchembl"] == 8.5
+        assert hits[0]["n_analogs"] == 1
+
+        # A threshold nothing can clear → no predicted off-targets.
+        none_hits = await corpus_db.predict_off_targets_by_similarity(
+            pool, morgan_fp_bits("CCO"), min_tanimoto=0.99
+        )
+        assert none_hits == []
+    finally:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM activities")
+            await conn.execute("DELETE FROM compounds")
+            await conn.execute("DELETE FROM targets")
+        await pool.close()
