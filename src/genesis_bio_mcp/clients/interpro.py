@@ -109,7 +109,11 @@ class InterProClient:
                 member_dbs[db_name] = list(db_entries.keys())
 
             # GO terms
-            go_terms = [f"{g['identifier']} {g['name']}" for g in (meta.get("go_terms") or [])]
+            go_terms = [
+                f"{g.get('identifier', '')} {g.get('name', '')}".strip()
+                for g in (meta.get("go_terms") or [])
+                if g.get("identifier") or g.get("name")
+            ]
 
             entries.append(
                 DomainAnnotation(

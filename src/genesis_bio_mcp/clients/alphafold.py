@@ -198,7 +198,7 @@ class AlphaFoldClient:
             result = resp.json()
             hits = result.get("result_set", [])
             total = result.get("total_count", len(hits))
-            pdb_ids = [h["identifier"] for h in hits[:20]]
+            pdb_ids = [h["identifier"] for h in hits[:20] if h.get("identifier")]
         except Exception as exc:
             logger.warning("RCSB search failed for %s: %s", uniprot_id, exc)
             return [], 0

@@ -367,7 +367,7 @@ class DepMapClient:
         for hit in hits:
             if hit.get("entity") == "target":
                 return hit["id"]
-        return hits[0]["id"] if hits else None
+        return hits[0].get("id") if hits else None
 
     async def _fetch_ot_cancer_evidence(
         self, gene_symbol: str, ensembl_id: str
@@ -389,9 +389,9 @@ class DepMapClient:
         for row in cancer_rows:
             sm_score = next(
                 (
-                    d["score"]
+                    d.get("score", 0.0)
                     for d in row.get("datatypeScores", [])
-                    if d["id"] == "somatic_mutation"
+                    if d.get("id") == "somatic_mutation"
                 ),
                 0.0,
             )
