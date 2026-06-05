@@ -224,13 +224,14 @@
     "grader": {"type": "regex", "value": "SAscore|synthetic accessibility|synthesizability"}
   },
   {
-    "id": "probe-panraf-selectivity",
-    "question": "What is the kinome-wide selectivity profile of a pan-RAF inhibitor — which off-target kinases would it also inhibit?",
+    "id": "dasatinib-selectivity",
+    "question": "What is the off-target / kinome selectivity profile of dasatinib — which other kinases does it inhibit?",
     "category": "druggability",
-    "tool_calls": [],
-    "expected_tools": [],
-    "grader": {"type": "contains", "value": "selectivity"},
-    "probe": true
+    "tool_calls": [
+      {"name": "assess_selectivity", "args": {"smiles": "Cc1nc(Nc2ncc(C(=O)Nc3c(C)cccc3Cl)s2)cc(N2CCN(CCO)CC2)n1"}}
+    ],
+    "expected_tools": ["assess_selectivity"],
+    "grader": {"type": "all_of", "value": ["ABL1", "Src"]}
   },
   {
     "id": "probe-krasg12c-patents",
