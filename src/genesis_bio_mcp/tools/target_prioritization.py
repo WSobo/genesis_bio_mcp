@@ -102,6 +102,27 @@ def _max_trait_relevance(associations: list, indication: str) -> float:
     return best
 
 
+def _trait_relevant_gwas_count(gwas_ev: GwasEvidence | None, indication: str) -> int:
+    """GWAS hit count that actually matches the indication.
+
+    Single source of truth shared by the per-axis genetic rating
+    (``_build_axes``) and the prose summary (``_build_summary``) so the two can
+    never disagree. Returns 0 when the GWAS lookup fell back to a non-exact
+    trait query, or when the returned hits' trait labels are off-indication
+    (token-set Jaccard below ``_GWAS_TRAIT_RELEVANCE_MIN``).
+    """
+    if gwas_ev is None or gwas_ev.total_associations <= 0:
+        return 0
+    if "no exact-trait match" in (gwas_ev.trait_query or ""):
+        return 0
+    if (
+        bool(gwas_ev.associations)
+        and _max_trait_relevance(gwas_ev.associations, indication) < _GWAS_TRAIT_RELEVANCE_MIN
+    ):
+        return 0
+    return gwas_ev.total_associations
+
+
 # Stop-word set for trait-relevance tokenization. These tokens appear in too
 # many disease/trait labels to discriminate (e.g. "disease", "syndrome") and
 # would inflate Jaccard scores spuriously if kept.
@@ -554,21 +575,13 @@ def _build_evidence_profile(
     trait_relevant_hits = 0
     gwas_note: str | None = None
     if gwas_ev is not None:
-        is_fallback = "no exact-trait match" in (gwas_ev.trait_query or "")
-        is_off_trait = (
-            not is_fallback
-            and bool(gwas_ev.associations)
-            and _max_trait_relevance(gwas_ev.associations, indication) < _GWAS_TRAIT_RELEVANCE_MIN
-        )
-        if is_fallback or is_off_trait:
-            gwas_note = (
-                f"{gwas_ev.total_associations} GWAS hits but trait labels off-indication"
-                if gwas_ev.total_associations > 0
-                else "no GWAS hits"
-            )
-        else:
-            trait_relevant_hits = gwas_ev.total_associations
+        trait_relevant_hits = _trait_relevant_gwas_count(gwas_ev, indication)
+        if trait_relevant_hits > 0:
             gwas_note = f"{trait_relevant_hits} trait-relevant GWAS hit(s)"
+        elif gwas_ev.total_associations > 0:
+            gwas_note = f"{gwas_ev.total_associations} GWAS hits but trait labels off-indication"
+        else:
+            gwas_note = "no GWAS hits"
 
     detail_parts: list[str] = []
     if disease_assoc is not None:
@@ -814,10 +827,11 @@ def _build_summary(
                 + "."
             )
 
-    if gwas_ev and gwas_ev.total_associations > 0:
+    gwas_relevant = _trait_relevant_gwas_count(gwas_ev, indication)
+    if gwas_relevant > 0:
         p_str = f"{gwas_ev.strongest_p_value:.2e}" if gwas_ev.strongest_p_value else "N/A"
         parts.append(
-            f"GWAS Catalog links {gwas_ev.total_associations} variants near {symbol} "
+            f"GWAS Catalog links {gwas_relevant} variant(s) near {symbol} "
             f"to '{indication}'-related traits (strongest p={p_str})."
         )
         # Causal caveat: high GWAS signal without known-drug evidence AND sparse literature
@@ -832,16 +846,21 @@ def _build_summary(
         # Tuning range: 0.1–0.25.
         known_drug_score = (disease_assoc.known_drug_score or 0.0) if disease_assoc else 0.0
         literature_score = (disease_assoc.literature_mining_score or 0.0) if disease_assoc else 0.0
-        if gwas_ev.total_associations >= 5 and known_drug_score < 0.1 and literature_score < 0.15:
+        if gwas_relevant >= 5 and known_drug_score < 0.1 and literature_score < 0.15:
             ot_score = disease_assoc.overall_score if disease_assoc else 0.0
             parts.append(
-                f"Caution: {gwas_ev.total_associations} GWAS hits near {symbol} for {indication} "
+                f"Caution: {gwas_relevant} GWAS hits near {symbol} for {indication} "
                 f"with no known-drug evidence and sparse literature support "
                 f"(OT drug score={known_drug_score:.2f}, literature={literature_score:.2f}, "
                 f"overall={ot_score:.2f}). This pattern is consistent with LD with a nearby causal "
                 f"variant, comorbidity confounding, or indirect drug effects — not direct target biology. "
                 f"Functional validation is recommended before treating GWAS signal as target evidence."
             )
+    elif gwas_ev and gwas_ev.total_associations > 0:
+        parts.append(
+            f"GWAS Catalog returns {gwas_ev.total_associations} hit(s) near {symbol}, but their "
+            f"trait labels do not match '{indication}' — not counted as indication genetic evidence."
+        )
 
     if chembl_compounds and chembl_compounds.best_pchembl is not None:
         bp = chembl_compounds.best_pchembl
