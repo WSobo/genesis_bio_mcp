@@ -423,9 +423,11 @@ class ProteinInfo(BaseModel):
                     if (v.original and v.position and v.variant)
                     else v.position or "?"
                 )
-                disease = v.disease or "unknown disease"
                 sig = f" ({v.clinical_significance})" if v.clinical_significance else ""
-                lines.append(f"- **{pos}** — {disease}{sig}")
+                if v.disease:
+                    lines.append(f"- **{pos}** — {v.disease}{sig}")
+                else:
+                    lines.append(f"- **{pos}**{sig}")
             if len(self.known_variants) > 5:
                 lines.append(f"- _...and {len(self.known_variants) - 5} more_")
         if self.disulfide_bond_positions:
@@ -1702,7 +1704,10 @@ class SimilarCompounds(BaseModel):
 
     def to_markdown(self) -> str:
         mode_desc = (
-            f"Tanimoto ≥ {self.threshold}" if self.mode == "similarity" else "substructure match"
+            f"PubChem 2D similarity ≥ {self.threshold} for retrieval; the Tanimoto column "
+            "is a local RDKit ECFP4 score used for ranking"
+            if self.mode == "similarity"
+            else "substructure match"
         )
         lines = [
             f"## Similar Compounds (PubChem {self.mode}): `{self.query_smiles}`",
