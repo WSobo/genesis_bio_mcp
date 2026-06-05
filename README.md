@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/protocol-MCP-purple)](https://modelcontextprotocol.io)
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
 
-An MCP server that gives AI agents structured access to **43 tools** across
+An MCP server that gives AI agents structured access to **44 tools** across
 **24 biomedical databases** (plus local RDKit cheminformatics and the UMA-Inverse
 inverse-folding model service) for drug discovery target prioritization, experiment
 design, and protein engineering.
@@ -32,7 +32,7 @@ calls.
 
 | Doc | What it covers |
 |---|---|
-| **[docs/tools.md](docs/tools.md)** | Full catalog of all 43 tools grouped by category, input fields, and use cases |
+| **[docs/tools.md](docs/tools.md)** | Full catalog of all 44 tools grouped by category, input fields, and use cases |
 | **[docs/protein-engineering.md](docs/protein-engineering.md)** | v0.2.0 protein engineering workflows: sequence analysis, variant effects, T-cell immunogenicity, combined examples |
 | **[docs/architecture.md](docs/architecture.md)** | Directory layout, client/model patterns, design decisions, the `prioritize_target` evidence-profile model, per-database API reference |
 | **[docs/benchmark.md](docs/benchmark.md)** | 12-target coverage/latency benchmark and example `prioritize_target` output |
@@ -103,7 +103,7 @@ configuration.
 
 ## Tools at a glance
 
-43 tools across 24 data sources (plus local RDKit cheminformatics, the UMA-Inverse model service, and an optional embedding-backed corpus store), organized into 10 categories. Full details
+44 tools across 24 data sources (plus local RDKit cheminformatics, the UMA-Inverse model service, and an optional embedding-backed corpus store), organized into 10 categories. Full details
 in [docs/tools.md](docs/tools.md); live output samples of the headline tools in
 [examples/v0.4.0_tool_showcase.md](examples/v0.4.0_tool_showcase.md).
 
@@ -111,7 +111,7 @@ in [docs/tools.md](docs/tools.md); live output samples of the headline tools in
 |---|---|---|
 | **Gene annotation** | `resolve_gene`, `batch_resolve_genes`, `get_protein_info`, `get_protein_sequence` | UniProt, NCBI |
 | **Disease evidence** | `get_target_disease_association`, `get_cancer_dependency`, `get_gwas_evidence` | Open Targets, DepMap, GWAS Catalog, EFO |
-| **Druggability** | `get_compounds`, `compute_molecular_properties`, `predict_admet`, `batch_compute_molecular_properties`, `standardize_structure`, `search_similar_compounds`, `get_chembl_compounds` | PubChem, RDKit, ChEMBL |
+| **Druggability** | `get_compounds`, `compute_molecular_properties`, `predict_admet`, `assess_selectivity`, `batch_compute_molecular_properties`, `standardize_structure`, `search_similar_compounds`, `get_chembl_compounds` | PubChem, RDKit, ChEMBL |
 | **Structure & interactions** | `get_protein_structure`, `get_structure_confidence`, `get_structural_homologs`, `design_sequence_for_structure`, `score_structure`, `get_protein_interactome`, `get_biogrid_interactions` | AlphaFold, RCSB PDB, Foldseek, UMA-Inverse, STRING, BioGRID |
 | **Antibody & epitope** | `get_antibody_structures`, `get_epitope_data`, `get_mhc_binding`, `get_cdr_developability` | SAbDab, IEDB, IEDB NextGen Tools, AbNum |
 | **Protein engineering** | `get_protein_sequence`, `get_structure_confidence`, `get_variant_effects`, `get_variant_constraints`, `get_variant_consequences`, `get_domain_annotation`, `get_dms_scores`, `get_dms_variant_score`, `get_mhc_binding` | UniProt, AlphaFold, gnomAD, MyVariant.info, Ensembl/VEP, MaveDB, InterPro, IEDB |
@@ -126,7 +126,7 @@ All tools return Markdown by default; every tool accepts
 ### Corpus store (optional, v0.6.0)
 
 The `corpus_*` tools query an indexed PostgreSQL + pgvector store over a curated bioactivity
-corpus (the human kinome). It is **entirely optional** — without it the other 39 tools run
+corpus (the human kinome). It is **entirely optional** — without it the other 40 tools run
 unchanged. To build it locally (free, no API keys, CPU-only):
 
 ```bash

@@ -154,6 +154,7 @@ def test_build_tool_registry_has_all_tools():
         "get_compounds",
         "compute_molecular_properties",
         "predict_admet",
+        "assess_selectivity",
         "standardize_structure",
         "search_similar_compounds",
         "get_chembl_compounds",

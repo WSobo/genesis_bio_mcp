@@ -52,6 +52,7 @@ from genesis_bio_mcp.tools.cheminformatics import (
     standardize_structure as _standardize_structure,
 )
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
+from genesis_bio_mcp.tools.selectivity import assess_selectivity as _assess_selectivity
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals,
 )
@@ -331,6 +332,14 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
 
     async def _predict_admet_fn(smiles: str) -> str:
         result = _assess_admet(smiles)
+        if result is None:
+            return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
+        return result.to_markdown()
+
+    async def _assess_selectivity_fn(smiles: str) -> str:
+        result = await _assess_selectivity(
+            smiles, chembl=state.chembl, corpus_pool=getattr(state, "corpus_pool", None)
+        )
         if result is None:
             return f"Invalid SMILES: '{smiles}' could not be parsed by RDKit."
         return result.to_markdown()
@@ -867,6 +876,29 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
             tool_category="druggability",
             use_when="Use to flag ADMET/tox liabilities (hERG, CYP3A4, solubility), structural alerts, or synthetic accessibility of a specific molecule given its SMILES.",
             fn=_predict_admet_fn,
+        ),
+        "assess_selectivity": ToolSpec(
+            name="assess_selectivity",
+            description=(
+                "Profile a compound's off-targets / kinome selectivity from its SMILES: measured "
+                "off-targets from ChEMBL (every human target it has pChEMBL activity against, with a "
+                "Selective/Promiscuous call) plus, when a corpus is configured, predicted off-target "
+                "kinases by chemical similarity to known binders. Measured = demonstrated binding; "
+                "absence does not prove selectivity."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "smiles": {
+                        "type": "string",
+                        "description": "SMILES of the compound. Example: a kinase inhibitor.",
+                    }
+                },
+                "required": ["smiles"],
+            },
+            tool_category="druggability",
+            use_when="Use to assess a compound's selectivity or find its off-target kinases / polypharmacology given its SMILES.",
+            fn=_assess_selectivity_fn,
         ),
         "batch_compute_molecular_properties": ToolSpec(
             name="batch_compute_molecular_properties",

@@ -272,11 +272,11 @@ The eval picked this theme; each milestone exists to flip its probe from GAP →
   clearance, t½) via ADMET-AI (Chemprop) or sklearn-on-TDC — returned with applicability-domain notes.
 - New `tools/admet.py` (pure compute) + `ADMETProfile` model + `predict_admet` tool.
 
-### M2 — Kinome selectivity / off-target *(closes `probe-panraf-selectivity`)*
-The **corpus payoff**. `assess_selectivity` returns **measured** off-targets (ChEMBL + corpus
-`activities`) and **predicted** off-target risk (ESM-2 sequence-neighbor kinases for a target;
-Tanimoto-to-known-binders, SEA-style, for a compound) — honestly separated, with a coverage note.
-Measured layer is keyless; the predicted layer wants a built corpus (gated `requires: ["corpus"]`).
+### M2 — Kinome selectivity / off-target ✅ *(shipped; closed `probe-panraf-selectivity`)*
+The **corpus payoff**. `assess_selectivity` returns **measured** off-targets (compound → all human
+targets with ChEMBL pChEMBL activity, keyless) + a Selective/Promiscuous call, and **predicted**
+off-target kinases (Tanimoto-to-known-corpus-binders, SEA-style; optional, needs a built corpus) —
+honestly separated. Validated live on dasatinib (ABL1/SRC/EPH/CSF1R/LYN).
 
 ### M3 — Patents / freedom-to-operate *(closes `probe-krasg12c-patents`)*
 `search_patents` over **SureChEMBL** (compound→patent, chemistry-native) + optional PatentsView/USPTO

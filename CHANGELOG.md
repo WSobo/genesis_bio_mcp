@@ -11,6 +11,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **`assess_selectivity`** (v0.8.0 M2) — a compound's off-target / kinome selectivity profile, in two
+  honestly-separated layers. **Measured** (keyless): resolve a SMILES to a ChEMBL molecule and aggregate
+  every human target it has pChEMBL activity against, with a qualitative Selective / Moderately selective /
+  Promiscuous call (e.g. dasatinib → ABL1, SRC, EPH receptors, CSF1R, LYN). **Predicted** (optional, the
+  kinome-corpus payoff): off-target kinases inferred by chemical similarity to known corpus binders
+  (SEA-style), also covering novel structures ChEMBL hasn't seen. *Measured demonstrates binding; absence
+  does not prove selectivity.* New `tools/selectivity.py`, `ChEMBLClient.get_off_targets` (with a transient-5xx
+  retry, since ChEMBL is flaky under load), `corpus.predict_off_targets_by_similarity`, and the
+  `SelectivityProfile` / `OffTarget` / `PredictedOffTarget` models. Closes the kinome-selectivity eval gap.
+  **44 tools.**
 - **`predict_admet`** (v0.8.0 M1) — a keyless, local RDKit ADMET / developability panel: Delaney **ESOL**
   aqueous solubility, GI-absorption / blood-brain-barrier heuristics, a **hERG** cardiotoxicity flag
   (basic amine + high logP), a **CYP3A4** metabolic-liability flag, **Brenk + PAINS** structural alerts,

@@ -1,6 +1,6 @@
 """genesis_bio_mcp MCP server.
 
-Exposes 43 tools for biomedical database queries:
+Exposes 44 tools for biomedical database queries:
   - resolve_gene                  UniProt + NCBI: gene symbol → canonical IDs
   - get_protein_info              UniProt Swiss-Prot protein annotation
   - get_protein_sequence          UniProt FASTA + biochem + liability scan
@@ -10,6 +10,7 @@ Exposes 43 tools for biomedical database queries:
   - get_compounds                 PubChem: active small molecules against a target
   - compute_molecular_properties  RDKit: physicochemical + drug-likeness from a SMILES (local)
   - predict_admet                 RDKit: ADMET liability panel (hERG/CYP/ESOL/alerts/SAscore) (local)
+  - assess_selectivity            ChEMBL + corpus: measured + predicted off-target / selectivity profile
   - standardize_structure         RDKit: salt-strip/neutralize/canonical-tautomer + InChIKey (local)
   - search_similar_compounds      PubChem + RDKit: 2D-similarity / substructure structure search
   - get_chembl_compounds          ChEMBL: IC50/Ki/Kd + assay context (type, organism, confidence)
@@ -137,6 +138,7 @@ from genesis_bio_mcp.tools.cheminformatics import (
 )
 from genesis_bio_mcp.tools.gene_resolver import resolve_gene as _resolve_gene
 from genesis_bio_mcp.tools.health import build_health_report, check_upstreams, health_to_markdown
+from genesis_bio_mcp.tools.selectivity import assess_selectivity as _assess_selectivity
 from genesis_bio_mcp.tools.target_prioritization import (
     attach_safety_signals as _attach_safety_signals,
 )
@@ -289,6 +291,7 @@ _SOURCE_BY_MODEL: dict[str, str] = {
     "Compounds": "PubChem",
     "MolecularProperties": "RDKit (local)",
     "ADMETProfile": "RDKit (local)",
+    "SelectivityProfile": "ChEMBL + corpus (RDKit similarity)",
     "BatchMolecularProperties": "RDKit (local)",
     "StandardizedStructure": "RDKit (local)",
     "SimilarCompounds": "PubChem + RDKit",
@@ -501,6 +504,19 @@ class PredictADMETInput(BaseModel):
     smiles: str = Field(
         ...,
         description="SMILES string of the molecule, e.g. 'CC(=O)Oc1ccccc1C(=O)O' (aspirin).",
+        min_length=1,
+        max_length=2000,
+    )
+    response_format: Literal["markdown", "json"] = _RESPONSE_FORMAT_FIELD
+
+
+class AssessSelectivityInput(BaseModel):
+    """Input for assess_selectivity."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    smiles: str = Field(
+        ...,
+        description="SMILES of the compound to profile, e.g. a kinase inhibitor.",
         min_length=1,
         max_length=2000,
     )
@@ -1344,6 +1360,45 @@ async def predict_admet(params: PredictADMETInput) -> str:
         Returns an error if the SMILES cannot be parsed.
     """
     result = _assess_admet(params.smiles)
+    return _fmt(
+        result,
+        params.response_format,
+        f"Invalid SMILES: '{params.smiles}' could not be parsed by RDKit.",
+        error_status="InvalidInput",
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    )
+)
+async def assess_selectivity(params: AssessSelectivityInput) -> str:
+    """Profile a compound's off-targets / kinome selectivity from its SMILES.
+
+    Two honestly-separated layers:
+    - **Measured** off-targets from ChEMBL (keyless) — every human target the compound has
+      demonstrated pChEMBL bioactivity against, with a qualitative selectivity call
+      (Selective / Moderately selective / Promiscuous).
+    - **Predicted** off-target kinases from the optional kinome corpus — kinases hit by
+      structurally similar known binders (chemical-similarity analogy), which also covers
+      novel structures ChEMBL has never seen. Shown only when a corpus is configured.
+
+    IMPORTANT: measured data demonstrates binding; **absence does not prove selectivity**
+    (ChEMBL coverage is sparse). Predicted off-targets are a hypothesis, not a measurement.
+
+    Args:
+        params (AssessSelectivityInput): smiles, response_format.
+
+    Returns:
+        Markdown selectivity profile (measured + predicted off-targets). Error if the SMILES
+        cannot be parsed.
+    """
+    result = await _assess_selectivity(
+        params.smiles,
+        chembl=mcp.state.chembl,
+        corpus_pool=mcp.state.corpus_pool,
+    )
     return _fmt(
         result,
         params.response_format,

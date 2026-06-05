@@ -141,6 +141,59 @@ async def search_similar_compounds(pool: asyncpg.Pool, fp_bits: str, top_k: int)
     return [dict(r) for r in rows]
 
 
+# Predicted off-targets (SEA-style chemical analogy): rank corpus compounds by Tanimoto to the
+# query fingerprint, keep those above a threshold, and map them to the kinases they are active
+# against. Each predicted kinase is supported by ≥1 similar known binder.
+_PREDICT_OFF_TARGET_SQL = """
+WITH sim AS (
+    SELECT c.molecule_chembl_id, 1 - (c.morgan_fp <%> $1::bit(2048)) AS tanimoto
+    FROM compounds c
+    WHERE c.morgan_fp IS NOT NULL
+    ORDER BY c.morgan_fp <%> $1::bit(2048)
+    LIMIT $2
+)
+SELECT t.gene_symbol,
+       t.uniprot_accession,
+       max(sim.tanimoto) AS max_tanimoto,
+       max(a.pchembl_value) AS analog_best_pchembl,
+       count(DISTINCT sim.molecule_chembl_id) AS n_analogs
+FROM sim
+JOIN activities a ON a.molecule_chembl_id = sim.molecule_chembl_id
+JOIN targets t ON t.uniprot_accession = a.uniprot_accession
+WHERE sim.tanimoto >= $3
+GROUP BY t.gene_symbol, t.uniprot_accession
+ORDER BY max_tanimoto DESC, analog_best_pchembl DESC NULLS LAST
+LIMIT $4
+"""
+
+
+async def predict_off_targets_by_similarity(
+    pool: asyncpg.Pool,
+    fp_bits: str,
+    *,
+    min_tanimoto: float = 0.4,
+    top_k_compounds: int = 300,
+    limit: int = 20,
+) -> list[dict]:
+    """Predict off-target kinases for a query fingerprint via chemically-similar corpus binders.
+
+    ``fp_bits`` is a 2048-char '0'/'1' Morgan bitstring. Considers the ``top_k_compounds`` most
+    similar corpus compounds, keeps those with Tanimoto ≥ ``min_tanimoto``, and maps them to the
+    kinases they are active against. Returns per-kinase dicts (``gene_symbol``, ``uniprot_accession``,
+    ``max_tanimoto``, ``analog_best_pchembl``, ``n_analogs``) ordered by similarity — a hypothesis,
+    not a measurement. Empty when nothing clears the threshold.
+    """
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            _PREDICT_OFF_TARGET_SQL,
+            asyncpg.BitString(fp_bits),
+            top_k_compounds,
+            min_tanimoto,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
+
 async def resolve_target_accession(pool: asyncpg.Pool, query: str) -> str | None:
     """Resolve a gene symbol / UniProt accession to a corpus target's accession, or None."""
     async with pool.acquire() as conn:
