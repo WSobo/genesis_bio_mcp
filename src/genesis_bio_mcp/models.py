@@ -1306,9 +1306,20 @@ class CancerDependency(BaseModel):
                 f"**Top dependent lineages:** {', '.join(self.top_dependent_lineages[:5])}",
             ]
         if self.cell_lines:
+            # The summary and OT-proxy paths fill these rows with DISEASES plus
+            # somatic-mutation evidence (not measured per-line CERES), so label
+            # them honestly. Only a real per-line CERES source
+            # (ceres_is_approximated=False) is a genuine cell-line table.
+            if self.ceres_is_approximated:
+                header = (
+                    "| Disease (somatic-mutation evidence) | Therapeutic area "
+                    "| Mut. proxy | Dependent? |"
+                )
+            else:
+                header = "| Cell Line | Lineage | CERES score | Dependent? |"
             lines += [
                 "",
-                "| Cell Line | Lineage | Score | Dependent? |",
+                header,
                 "|---|---|---|---|",
             ]
             for cl in self.cell_lines[:8]:
