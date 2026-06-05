@@ -200,7 +200,7 @@ def _parse_entry(entry: dict, gene_symbol: str) -> ProteinInfo:
 
     for comment in comments:
         ctype = comment.get("commentType", "")
-        if ctype == "FUNCTION":
+        if ctype == "FUNCTION" and not function_summary:
             texts = comment.get("texts", [])
             if texts:
                 function_summary = texts[0].get("value", "")

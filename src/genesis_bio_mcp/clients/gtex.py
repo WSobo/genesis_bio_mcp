@@ -170,7 +170,9 @@ class GTExClient:
             # match HPA's hyphenated form, which tooling expects.
             if tissue:
                 tissue = tissue.replace("_", " - ")
-            median = row.get("median") or row.get("medianTpm")
+            median = row.get("median")
+            if median is None:
+                median = row.get("medianTpm")
             if tissue and median is not None:
                 try:
                     samples.append(
