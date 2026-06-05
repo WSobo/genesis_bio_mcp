@@ -262,7 +262,7 @@ The eval picked this theme; each milestone exists to flip its probe from GAP →
   Tanimoto, and the `_fmt` provenance/typed-error envelope.
 - **Each milestone re-runs the eval** to watch its probe flip — the harness is the acceptance test.
 
-### M1 — ADMET / developability panel + synthesizability *(closes `probe-imatinib-admet` + the synthesizability probe)*
+### M1 — ADMET / developability panel + synthesizability ✅ *(shipped; closed `probe-imatinib-admet` + the synthesizability probe)*
 - **Tier A (keyless, pure RDKit):** `predict_admet` — ESOL aqueous solubility (Delaney), GI-absorption
   / passive-permeability and BBB heuristics, a **hERG** liability flag (basic amine + high logP), a
   **CYP3A4** metabolic-liability flag, and Brenk/PAINS structural alerts — each with an honest "rule-based
@@ -278,17 +278,24 @@ targets with ChEMBL pChEMBL activity, keyless) + a Selective/Promiscuous call, a
 off-target kinases (Tanimoto-to-known-corpus-binders, SEA-style; optional, needs a built corpus) —
 honestly separated. Validated live on dasatinib (ABL1/SRC/EPH/CSF1R/LYN).
 
-### M3 — Patents / freedom-to-operate *(closes `probe-krasg12c-patents`)*
-`search_patents` over **SureChEMBL** (compound→patent, chemistry-native) + optional PatentsView/USPTO
-landscape, carrying a **permanent "informational, not FTO legal advice" disclaimer** (the OpenFDA
-disclaimer pattern). Scoped honestly: chemistry-in-patents, US-centric. Highest external-data friction →
-sequenced last of the keyless-ish set.
+### M3 — Patents / freedom-to-operate ⏸️ *(deferred — closes `probe-krasg12c-patents`)*
+**Deferred — evaluate existing patent MCPs before building.** Patent / freedom-to-operate search is
+commodity IP data (Google Patents, Lens.org, PatentsView, espacenet all expose APIs/MCPs), not a
+Genesis-specific *method* like the RDKit ADMET (M1) or corpus-powered selectivity (M2) work. Real FTO
+also needs claim parsing, legal-status tracking, and jurisdiction logic — that is a product with a
+permanent "not legal advice" liability tail, not a milestone. **If revisited:** survey existing
+patent MCPs and build a *thin client over an existing API* (Lens.org / PatentsView), borrowing the
+good parts, rather than re-deriving SureChEMBL→patent from scratch.
+
+_Original scope (shelved):_ `search_patents` over **SureChEMBL** (compound→patent) + optional
+PatentsView/USPTO landscape, with a **permanent "informational, not FTO legal advice" disclaimer**
+(the OpenFDA pattern). Scoped honestly: chemistry-in-patents, US-centric.
 
 ### M4 (stretch) — Retrosynthetic route planning *(closes the route-planning probe)*
 AiZynthFinder (AstraZeneca, MIT) in an optional dep group with downloaded templates. Heavy, lowest ROI
 → explicit stretch after M1–M3.
 
-**Sequence:** M1 → M2 → M3, then the M4 stretch. After each, re-run `python -m genesis_bio_mcp.evals`.
+**Sequence:** M1 ✅ → M2 ✅ → **paused.** M3 (patents / FTO) is deferred — evaluate/borrow an existing patent MCP rather than build it; M4 (retrosynthesis) stays a stretch. After each shipped milestone, re-run `python -m genesis_bio_mcp.evals`.
 
 ## v0.7.0 and beyond *(directional, not committed)*
 
