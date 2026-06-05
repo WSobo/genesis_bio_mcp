@@ -566,7 +566,9 @@ def _parse_row(
     score = row.get("score", 0.0) or 0.0
     datatype_scores: dict[str, float] = {}
     for ds in row.get("datatypeScores", []):
-        datatype_scores[ds["id"]] = ds.get("score", 0.0)
+        ds_id = ds.get("id")
+        if ds_id:
+            datatype_scores[ds_id] = ds.get("score", 0.0)
 
     evidence_breakdown = [
         DiseaseLinkEvidence(evidence_type=k, score=v) for k, v in datatype_scores.items()
