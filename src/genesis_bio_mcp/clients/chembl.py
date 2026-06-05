@@ -16,12 +16,13 @@ import logging
 import httpx
 
 from genesis_bio_mcp.config.settings import settings
-from genesis_bio_mcp.models import ChEMBLActivity, ChEMBLCompounds
+from genesis_bio_mcp.models import ChEMBLActivity, ChEMBLCompounds, OffTarget
 
 logger = logging.getLogger(__name__)
 
 _BASE = "https://www.ebi.ac.uk/chembl/api/data"
 _TARGET_SEARCH_URL = f"{_BASE}/target/search"
+_MOLECULE_URL = f"{_BASE}/molecule"
 _ACTIVITY_URL = f"{_BASE}/activity"
 _ASSAY_URL = f"{_BASE}/assay"
 _MECHANISM_URL = f"{_BASE}/mechanism"
@@ -261,3 +262,116 @@ class ChEMBLClient:
             if isinstance(at, str) and at and at not in action_types:
                 action_types.append(at)
         return max_phase, moas, action_types
+
+    async def _get_retry(
+        self, url: str, *, params: dict | None = None, timeout: float = 30.0, attempts: int = 3
+    ) -> httpx.Response:
+        """GET with backoff retry on transient ChEMBL 5xx / network errors (4xx returned as-is).
+
+        ChEMBL intermittently 500s / times out under load. Retrying transient failures keeps the
+        off-target lookup robust. Raises the last error after ``attempts`` tries.
+        """
+        last: Exception | None = None
+        for i in range(attempts):
+            try:
+                async with _SEMAPHORE:
+                    resp = await self._client.get(url, params=params, timeout=timeout)
+                if resp.status_code < 500:
+                    return resp
+                last = httpx.HTTPStatusError(
+                    f"server {resp.status_code}", request=resp.request, response=resp
+                )
+            except Exception as exc:
+                last = exc
+            if i < attempts - 1:
+                await asyncio.sleep(1.5 * (i + 1))
+        raise last  # type: ignore[misc]
+
+    async def get_off_targets(self, inchikey: str) -> tuple[str | None, list[OffTarget]]:
+        """Measured off-target profile: every human target a compound has pChEMBL activity against.
+
+        ``inchikey`` is the standard InChIKey of the (standardized) query molecule. Resolves it to a
+        ChEMBL molecule and aggregates all its human bioactivities by target (using the activity
+        rows' ``target_pref_name`` — ChEMBL's ``/target`` endpoint is too unreliable to enrich gene
+        symbols here; the corpus predicted layer supplies those). Never raises — returns ``(None, [])``
+        if the structure is not in ChEMBL or on any failure. Off-targets sorted by best pChEMBL desc.
+        """
+        mol_id = await self._resolve_molecule_id(inchikey)
+        if not mol_id:
+            return None, []
+        agg = await self._fetch_molecule_activities(mol_id)
+        off = [
+            OffTarget(
+                target_chembl_id=tid,
+                target_pref_name=a["pref_name"],
+                best_pchembl=round(a["best"], 2),
+                n_activities=a["n"],
+            )
+            for tid, a in agg.items()
+        ]
+        off.sort(key=lambda o: o.best_pchembl, reverse=True)
+        return mol_id, off
+
+    async def _resolve_molecule_id(self, inchikey: str) -> str | None:
+        """Resolve a standard InChIKey to a ChEMBL molecule ID via the resource endpoint.
+
+        Uses ``/molecule/{inchikey}.json`` (the resource path) — the
+        ``?molecule_structures__standard_inchi_key=`` *filter* 500s server-side. Never raises.
+        """
+        try:
+            resp = await self._get_retry(f"{_MOLECULE_URL}/{inchikey}.json", timeout=20.0)
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json().get("molecule_chembl_id")
+        except Exception as exc:
+            logger.warning("ChEMBL molecule lookup failed for %s: %s", inchikey, exc)
+            return None
+
+    async def _fetch_molecule_activities(self, mol_id: str) -> dict[str, dict]:
+        """Aggregate a molecule's human pChEMBL activities by target. Never raises.
+
+        Returns ``{target_chembl_id: {"pref_name", "best", "n"}}``. Pages by explicit offset
+        (page size 200 — larger limits 500 under load; cap 10 pages) to capture a promiscuous
+        compound's full target set without next-URL parsing.
+        """
+        page_size = 200
+        agg: dict[str, dict] = {}
+        try:
+            for page in range(10):
+                resp = await self._get_retry(
+                    _ACTIVITY_URL,
+                    params={
+                        "molecule_chembl_id": mol_id,
+                        "pchembl_value__isnull": "false",
+                        "limit": page_size,
+                        "offset": page * page_size,
+                        "format": "json",
+                    },
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                rows = data.get("activities") or []
+                for a in rows:
+                    if a.get("target_organism") != "Homo sapiens":
+                        continue
+                    tid = a.get("target_chembl_id")
+                    pchembl = a.get("pchembl_value")
+                    if not tid or pchembl is None:
+                        continue
+                    try:
+                        pf = float(pchembl)
+                    except (TypeError, ValueError):
+                        continue
+                    e = agg.setdefault(
+                        tid, {"pref_name": a.get("target_pref_name") or tid, "best": pf, "n": 0}
+                    )
+                    e["best"] = max(e["best"], pf)
+                    e["n"] += 1
+                total = (data.get("page_meta") or {}).get("total_count") or 0
+                if not rows or (page + 1) * page_size >= total:
+                    break
+        except Exception as exc:
+            logger.warning("ChEMBL molecule-activity fetch failed for %s: %s", mol_id, exc)
+        return agg

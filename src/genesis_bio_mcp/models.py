@@ -1567,6 +1567,109 @@ class ADMETProfile(BaseModel):
         return "\n".join(lines)
 
 
+class OffTarget(BaseModel):
+    """One human target a compound has *measured* ChEMBL bioactivity against."""
+
+    target_chembl_id: str = Field(description="ChEMBL target ID")
+    target_pref_name: str = Field(description="ChEMBL preferred target name")
+    gene_symbol: str | None = Field(None, description="HGNC gene symbol, when resolvable")
+    uniprot_accession: str | None = Field(None, description="UniProt accession of the target")
+    best_pchembl: float = Field(description="Best (highest) measured pChEMBL against this target")
+    n_activities: int = Field(description="Number of pChEMBL activity records for this target")
+
+
+class PredictedOffTarget(BaseModel):
+    """A kinase predicted as an off-target by chemical similarity to known corpus binders."""
+
+    gene_symbol: str = Field(description="HGNC gene symbol of the predicted off-target kinase")
+    uniprot_accession: str | None = Field(None, description="UniProt accession")
+    max_tanimoto: float = Field(
+        description="Highest Tanimoto similarity (0–1) of the query to a known binder of this kinase"
+    )
+    analog_best_pchembl: float | None = Field(
+        None, description="Best measured pChEMBL of the similar corpus analog against this kinase"
+    )
+    n_analogs: int = Field(description="Number of similar corpus binders supporting the prediction")
+
+
+class SelectivityProfile(BaseModel):
+    """A compound's off-target / selectivity profile: measured (ChEMBL) + predicted (corpus).
+
+    **Measured** off-targets are demonstrated bioactivities from ChEMBL. **Predicted** off-targets
+    are a chemical-similarity *hypothesis* (kinases hit by structurally similar corpus binders),
+    not measurements. Absence of measured off-targets does **not** prove selectivity — ChEMBL
+    coverage is sparse and uneven.
+    """
+
+    query_smiles: str = Field(description="The query molecule's SMILES")
+    molecule_chembl_id: str | None = Field(
+        None, description="Resolved ChEMBL molecule ID, or None if the structure is not in ChEMBL"
+    )
+    primary_target: str | None = Field(
+        None, description="Highest-pChEMBL measured target (the presumed primary target)"
+    )
+    selectivity_label: str = Field(
+        description="Selective | Moderately selective | Promiscuous | Unknown (no measured data)"
+    )
+    measured_off_targets: list[OffTarget] = Field(
+        default_factory=list, description="Human targets with measured ChEMBL pChEMBL activity"
+    )
+    predicted_off_targets: list[PredictedOffTarget] = Field(
+        default_factory=list, description="Corpus similarity-predicted off-target kinases"
+    )
+    corpus_used: bool = Field(
+        default=False, description="Whether the predicted layer ran (a built corpus was available)"
+    )
+
+    def to_markdown(self) -> str:
+        header = self.molecule_chembl_id or self.query_smiles
+        lines = [
+            f"## Selectivity profile: `{header}`",
+            "",
+            f"**Primary target:** {self.primary_target or '—'}",
+            f"**Selectivity:** {self.selectivity_label} "
+            f"({len(self.measured_off_targets)} measured target(s))",
+            "",
+            "> **Measured = demonstrated ChEMBL bioactivity; absence ≠ selectivity** (sparse, uneven "
+            "coverage). Predicted off-targets are a chemical-similarity hypothesis, not measurements.",
+            "",
+            "### Measured off-targets (ChEMBL)",
+        ]
+        if self.measured_off_targets:
+            lines += ["| Target | Gene | Best pChEMBL | n |", "|---|---|---:|---:|"]
+            for o in self.measured_off_targets:
+                lines.append(
+                    f"| {o.target_pref_name[:42]} | {o.gene_symbol or '—'} | "
+                    f"{o.best_pchembl:.1f} | {o.n_activities} |"
+                )
+        elif self.molecule_chembl_id:
+            lines.append("_Compound is in ChEMBL but has no human pChEMBL off-target activity._")
+        else:
+            lines.append("_Structure not found in ChEMBL — no measured off-target data._")
+
+        if self.corpus_used:
+            lines += ["", "### Predicted off-targets (corpus — chemical-similarity analogy)"]
+            if self.predicted_off_targets:
+                lines += [
+                    "| Kinase | Max Tanimoto | Analog pChEMBL | Analogs |",
+                    "|---|---:|---:|---:|",
+                ]
+                for p in self.predicted_off_targets:
+                    ap = (
+                        f"{p.analog_best_pchembl:.1f}" if p.analog_best_pchembl is not None else "—"
+                    )
+                    lines.append(
+                        f"| {p.gene_symbol} | {p.max_tanimoto:.2f} | {ap} | {p.n_analogs} |"
+                    )
+                lines.append(
+                    "\n_Predicted by similarity to known corpus binders — a hypothesis to test, "
+                    "not a measured activity._"
+                )
+            else:
+                lines.append("_No corpus kinases with a sufficiently similar known binder._")
+        return "\n".join(lines)
+
+
 class SimilarCompound(BaseModel):
     """A compound returned by a structure-based search of PubChem."""
 
