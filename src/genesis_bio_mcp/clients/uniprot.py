@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -9,6 +10,9 @@ import httpx
 from genesis_bio_mcp.models import KnownVariant, ProteinInfo
 
 logger = logging.getLogger(__name__)
+
+# UniProt search/FASTA fan-out; cap concurrent requests.
+_SEMAPHORE = asyncio.Semaphore(3)
 
 _BASE_URL = "https://rest.uniprot.org/uniprotkb"
 _FIELDS = (
@@ -71,7 +75,8 @@ class UniProtClient:
             return self._fasta_cache[cache_key]
         url = f"{_BASE_URL}/{acc}.fasta"
         try:
-            resp = await self._client.get(url, timeout=20.0)
+            async with _SEMAPHORE:
+                resp = await self._client.get(url, timeout=20.0)
             resp.raise_for_status()
         except Exception as exc:
             logger.warning("UniProt FASTA fetch failed for %s: %s", acc, exc)
@@ -109,7 +114,8 @@ class UniProtClient:
             "size": "1",
         }
         try:
-            resp = await self._client.get(f"{_BASE_URL}/search", params=params)
+            async with _SEMAPHORE:
+                resp = await self._client.get(f"{_BASE_URL}/search", params=params)
             resp.raise_for_status()
             results = resp.json().get("results", [])
             return results[0] if results else None
@@ -128,7 +134,8 @@ class UniProtClient:
         # no exact match exists.
         params = {"query": query, "fields": _FIELDS, "format": "json", "size": "5"}
         try:
-            resp = await self._client.get(f"{_BASE_URL}/search", params=params)
+            async with _SEMAPHORE:
+                resp = await self._client.get(f"{_BASE_URL}/search", params=params)
             resp.raise_for_status()
             results = resp.json().get("results", [])
         except Exception as exc:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -14,6 +15,9 @@ from genesis_bio_mcp.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Cap concurrent EBI AlphaFold + RCSB fetches.
+_SEMAPHORE = asyncio.Semaphore(3)
 
 _ALPHAFOLD_URL = "https://alphafold.ebi.ac.uk/api/prediction/{uniprot_id}"
 
@@ -94,7 +98,8 @@ class AlphaFoldClient:
             return None
 
         try:
-            resp = await self._client.get(pdb_url, timeout=25.0)
+            async with _SEMAPHORE:
+                resp = await self._client.get(pdb_url, timeout=25.0)
             resp.raise_for_status()
             plddts = _parse_plddt_from_pdb(resp.text)
         except Exception as exc:
@@ -124,7 +129,8 @@ class AlphaFoldClient:
             logger.info("AlphaFold: no model PDB URL for %s", uniprot_accession)
             return None
         try:
-            resp = await self._client.get(pdb_url, timeout=25.0)
+            async with _SEMAPHORE:
+                resp = await self._client.get(pdb_url, timeout=25.0)
             resp.raise_for_status()
             return resp.text
         except Exception as exc:
@@ -136,10 +142,11 @@ class AlphaFoldClient:
     ) -> tuple[float | None, str | None, str | None]:
         """Return (mean_plddt, pdb_url, version) from AlphaFold API."""
         try:
-            resp = await self._client.get(
-                _ALPHAFOLD_URL.format(uniprot_id=uniprot_id),
-                timeout=20.0,
-            )
+            async with _SEMAPHORE:
+                resp = await self._client.get(
+                    _ALPHAFOLD_URL.format(uniprot_id=uniprot_id),
+                    timeout=20.0,
+                )
             if resp.status_code == 404:
                 logger.info("AlphaFold: no model for %s", uniprot_id)
                 return None, None, None
@@ -179,11 +186,12 @@ class AlphaFoldClient:
             },
         }
         try:
-            resp = await self._client.post(
-                _RCSB_SEARCH_URL,
-                json=query,
-                timeout=20.0,
-            )
+            async with _SEMAPHORE:
+                resp = await self._client.post(
+                    _RCSB_SEARCH_URL,
+                    json=query,
+                    timeout=20.0,
+                )
             if resp.status_code == 204:
                 return [], 0
             resp.raise_for_status()
@@ -207,10 +215,11 @@ class AlphaFoldClient:
     async def _fetch_pdb_entry(self, pdb_id: str) -> PDBStructure | None:
         """Fetch metadata for a single PDB entry."""
         try:
-            resp = await self._client.get(
-                _RCSB_ENTRY_URL.format(pdb_id=pdb_id),
-                timeout=15.0,
-            )
+            async with _SEMAPHORE:
+                resp = await self._client.get(
+                    _RCSB_ENTRY_URL.format(pdb_id=pdb_id),
+                    timeout=15.0,
+                )
             resp.raise_for_status()
             data = resp.json()
 

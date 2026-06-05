@@ -13,6 +13,7 @@ Every other client in the repo keeps using the shared
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -21,6 +22,9 @@ from curl_cffi.requests import AsyncSession
 from genesis_bio_mcp.models import ClinicalTrial
 
 logger = logging.getLogger(__name__)
+
+# ClinicalTrials.gov sits behind Cloudflare; keep concurrency modest.
+_SEMAPHORE = asyncio.Semaphore(2)
 
 _CT_URL = "https://clinicaltrials.gov/api/v2/studies"
 
@@ -58,7 +62,7 @@ class ClinicalTrialsClient:
     ) -> tuple[list[ClinicalTrial], dict[str, int]]:
         """Return trials mentioning a gene target and counts by phase."""
         try:
-            async with AsyncSession(impersonate=_IMPERSONATE_PROFILE) as s:
+            async with _SEMAPHORE, AsyncSession(impersonate=_IMPERSONATE_PROFILE) as s:
                 resp = await s.get(
                     _CT_URL,
                     params={

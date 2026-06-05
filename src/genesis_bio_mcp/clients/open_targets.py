@@ -15,6 +15,9 @@ from genesis_bio_mcp.models import (
 
 logger = logging.getLogger(__name__)
 
+# All OT GraphQL calls funnel through _graphql; cap concurrent posts.
+_SEMAPHORE = asyncio.Semaphore(3)
+
 _GRAPHQL_URL = "https://api.platform.opentargets.org/api/v4/graphql"
 
 _GENE_SEARCH_QUERY = """
@@ -234,12 +237,13 @@ class OpenTargetsClient:
     async def _graphql(self, query: str, variables: dict) -> dict | None:
         for attempt in range(2):
             try:
-                resp = await self._client.post(
-                    _GRAPHQL_URL,
-                    json={"query": query, "variables": variables},
-                    headers={"Content-Type": "application/json"},
-                    timeout=30.0,
-                )
+                async with _SEMAPHORE:
+                    resp = await self._client.post(
+                        _GRAPHQL_URL,
+                        json={"query": query, "variables": variables},
+                        headers={"Content-Type": "application/json"},
+                        timeout=30.0,
+                    )
                 resp.raise_for_status()
                 body = resp.json()
                 if "errors" in body:
