@@ -110,6 +110,12 @@ class MaveDBClient:
                 target_gene_sym = first.get("name") or None
                 uniprot_acc = first.get("uniprotIdFromMappedMetadata") or None
 
+            # MaveDB's text search also matches the gene name in unrelated study
+            # titles/abstracts (e.g. a BAP1 set that mentions BRCA1), which flooded
+            # results with off-gene datasets. Keep only sets that TARGET the gene.
+            if not target_gene_sym or target_gene_sym.strip().upper() != symbol:
+                continue
+
             # Extract PMID / DOI from primaryPublicationIdentifiers
             pmid: str | None = None
             doi: str | None = None

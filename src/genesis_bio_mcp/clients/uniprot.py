@@ -250,8 +250,16 @@ def _parse_entry(entry: dict, gene_symbol: str) -> ProteinInfo:
             orig = feat.get("alternativeSequence", {}).get("originalSequence", "")
             alts = feat.get("alternativeSequence", {}).get("alternativeSequences", [])
             alt = alts[0] if alts else ""
+            # Skip features with no concrete substitution (no original AND no
+            # replacement) -- these rendered as a bare position like "30".
+            if not orig and not alt:
+                continue
             desc = feat.get("description", "")
-            disease = desc if "In" in desc else None
+            # UniProt disease-variant descriptions start with "In <DISEASE>; ...";
+            # take just the disease token. Non-disease polymorphisms -> None.
+            disease = None
+            if desc.startswith("In "):
+                disease = desc[3:].split(";")[0].strip() or None
             known_variants.append(
                 KnownVariant(position=pos, original=orig, variant=alt, disease=disease)
             )
