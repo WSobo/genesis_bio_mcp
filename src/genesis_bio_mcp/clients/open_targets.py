@@ -7,6 +7,7 @@ import logging
 
 import httpx
 
+from genesis_bio_mcp.config.settings import settings
 from genesis_bio_mcp.models import (
     DiseaseLinkEvidence,
     TargetDiseaseAssociation,
@@ -157,7 +158,12 @@ class OpenTargetsClient:
         "type 2 diabetes mellitus" — well below threshold).
         """
         best: tuple[float, dict, str] | None = None  # (score, hit, winning_variant)
-        for candidate in _normalize_indication_variants(name):
+        # Cap the variant fan-out so disease resolution can't loop over many slow
+        # GraphQL calls; the early-exit on a high-confidence match still applies.
+        variants = list(_normalize_indication_variants(name))[
+            : settings.open_targets_disease_variant_cap
+        ]
+        for candidate in variants:
             data = await self._graphql(_DISEASE_SEARCH_QUERY, {"name": candidate})
             if data is None:
                 continue

@@ -315,7 +315,12 @@ class GwasClient:
             except Exception:
                 return link, {}
 
-        fetched = await asyncio.gather(*[_fetch_study(link) for link in pending])
+        # Cap the study-detail fan-out: a SNP with thousands of associations could
+        # otherwise spawn an unbounded gather, which the per-source budget would
+        # cancel mid-flight (losing the whole GWAS lookup). Capping returns partial
+        # study data within budget instead.
+        capped = list(pending)[: settings.gwas_study_fanout_cap]
+        fetched = await asyncio.gather(*[_fetch_study(link) for link in capped])
         study_cache = dict(fetched)
 
         for assoc in assocs:
