@@ -1304,8 +1304,15 @@ async def get_compounds(params: GetCompoundsInput) -> str:
     """
     symbol, _ = await _resolve_symbol(params.gene_symbol)
     result = await mcp.state.pubchem.get_compounds(symbol)
+    # get_compounds returns Compounds(total=0) for a genuine absence and None only
+    # when the PubChem upstream errored — so a None here is an availability problem,
+    # not "no compounds exist".
     return _fmt(
-        result, params.response_format, f"No PubChem bioactivity data found for gene '{symbol}'."
+        result,
+        params.response_format,
+        f"PubChem is temporarily unavailable for gene '{symbol}' (upstream API error); "
+        "this is not a confirmed absence of compounds — please retry.",
+        error_status="UpstreamUnavailable",
     )
 
 
