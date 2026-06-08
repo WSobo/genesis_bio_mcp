@@ -209,37 +209,27 @@ class GwasClient:
         return None
 
     async def _fetch_all(self, symbol: str, ncbi_gene_id: str | None) -> list[GwasHit]:
-        """Run primary (gene-ID) and SNP paths concurrently, return merged results.
+        """Fetch a gene's GWAS associations, preferring the cheap gene-ID path.
 
-        Uses asyncio.wait with a 15s global bound so worst case = max(paths),
-        not sum(paths). Whatever completes within the window is kept; the rest
-        is cancelled.
+        The gene-ID path (findByEntrezMappedGeneId, size=200) is a SINGLE HTTP call
+        and is the comprehensive primary source. The SNP path (findByGene -> per-SNP
+        associations -> study details) issues up to ~36 semaphore-gated calls, so
+        running it for every gene saturates the shared GWAS semaphore and, under a
+        multi-gene compare_targets burst, starves every gene's cheap primary call so
+        they all gap out (even though each gene returns data when queried alone).
+
+        We therefore use the SNP fan-out only as a FALLBACK — when the gene-ID path
+        yields nothing, or there is no NCBI gene ID. This keeps the common case at
+        one call per gene (no cross-gene contention) while preserving coverage for
+        genes the Entrez-ID mapping misses. The gene-ID call's own 25s timeout and
+        the caller's per-source budget bound the wall-clock; the old 15s race window
+        is no longer needed.
         """
-        tasks: list[asyncio.Task] = []
         if ncbi_gene_id:
-            tasks.append(asyncio.create_task(self._fetch_by_gene_id(ncbi_gene_id)))
-        tasks.append(asyncio.create_task(self._fetch_by_gene_symbol(symbol)))
-
-        if not tasks:
-            return []
-
-        # 15s global bound: if primary times out at 25s but SNP returns in 12s,
-        # we get SNP results at the 15s mark instead of waiting 45s total.
-        done, pending = await asyncio.wait(tasks, timeout=15.0)
-        for t in pending:
-            t.cancel()
-
-        merged: list[GwasHit] = []
-        for t in done:
-            try:
-                merged.extend(t.result())
-            except Exception as exc:
-                logger.warning("GWAS fetch path failed: %s", repr(exc))
-
-        if not merged and pending:
-            logger.warning("GWAS: all fetch paths timed out for %s within 15s window", symbol)
-
-        return merged
+            primary = await self._fetch_by_gene_id(ncbi_gene_id)
+            if primary:
+                return primary
+        return await self._fetch_by_gene_symbol(symbol)
 
     async def _fetch_by_gene_symbol(self, symbol: str) -> list[GwasHit]:
         url = f"{_BASE_URL}/singleNucleotidePolymorphisms/search/findByGene"
