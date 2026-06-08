@@ -67,6 +67,55 @@ class Settings(BaseSettings):
         description="Default timeout in seconds for the shared httpx.AsyncClient.",
         gt=0,
     )
+    httpx_max_connections: int = Field(
+        default=100,
+        description="Max total connections in the shared httpx.AsyncClient pool.",
+        gt=0,
+    )
+    httpx_max_keepalive: int = Field(
+        default=20,
+        description="Max idle keep-alive connections in the shared httpx pool.",
+        gt=0,
+    )
+    httpx_pool_timeout_secs: float = Field(
+        default=10.0,
+        description="Max seconds to wait for a free connection from the shared httpx "
+        "pool before erroring, instead of silently stalling for minutes.",
+        gt=0,
+    )
+
+    # ---------------------------------------------------------------------------
+    # Target-prioritization reliability budgets
+    # ---------------------------------------------------------------------------
+
+    prioritize_source_budget_secs: float = Field(
+        default=45.0,
+        description="Per-source timeout (s) for each sub-query in prioritize_target. A "
+        "slow source degrades to a data gap instead of hanging the whole assessment.",
+        gt=0,
+    )
+    prioritize_gene_budget_secs: float = Field(
+        default=90.0,
+        description="Overall budget (s) for one gene's assessment inside compare_targets; "
+        "a gene exceeding it becomes a timed-out row rather than wedging the comparison.",
+        gt=0,
+    )
+    compare_gene_concurrency: int = Field(
+        default=3,
+        description="Max genes assessed concurrently inside compare_targets. Bounds "
+        "contention on the small per-source semaphores so genes don't starve each other.",
+        gt=0,
+    )
+    gwas_study_fanout_cap: int = Field(
+        default=25,
+        description="Max GWAS Catalog study-detail sub-fetches fanned out per gene.",
+        gt=0,
+    )
+    open_targets_disease_variant_cap: int = Field(
+        default=5,
+        description="Max indication-name variants tried when resolving a disease in Open Targets.",
+        gt=0,
+    )
 
     # ---------------------------------------------------------------------------
     # DepMap cache
