@@ -444,3 +444,39 @@ def test_comparison_matrix_breaks_ties_alphabetically():
     b = _row("AAA", {"Disease association": "strong"})
     md = ComparisonReport(indication="x", rows=[a, b]).to_markdown()
     assert md.index("AAA") < md.index("BBB")
+
+
+# ---------------------------------------------------------------------------
+# OT-authoritative genetics (GWAS corroborates, does not drive when OT present)
+# ---------------------------------------------------------------------------
+
+
+def test_genetic_low_ot_caps_gwas_from_forcing_strong():
+    """A low OT genetic score caps the rating even with 3+ trait-relevant GWAS
+    hits — GWAS corroborates but cannot independently force strong when OT is low."""
+    axis = _bare(
+        disease_assoc=_assoc(genetic_association_score=0.1),
+        gwas_ev=_gwas(3, "melanoma"),
+        indication="melanoma",
+    )["Genetic evidence"]
+    assert axis.rating == "moderate"
+
+
+def test_genetic_gwas_corroborates_moderate_ot_to_strong():
+    """A moderate OT genetic signal (>=0.3) plus 3 trait-relevant GWAS hits → strong."""
+    axis = _bare(
+        disease_assoc=_assoc(genetic_association_score=0.5),
+        gwas_ev=_gwas(3, "melanoma"),
+        indication="melanoma",
+    )["Genetic evidence"]
+    assert axis.rating == "strong"
+
+
+def test_genetic_off_trait_gwas_does_not_downgrade_ot():
+    """Off-trait GWAS hits never downgrade an OT-anchored verdict."""
+    axis = _bare(
+        disease_assoc=_assoc(genetic_association_score=0.55),
+        gwas_ev=_gwas(5, "melanoma", fallback=True),
+        indication="melanoma",
+    )["Genetic evidence"]
+    assert axis.rating == "moderate"
