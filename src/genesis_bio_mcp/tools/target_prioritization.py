@@ -581,11 +581,16 @@ def _build_evidence_profile(
             EvidenceAxis(name="Clinical validation", rating="n/a", detail="no Open Targets data")
         )
 
-    # --- Genetic evidence (trait-relevant GWAS hits + OT genetic_association) -
-    # The trait-relevance filter is a correctness check (does the hit's trait
-    # actually match the indication?), not a score weight. A high OT genetic
-    # score is the monogenic/Mendelian signature, for which an empty GWAS
-    # Catalog is expected rather than weak evidence.
+    # --- Genetic evidence (Open Targets genetic_association is authoritative) --
+    # OT's genetic_association_score already aggregates GWAS + colocalization +
+    # curated genetics, so it ANCHORS this axis. GWAS Catalog hits are supporting
+    # detail: a strong trait-relevant set can lift a moderate OT signal to strong,
+    # but GWAS never independently inflates or downgrades an OT-backed verdict — so
+    # brittle GWAS trait-label matching can't distort the rating. GWAS drives the
+    # rating only when there is no OT data at all. The trait-relevance filter stays
+    # a correctness check on which hits count. A high OT genetic score is the
+    # monogenic/Mendelian signature, for which an empty GWAS Catalog is expected
+    # rather than weak evidence.
     ot_genetic = (disease_assoc.genetic_association_score or 0.0) if disease_assoc else 0.0
     trait_relevant_hits = 0
     gwas_note: str | None = None
@@ -611,18 +616,34 @@ def _build_evidence_profile(
             )
         )
     else:
-        if ot_genetic >= OT_GENETIC_MONOGENIC_THRESHOLD:
-            rating = "strong"
-            if trait_relevant_hits == 0:
-                detail_parts.append("monogenic/Mendelian signature — GWAS Catalog absent by design")
-        elif trait_relevant_hits >= 3:
-            rating = "strong"
-        elif ot_genetic >= 0.3 or trait_relevant_hits >= 1:
-            rating = "moderate"
-        elif (gwas_ev is not None and gwas_ev.total_associations > 0) or ot_genetic > 0:
-            rating = "weak"
+        if disease_assoc is not None:
+            # OT present → OT anchors the rating; trait-relevant GWAS corroborates upward only.
+            if ot_genetic >= OT_GENETIC_MONOGENIC_THRESHOLD:
+                rating = "strong"
+                if trait_relevant_hits == 0:
+                    detail_parts.append(
+                        "monogenic/Mendelian signature — GWAS Catalog absent by design"
+                    )
+            elif ot_genetic >= 0.3:
+                rating = "strong" if trait_relevant_hits >= 3 else "moderate"
+            elif ot_genetic > 0:
+                rating = "moderate" if trait_relevant_hits >= 1 else "weak"
+            elif trait_relevant_hits >= 3:
+                rating = "moderate"
+            elif trait_relevant_hits >= 1:
+                rating = "weak"
+            else:
+                rating = "none"
         else:
-            rating = "none"
+            # No OT data → GWAS Catalog is the only genetic signal and drives the rating.
+            if trait_relevant_hits >= 3:
+                rating = "strong"
+            elif trait_relevant_hits >= 1:
+                rating = "moderate"
+            elif gwas_ev is not None and gwas_ev.total_associations > 0:
+                rating = "weak"
+            else:
+                rating = "none"
         axes.append(
             EvidenceAxis(
                 name="Genetic evidence",
