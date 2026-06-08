@@ -477,8 +477,8 @@ async def test_pubchem_retries_on_503(http_client):
 
 
 @respx.mock
-async def test_pubchem_returns_none_when_no_assays(http_client):
-    # Both PUG REST and Entrez return empty
+async def test_pubchem_returns_empty_when_no_assays(http_client):
+    # Both PUG REST and Entrez are reachable but report no assays (404 / empty list).
     respx.get(url__regex=r"gene/genesymbol/.+/summary").mock(return_value=httpx.Response(404))
     respx.get(url__regex=r"assay/target/genesymbol").mock(return_value=httpx.Response(404))
     respx.get(url__regex=r"esearch\.fcgi").mock(
@@ -486,7 +486,10 @@ async def test_pubchem_returns_none_when_no_assays(http_client):
     )
     client = PubChemClient(http_client)
     result = await client.get_compounds("FAKEGENE")
-    assert result is None
+    # Reachable but genuinely empty → a real zero-compound result, not None (None now
+    # signals an unavailable upstream).
+    assert result is not None
+    assert result.total_active_compounds == 0
 
 
 @respx.mock
@@ -601,7 +604,9 @@ async def test_pubchem_returns_none_when_no_active_rows_match_gene(http_client):
     )
     client = PubChemClient(http_client)
     result = await client.get_compounds("BRAF")
-    assert result is None
+    # Assays reachable but no active rows match the gene → genuine zero, not None.
+    assert result is not None
+    assert result.total_active_compounds == 0
 
 
 # ---------------------------------------------------------------------------
@@ -5565,3 +5570,16 @@ async def test_reactome_pathway_search_prefers_non_disease_entry(http_client):
     client2 = ReactomeClient(http_client)
     stid2 = await client2._search_pathway_stid("MAPK signaling")
     assert stid2 == "R-HSA-9652817"
+
+
+@respx.mock
+async def test_pubchem_returns_none_when_upstream_unavailable(http_client):
+    """A 5xx on the assay-lookup endpoints means PubChem is unavailable: get_compounds
+    returns None (an availability signal), NOT a genuine zero-compound result, so the
+    tool can say "temporarily unavailable" instead of "no compounds found"."""
+    respx.get(url__regex=r"gene/genesymbol/.+/summary").mock(return_value=httpx.Response(500))
+    respx.get(url__regex=r"assay/target/genesymbol").mock(return_value=httpx.Response(500))
+    respx.get(url__regex=r"esearch\.fcgi").mock(return_value=httpx.Response(500))
+    client = PubChemClient(http_client)
+    result = await client.get_compounds("BRAF")
+    assert result is None
