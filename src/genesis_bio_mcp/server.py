@@ -225,7 +225,13 @@ async def lifespan(server: FastMCP):
         )
 
     async with httpx.AsyncClient(
-        headers=_HEADERS, timeout=settings.httpx_timeout, follow_redirects=True
+        headers=_HEADERS,
+        timeout=httpx.Timeout(settings.httpx_timeout, pool=settings.httpx_pool_timeout_secs),
+        limits=httpx.Limits(
+            max_connections=settings.httpx_max_connections,
+            max_keepalive_connections=settings.httpx_max_keepalive,
+        ),
+        follow_redirects=True,
     ) as client:
         # Fetch DepMap gene_dep_summary once at startup for instant lookups
         gene_dep_cache = await load_depmap_cache(client)
@@ -2453,20 +2459,31 @@ async def compare_targets(params: CompareTargetsInput) -> str:
         gene_symbols = gene_symbols[:5]
         logger.warning("compare_targets: capped to 5 genes, dropped: %s", dropped)
 
-    reports = await asyncio.gather(
-        *[
-            _prioritize_target(
-                gene_symbol=sym,
-                indication=params.indication,
-                uniprot=mcp.state.uniprot,
-                open_targets=mcp.state.open_targets,
-                depmap=mcp.state.depmap,
-                gwas=mcp.state.gwas,
-                pubchem=mcp.state.pubchem,
-                chembl=mcp.state.chembl,
+    # Bound gene-level concurrency so 5 genes don't oversubscribe the small
+    # per-source semaphores (ChEMBL=2, OT=3) and starve each other, and cap each
+    # gene's wall-clock so one slow gene becomes a timed-out row instead of
+    # wedging the whole comparison. A gene exceeding its budget raises
+    # TimeoutError, which _build_comparison_row renders as a failed row.
+    gene_sem = asyncio.Semaphore(settings.compare_gene_concurrency)
+
+    async def _assess(sym: str):
+        async with gene_sem:
+            return await asyncio.wait_for(
+                _prioritize_target(
+                    gene_symbol=sym,
+                    indication=params.indication,
+                    uniprot=mcp.state.uniprot,
+                    open_targets=mcp.state.open_targets,
+                    depmap=mcp.state.depmap,
+                    gwas=mcp.state.gwas,
+                    pubchem=mcp.state.pubchem,
+                    chembl=mcp.state.chembl,
+                ),
+                timeout=settings.prioritize_gene_budget_secs,
             )
-            for sym in gene_symbols
-        ],
+
+    reports = await asyncio.gather(
+        *[_assess(sym) for sym in gene_symbols],
         return_exceptions=True,
     )
 

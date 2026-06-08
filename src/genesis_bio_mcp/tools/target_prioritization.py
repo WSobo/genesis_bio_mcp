@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from genesis_bio_mcp.clients.dgidb import _DIRECT_TYPES
+from genesis_bio_mcp.config.settings import settings
 from genesis_bio_mcp.models import (
     _EXPRESSION_RATING,
     CancerDependency,
@@ -361,20 +362,34 @@ async def prioritize_target(
     )
 
 
-async def _safe(coro, fallback=None) -> tuple[Any, str | None]:
-    """Await a coroutine, returning (result, error_str). Never raises."""
+async def _safe(coro, fallback=None, *, timeout: float | None = None) -> tuple[Any, str | None]:
+    """Await a coroutine, returning (result, error_str). Never raises.
+
+    ``timeout`` (seconds, default ``settings.prioritize_source_budget_secs``) bounds
+    the await via ``asyncio.wait_for`` so a single slow/hung sub-query can't stall the
+    whole assessment. On expiry the coroutine is cancelled — releasing any client
+    semaphore and HTTP connection it held — and we degrade to ``fallback`` with a
+    "timed out" marker that surfaces as a data gap.
+    """
+    if timeout is None:
+        timeout = settings.prioritize_source_budget_secs
     try:
-        result = await coro
+        result = await asyncio.wait_for(coro, timeout)
         return result, None
+    except TimeoutError:
+        logger.warning("Tool sub-query timed out after %.0fs", timeout)
+        return fallback, f"timed out after {timeout:.0f}s"
     except Exception as exc:
         logger.warning("Tool sub-query failed: %s", exc)
         return fallback, str(exc)
 
 
-async def _safe_timed(name: str, coro, fallback=None) -> tuple[Any, str | None, float]:
+async def _safe_timed(
+    name: str, coro, fallback=None, *, timeout: float | None = None
+) -> tuple[Any, str | None, float]:
     """Like _safe(), but also returns wall-clock seconds for the awaited coroutine."""
     t0 = asyncio.get_running_loop().time()
-    result, err = await _safe(coro, fallback)
+    result, err = await _safe(coro, fallback, timeout=timeout)
     return result, err, asyncio.get_running_loop().time() - t0
 
 
