@@ -70,17 +70,32 @@ class PubChemClient:
         """Return active small molecules with bioactivity against a gene target."""
         symbol = gene_symbol.strip().upper()
 
+        # ``None`` from an assay-lookup helper signals an UPSTREAM ERROR (timeout /
+        # 5xx / network); ``[]`` means PubChem was reachable and genuinely reported
+        # no assays. Keeping them apart stops a transient outage from masquerading
+        # as a confirmed absence of compounds.
         gene_id, aids = await asyncio.gather(
             self._resolve_gene_id(symbol),
             self._get_aids_by_gene_symbol(symbol),
         )
+        primary_errored = aids is None
 
-        # Fallback to Entrez assay text search if PUG REST returned no AIDs.
         if not aids:
-            aids = await self._search_assays_entrez(symbol)
+            # Primary returned no AIDs (error or genuine empty); try the Entrez fallback.
+            fallback = await self._search_assays_entrez(symbol)
+            if fallback is None:
+                # Fallback also errored. If the primary errored too, every assay-lookup
+                # path failed → PubChem is unavailable, not empty.
+                if primary_errored:
+                    logger.warning("PubChem unavailable for '%s' — assay lookups failed", symbol)
+                    return None
+                fallback = []  # primary reachably reported no AIDs; trust that
+            aids = fallback
+
+        empty = Compounds(gene_symbol=symbol, total_active_compounds=0, compounds=[])
         if not aids:
             logger.info("PubChem: no assays found for gene '%s'", symbol)
-            return None
+            return empty
         if gene_id is None:
             logger.info(
                 "PubChem: could not resolve GeneID for '%s' — skipping target filter", symbol
@@ -94,12 +109,19 @@ class PubChemClient:
             return_exceptions=True,
         )
         all_compounds: list[CompoundActivity] = []
+        n_errored = 0
         for r in results:
             if isinstance(r, list):
                 all_compounds.extend(r)
+            else:
+                n_errored += 1
 
         if not all_compounds:
-            return None
+            # Got AIDs but every concise table failed to load → unavailable, not empty.
+            if results and n_errored == len(results):
+                logger.warning("PubChem unavailable for '%s' — all assay tables failed", symbol)
+                return None
+            return empty
 
         # Dedup by CID, keep the most potent measurement (lowest IC50 in nM).
         by_cid: dict[int, CompoundActivity] = {}
@@ -242,20 +264,28 @@ class PubChemClient:
                 return None
         return None
 
-    async def _get_aids_by_gene_symbol(self, symbol: str) -> list[int]:
-        """Get all PubChem assay IDs targeting a gene symbol."""
+    async def _get_aids_by_gene_symbol(self, symbol: str) -> list[int] | None:
+        """Get all PubChem assay IDs targeting a gene symbol.
+
+        Returns ``[]`` when PubChem is reachable but has no assays for the gene
+        (404 / empty list), and ``None`` on an upstream error so the caller can
+        tell "no data" apart from "couldn't reach PubChem".
+        """
         url = f"{_PUG_BASE}/assay/target/genesymbol/{symbol}/aids/JSON"
         try:
             data = await self._get(url)
             if data is None:
-                return []
+                return []  # 404 → reachable, no assays for this gene
             return data.get("IdentifierList", {}).get("AID", [])
         except Exception as exc:
             logger.debug("PubChem AID lookup failed for '%s': %s", symbol, exc)
-            return []
+            return None  # upstream error — distinct from a genuine empty list
 
-    async def _search_assays_entrez(self, symbol: str) -> list[int]:
-        """Fallback: NCBI Entrez assay search when PUG REST returns nothing."""
+    async def _search_assays_entrez(self, symbol: str) -> list[int] | None:
+        """Fallback: NCBI Entrez assay search when PUG REST returns nothing.
+
+        ``None`` on an upstream error, ``[]`` when reachable with no hits.
+        """
         term = f'("{symbol}"[Gene Symbol]) AND "active"[Activity Outcome]'
         params = {
             "db": "pcassay",
@@ -272,7 +302,7 @@ class PubChemClient:
             return [int(i) for i in ids]
         except Exception as exc:
             logger.debug("Entrez BioAssay search failed for '%s': %s", symbol, exc)
-            return []
+            return None  # upstream error — distinct from a genuine empty list
 
     async def _extract_active_from_concise(
         self, aid: int, gene_id: int | None
@@ -284,11 +314,10 @@ class PubChemClient:
         list by gene symbol so the cross-target leakage is bounded.
         """
         url = f"{_PUG_BASE}/assay/aid/{aid}/concise/JSON"
-        try:
-            data = await self._get(url)
-        except Exception as exc:
-            logger.debug("PubChem concise fetch failed for AID %d: %s", aid, exc)
-            return []
+        # Let _get errors (timeout / 5xx) propagate: the caller gathers with
+        # return_exceptions=True and treats "every table errored" as unavailable,
+        # not as a genuine zero-compound result. A 404 returns None (no data) below.
+        data = await self._get(url)
         if not data:
             return []
 

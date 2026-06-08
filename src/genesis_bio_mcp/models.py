@@ -1857,6 +1857,11 @@ class Compounds(BaseModel):
     )
 
     def to_markdown(self) -> str:
+        if self.total_active_compounds == 0:
+            return (
+                f"## PubChem Compounds: {self.gene_symbol}\n"
+                "**No active compounds found** in PubChem bioactivity assays for this target."
+            )
         tractability = "Well-explored" if self.total_active_compounds > 50 else "Emerging"
         lines = [
             f"## PubChem Compounds: {self.gene_symbol}",

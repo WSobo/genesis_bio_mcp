@@ -321,7 +321,10 @@ def build_tool_registry(state: Any) -> dict[str, ToolSpec]:
     async def _get_compounds_fn(gene_symbol: str) -> str:
         result = await state.pubchem.get_compounds(gene_symbol)
         if result is None:
-            return f"No PubChem bioactivity data found for '{gene_symbol}'."
+            return (
+                f"PubChem is temporarily unavailable for '{gene_symbol}' (upstream API error); "
+                "not a confirmed absence of compounds — please retry."
+            )
         return result.to_markdown()
 
     async def _compute_molecular_properties_fn(smiles: str) -> str:
