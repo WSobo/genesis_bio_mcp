@@ -43,6 +43,7 @@ NO built-in Read/Grep/Glob. NO raw ls/cat/git. MUST use bash `rtk <cmd>` (`rtk l
 - All tools must include `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`).
 - Tool names: `{service}_{action}_{resource}` snake_case.
 - All tools support `response_format` param (`"markdown"` default, `"json"` for programmatic use).
+- Orchestration tools (`prioritize_target`, `compare_targets`) MUST self-bound so a slow or hung source can never wedge the server: every sub-query goes through `_safe`/`_safe_timed` (per-source `asyncio.wait_for`, `settings.prioritize_source_budget_secs`) which cancels on timeout — releasing that source's semaphore — and degrades to a data gap; multi-gene fan-out is concurrency-capped (`settings.compare_gene_concurrency`) and per-gene-budgeted. See `tools/target_prioritization.py`.
 
 ### Client pattern (`src/genesis_bio_mcp/clients/<source>.py`)
 
@@ -50,6 +51,8 @@ NO built-in Read/Grep/Glob. NO raw ls/cat/git. MUST use bash `rtk <cmd>` (`rtk l
 - Module-level semaphore: `_SEMAPHORE = asyncio.Semaphore(N)` — N=2 for aggressive APIs (BioGRID, STRING), N=3 for most others. Acquire with `async with _SEMAPHORE:`.
 - Optional session cache: `self._cache: dict[str, Model] = {}` — check before calling, store only on success. NEVER cache failures or `None` results.
 - All HTTP calls wrapped in `try/except Exception` — return `None` or `[]` on error; `logger.warning("API failed for %s: %s", symbol, exc)`. Never raise to the caller.
+- **Error ≠ absence.** A transient upstream failure (timeout/5xx/network) MUST be distinguishable from a genuine empty result, so an outage never renders as confirmed "no data". Signal *unavailable* with `None` and a genuine *empty* with a real zero-valued model (e.g. `Compounds(total_active_compounds=0)`); tools render `None` via `_fmt(..., error_status="UpstreamUnavailable")`. Reference: `clients/pubchem.py` (assay-lookup helpers return `None` on error vs `[]` on empty).
+- **Bound every fan-out.** Any per-item concurrent fan-out (SNP→study, disease-name variants, etc.) MUST be capped (settings-backed), and prefer a cheap primary call with the expensive path as a *fallback* — so multi-gene orchestration can't saturate the shared client / per-source semaphore. Reference: `clients/gwas.py` `_fetch_all` (gene-ID path first; SNP fan-out only when it is empty).
 - Always set explicit `timeout=` on every HTTP call (20–25 s is standard).
 - Key-guard: check `os.environ.get("API_KEY")` at the top of the public method; return `None` immediately with a `logger.warning` if absent.
 - `logger.debug(...)` for cache hits; `logger.warning(...)` for recoverable failures.
