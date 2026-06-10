@@ -1,5 +1,71 @@
 # Genesis Bio MCP Rules
 
+## Overview — what this repo is
+
+Genesis Bio MCP is a **keyless-first** MCP server (FastMCP, `stdio` transport) that wraps the major
+public biomedical databases behind several dozen tools for AI-driven **drug-target assessment**:
+gene/protein annotation, disease association, genetics & variants, 3D structure, druggability &
+chemistry (RDKit-local + ChEMBL/PubChem), antibody/immunogenicity, pathways, plus orchestration tools
+that synthesize an evidence profile across all of them. Every tool returns **Markdown** for direct LLM
+consumption (or a JSON envelope via the `response_format` param). Python ≥3.11, async `httpx`,
+Pydantic v2. Most sources need no API key.
+
+- **Entry point:** `genesis_bio_mcp.server:main` → `mcp.run(transport="stdio")` (`[project.scripts]
+  genesis-bio-mcp`). Run locally with `uv run genesis-bio-mcp`.
+- **Canonical tool catalog:** the module docstring at the top of `src/genesis_bio_mcp/server.py` lists
+  every tool with a one-line description — read it first to see what exists (don't re-derive it).
+- **Version / deps:** `pyproject.toml` (Apache-2.0). Key deps: `mcp[cli]`, `httpx`, `pydantic`,
+  `tenacity`, `anthropic` (workflow agent), `curl-cffi` (Cloudflare-fronted ClinicalTrials.gov),
+  `rdkit` (local cheminformatics), `asyncpg`+`pgvector` (optional corpus).
+
+## Repo map
+
+- **`src/genesis_bio_mcp/server.py`** — the FastMCP app: ALL `@mcp.tool` definitions + their input
+  models, `lifespan()` (creates the single shared `httpx.AsyncClient`, calls `build_app_state()` to wire
+  every client onto `mcp.state`, pre-loads the DepMap cache + optional corpus pool), and the shared
+  helpers below. Largest file; its docstring is the tool catalog.
+- **`src/genesis_bio_mcp/models.py`** — every Pydantic response model; each implements `to_markdown()`.
+- **`src/genesis_bio_mcp/clients/<source>.py`** — one thin async client per data source, grouped by
+  domain: annotation (`uniprot`, `ensembl`, `interpro`, `hpa`, `gtex`); disease/genetics (`open_targets`,
+  `gwas`, `gnomad`, `myvariant`, `mavedb`, `depmap`, `variant_effects`); chemistry/druggability
+  (`pubchem`, `chembl`, `dgidb`, `clinical_trials`, `openfda`); structure (`alphafold`, `foldseek`,
+  `uma_inverse`, `sabdab`); interactions (`string_db`, `biogrid`); immunogenicity (`iedb`, `iedb_tools`).
+  Follow the **Client pattern** below.
+- **`src/genesis_bio_mcp/tools/`** — logic that isn't a single API client: `target_prioritization.py`
+  (the `prioritize_target` / `compare_targets` engine + per-axis evidence profile), the RDKit-local
+  modules (`cheminformatics`, `admet`, `biochem`, `cdr_developability`, `selectivity`), `gene_resolver`,
+  `variant_parser`, `health`.
+- **`src/genesis_bio_mcp/workflow_agent.py`** — `run_biology_workflow`, an Anthropic-driven agent that
+  dynamically selects tools. EVERY MCP tool must also be registered here (see Workflow agent pattern).
+- **`src/genesis_bio_mcp/config/`** — `settings.py` (pydantic-settings; all timeouts / semaphore limits /
+  budgets as `GENESIS_`-prefixed env vars), `efo_resolver.py` (OLS4 EFO ontology), `trait_synonyms.py`,
+  `indication_tissue_map.py`.
+- **`src/genesis_bio_mcp/corpus/`** — OPTIONAL Postgres + pgvector store (precomputed ESM-2 protein /
+  ChemBERTa chem embeddings) behind the `corpus_*` tools; degrades gracefully when `GENESIS_CORPUS_DSN`
+  is unset. `src/genesis_bio_mcp/ingest/` is the OFFLINE embedding pipeline (heavy ML; never imported by
+  the running server).
+- **`src/genesis_bio_mcp/evals/`** — eval harness (`uv run python -m genesis_bio_mcp.evals`).
+- **`docs/`** — `architecture.md`, `tools.md` (catalog + when-to-use each tool), `ROADMAP.md`,
+  `deployment.md`, `protein-engineering.md`, `corpus-eval.md`, `eval.md`, `benchmark.md`.
+  **`CONTRIBUTING.md`** has the step-by-step recipe for adding a new data source.
+
+## Shared helpers & cross-cutting concepts (defined in `server.py` unless noted)
+
+- **`_resolve_symbol(gene)`** — resolve aliases (HER2→ERBB2, p53→TP53…) to a canonical symbol; call it
+  BEFORE querying any database.
+- **`_fmt(result, response_format, error_msg, *, error_status=...)`** — the ONE output formatter: renders
+  `to_markdown()` for Markdown, or a JSON `{provenance, data}` / `{provenance, error}` envelope; a `None`
+  result becomes a typed error. Tools never format output by hand.
+- **`_GeneInput`** — base input model providing `gene_symbol` + `response_format`; single-gene tools
+  inherit it. Multi-field inputs use `ConfigDict(str_strip_whitespace=True, extra="forbid", ...)`.
+- **`ErrorStatus`** = `Literal["NotFound", "InvalidInput", "RateLimited", "UpstreamUnavailable"]` — the
+  typed error taxonomy surfaced in JSON error output.
+- **Single shared `httpx.AsyncClient`** — created once in `lifespan()` with explicit pool limits +
+  timeouts; every client stores it as `self._client` and must never create its own.
+- **Optional integrations / env keys** — runs keyless by default; `run_biology_workflow` needs
+  `ANTHROPIC_API_KEY`, the `corpus_*` tools need `GENESIS_CORPUS_DSN`, BioGRID needs its access key. All
+  knobs live in `config/settings.py`.
+
 ## Package Management
 PKG: `uv` ONLY. NO pip/conda/venv. Add: `uv add [--dev] <pkg>`. Run: `uv run <cmd>`.
 
