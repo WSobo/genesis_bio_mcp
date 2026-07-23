@@ -214,3 +214,93 @@ async def test_traced_loop_caps_at_max_iterations():
     assert run.stop_reason == "max_iterations"
     assert run.iterations == 3
     assert run.tool_calls == ["resolve_gene", "resolve_gene", "resolve_gene"]
+
+
+# ---------------------------------------------------------------------------
+# Tools-off (prior-only) baseline + uplift
+# ---------------------------------------------------------------------------
+
+
+async def test_traced_loop_empty_registry_is_prior_only_no_tools():
+    """The tools-off baseline: an empty registry sends NO `tools` param (the API rejects
+    `tools=[]`) and the model answers from memory in a single turn."""
+    final = _make_response("end_turn", [_text_block("The symbol is PTGS2.")])
+    client = _mock_client([final])
+    run = await run_agent_loop_traced("q", {}, client=client)
+
+    assert run.tool_calls == []
+    assert run.stop_reason == "end_turn"
+    assert "PTGS2" in run.final_text
+    assert "tools" not in client.messages.create.call_args.kwargs
+
+
+def test_report_uplift_surfaces_tool_value():
+    results = [
+        ItemResult(
+            id="tool-dep",
+            category="druggability",
+            probe=False,
+            question="q",
+            det_passed=True,
+            agentic_ran=True,
+            agentic_passed=True,
+            baseline_ran=True,
+            baseline_passed=False,  # only answerable WITH tools
+        ),
+        ItemResult(
+            id="shortcut",
+            category="gene_annotation",
+            probe=False,
+            question="q",
+            det_passed=True,
+            agentic_ran=True,
+            agentic_passed=True,
+            baseline_ran=True,
+            baseline_passed=True,  # answerable WITHOUT tools
+        ),
+    ]
+    rep = EvalReport(
+        generated_at="2026-01-01T00:00:00Z", results=results, agentic=True, baseline=True
+    )
+
+    s = rep.to_json_dict()["summary"]
+    assert s["tools_on_passed"] == 2
+    assert s["tools_off_passed"] == 1
+    assert s["uplift_net"] == 1
+    assert s["tool_dependent"] == 1
+    assert s["shortcuts"] == 1
+
+    md = rep.to_markdown()
+    assert "Uplift" in md
+    assert "Tool-value analysis" in md
+    assert "tool-dep" in md  # only-answerable-with-tools
+    assert "shortcut" in md  # a shortcut to rewrite/cut
+    assert "Tools-off" in md  # per-item results column
+
+    row = next(r for r in rep.to_json_dict()["results"] if r["id"] == "shortcut")
+    assert row["baseline_ran"] and row["baseline_passed"]
+
+
+def test_report_results_table_columns_align():
+    """Regression: each results row must have exactly as many cells as the header. A prior
+    ``row[:-1]`` slice dropped a column separator and merged the latency/agentic cells."""
+    r = ItemResult(
+        id="x",
+        category="c",
+        probe=False,
+        question="q",
+        det_passed=True,
+        det_latency_s=1.0,
+        agentic_ran=True,
+        agentic_passed=True,
+        tool_selection_ok=True,
+        baseline_ran=True,
+        baseline_passed=False,
+    )
+    for baseline in (False, True):
+        md = EvalReport(
+            generated_at="t", results=[r], agentic=True, baseline=baseline
+        ).to_markdown()
+        table = md.split("## Results")[1].strip().splitlines()
+        header, _sep, body = table[0], table[1], table[2]
+        assert body.count("|") == header.count("|") == _sep.count("|")

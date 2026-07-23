@@ -36,12 +36,18 @@ class ItemResult:
     tool_selection_ok: bool | None = None
     called_tools: list[str] = field(default_factory=list)
 
+    # Prior-only baseline (same agent, NO tools) — optional; grades the tools-off answer
+    baseline_ran: bool = False
+    baseline_passed: bool = False
+    baseline_detail: str = ""
+
 
 @dataclass
 class EvalReport:
     generated_at: str
     results: list[ItemResult]
     agentic: bool
+    baseline: bool = False
 
     # -- derived views -------------------------------------------------------
     @property
@@ -66,6 +72,21 @@ class EvalReport:
         """Non-probe failures — a miscalibrated grader or a real data-layer regression."""
         return [r for r in self.real if not r.det_passed]
 
+    @property
+    def shortcuts(self) -> list[ItemResult]:
+        """Real items the prior-only (tools-off) baseline already answered — candidates to
+        rewrite or cut, because they measure what the model knows, not what the tools add."""
+        return [r for r in self.real if r.baseline_ran and r.baseline_passed]
+
+    @property
+    def tool_dependent(self) -> list[ItemResult]:
+        """Real items only the tools made answerable: tools-on passed, tools-off failed."""
+        return [
+            r
+            for r in self.real
+            if r.agentic_ran and r.baseline_ran and r.agentic_passed and not r.baseline_passed
+        ]
+
     def to_json_dict(self) -> dict:
         return {
             "generated_at": self.generated_at,
@@ -86,6 +107,8 @@ class EvalReport:
                     "agentic_passed": r.agentic_passed,
                     "tool_selection_ok": r.tool_selection_ok,
                     "called_tools": r.called_tools,
+                    "baseline_ran": r.baseline_ran,
+                    "baseline_passed": r.baseline_passed,
                 }
                 for r in self.results
             ],
@@ -109,6 +132,14 @@ class EvalReport:
             s["agentic_total"] = len(agrun)
             s["tool_selection_ok"] = sum(bool(r.tool_selection_ok) for r in sel)
             s["tool_selection_total"] = len(sel)
+        if self.baseline:
+            both = [r for r in real if r.agentic_ran and r.baseline_ran]
+            s["uplift_total"] = len(both)
+            s["tools_on_passed"] = sum(r.agentic_passed for r in both)
+            s["tools_off_passed"] = sum(r.baseline_passed for r in both)
+            s["uplift_net"] = s["tools_on_passed"] - s["tools_off_passed"]
+            s["tool_dependent"] = len(self.tool_dependent)
+            s["shortcuts"] = len(self.shortcuts)
         return s
 
     # -- markdown ------------------------------------------------------------
@@ -140,6 +171,12 @@ class EvalReport:
                 f"- **Agentic:** answers {s['agentic_answers_passed']}/{s['agentic_total']}; "
                 f"tool-selection {s['tool_selection_ok']}/{s['tool_selection_total']} ({sel_pct})"
             )
+        if self.baseline:
+            lines.append(
+                f"- **Uplift (do the tools help?):** tools-on {s['tools_on_passed']}/{s['uplift_total']} "
+                f"vs tools-off {s['tools_off_passed']}/{s['uplift_total']} → **net {s['uplift_net']:+d}** "
+                f"— {s['tool_dependent']} only answerable with tools, {s['shortcuts']} shortcuts pass without them"
+            )
 
         # Coverage by category (real items only)
         by_cat: dict[str, list[ItemResult]] = defaultdict(list)
@@ -166,13 +203,31 @@ class EvalReport:
                 why = r.det_error or r.det_detail
                 lines.append(f"- **{r.id}** ({r.category}): {why}")
 
+        # Uplift — the whole point of the baseline: what do the tools actually add?
+        if self.baseline:
+            td, sc = self.tool_dependent, self.shortcuts
+            lines += ["", "## Tool-value analysis (uplift)"]
+            lines.append(
+                f"- **Only answerable with tools ({len(td)}):** "
+                + (
+                    ", ".join(r.id for r in td)
+                    or "_none — the tools added nothing the model didn't already know_"
+                )
+            )
+            lines.append(
+                f"- **Shortcuts — pass tools-off, rewrite or cut ({len(sc)}):** "
+                + (", ".join(r.id for r in sc) or "_none_")
+            )
+
         # Per-item results
         lines += ["", "## Results"]
         if self.agentic:
-            lines += [
-                "| Item | Category | Deterministic | Latency (s) | Agentic | Tools ✓ |",
-                "|---|---|---|---:|---|---|",
-            ]
+            hdr = "| Item | Category | Deterministic | Latency (s) | Agentic | Tools ✓ |"
+            sep = "|---|---|---|---:|---|---|"
+            if self.baseline:
+                hdr += " Tools-off |"
+                sep += "---|"
+            lines += [hdr, sep]
         else:
             lines += [
                 "| Item | Category | Deterministic | Latency (s) |",
@@ -191,7 +246,10 @@ class EvalReport:
                 tools = (
                     "—" if r.tool_selection_ok is None else ("✓" if r.tool_selection_ok else "✗")
                 )
-                row = row[:-1] + f" {ag} | {tools} |"
+                row += f" {ag} | {tools} |"
+                if self.baseline:
+                    off = "—" if not r.baseline_ran else ("✓" if r.baseline_passed else "✗")
+                    row += f" {off} |"
             lines.append(row)
 
         return "\n".join(lines)

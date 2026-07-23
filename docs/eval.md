@@ -23,6 +23,16 @@ agent on the natural-language question and scores two things: **tool selection**
 **answer correctness** (the same grader applied to the agent's final text). Skipped — not
 failed — when no key is set.
 
+**3. Uplift baseline (`--baseline`, implies `--agentic`).** Runs each item a *second* time
+through the same agent with an **empty tool registry** — a *prior-only* run that must answer
+from the model's own knowledge. Grading both runs with the same grader gives the headline
+**uplift = tools-on − tools-off**, and the report's *Tool-value analysis* section splits items
+into **only-answerable-with-tools** vs. **shortcuts** (the model already knew the answer, so
+they measure prior knowledge, not tool value — rewrite or cut them). This is the check a
+deterministic `N/N` score cannot give you: a passing item only proves the server *helps* if a
+tools-off agent *fails* it. (The deterministic layer runs the declared tools then greps their
+own output, so it always passes — it verifies the data path, not tool value.)
+
 ## Running it
 
 ```bash
@@ -31,6 +41,9 @@ uv run python -m genesis_bio_mcp.evals --out eval_report.md
 
 # Add the agentic layer (requires ANTHROPIC_API_KEY in the environment)
 uv run python -m genesis_bio_mcp.evals --agentic --out eval_report.md
+
+# Add the tools-off uplift baseline — the headline "do the tools help?" number (implies --agentic)
+uv run python -m genesis_bio_mcp.evals --baseline --out eval_report.md
 
 # Run a single category
 uv run python -m genesis_bio_mcp.evals --filter druggability
@@ -44,6 +57,9 @@ uv run python -m genesis_bio_mcp.evals --filter druggability
 - **Capability gaps — what to build next** — the headline. Failed probes are *expected*
   gaps; any non-probe failure is flagged separately to investigate (a miscalibrated grader
   or a real data-layer regression).
+- **Tool-value analysis (uplift)** — only with `--baseline`. Lists items only answerable with
+  tools (genuine value) and shortcuts a tools-off agent already passes (rewrite or cut). If this
+  section is mostly shortcuts, the dataset is measuring the model, not the server.
 
 ## Dataset format
 
