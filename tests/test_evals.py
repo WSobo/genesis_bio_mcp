@@ -63,6 +63,22 @@ def test_grader_numeric_min_with_near_label():
     assert not grade("9.9 somewhere", {"type": "numeric", "near": "pChEMBL", "min": 8.0}).passed
 
 
+def test_grader_set_recall_at_k():
+    canon = ["ABL1", "LYN", "FYN"]
+    # default recall_at_k = 1.0 → all must be present (generalizes all_of)
+    assert grade("kinases ABL1, Lyn, and FYN", {"type": "set", "canonical": canon}).passed
+    assert not grade("ABL1 and LYN only", {"type": "set", "canonical": canon}).passed
+    # threshold 0.66 → 2 of 3 passes, 1 of 3 fails
+    assert grade("ABL1 and LYN", {"type": "set", "canonical": canon, "recall_at_k": 0.66}).passed
+    assert not grade("just ABL1", {"type": "set", "canonical": canon, "recall_at_k": 0.66}).passed
+    # case-insensitive; empty canonical fails rather than crashing
+    assert grade("abl1 lyn fyn", {"type": "set", "canonical": canon}).passed
+    assert not grade("anything", {"type": "set", "canonical": []}).passed
+    # detail reports recall fraction + what's missing
+    r = grade("ABL1 only", {"type": "set", "canonical": canon, "recall_at_k": 0.66})
+    assert "1/3" in r.detail and "LYN" in r.detail
+
+
 def test_grader_unknown_type_and_none_output():
     assert not grade("x", {"type": "bogus"}).passed
     assert not grade(None, {"type": "contains", "value": "x"}).passed
