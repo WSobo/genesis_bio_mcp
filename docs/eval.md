@@ -7,8 +7,17 @@ with an evidence-driven loop: the report's **Capability gaps** section is the ro
 for what to build next.
 
 The dataset lives at [`src/genesis_bio_mcp/evals/dataset.json`](../src/genesis_bio_mcp/evals/dataset.json)
-— ~24 questions with *verifiable* expectations plus a handful of deliberate
+— ~20 questions with *verifiable* expectations plus a handful of deliberate
 capability **probes** (questions no current tool can answer).
+
+Every non-probe item is authored to be **tool-necessary**: the answer hinges on a precise
+value or identifier the tool returns and a strong model cannot recall unaided (an InChIKey,
+an InterPro/MONDO/Reactome accession, a gnomAD constraint value, an AlphaFold pLDDT, a
+computed QED/TPSA/SAscore), and the target value never appears in the question. This is
+deliberate: a question a model answers cold (e.g. "HER2's UniProt accession → P04626")
+scores a pass forever and measures training data, not the server. The harness's tools-off
+`--baseline` mode exists to *detect* such shortcut items automatically — an item a no-tools
+run still passes is a broken item, not a hard one.
 
 ## Two scoring layers
 
@@ -88,18 +97,31 @@ an item on a built corpus.
 The harness machinery (graders, dataset validity, report rendering, agent-trace capture)
 is unit-tested in [`tests/test_evals.py`](../tests/test_evals.py) — keyless and CI-safe.
 
-## First run (baseline)
+## Tool-necessity, measured
 
-The initial deterministic run scored **23/24** answerable tasks across all eight tool
-categories and flagged **4 capability gaps** — none of which any current tool can address:
+The dataset was rebuilt (2026-07) so every non-probe item is **tool-necessary** — its answer
+is a precise value/identifier the tool returns and a strong model cannot recall unaided (see
+the design note above). We don't just assert this; we measure it with the tools-off baseline:
 
-| Gap | What it needs |
-|---|---|
-| ADMET / PK prediction (hERG, CYP3A4) | a computed cheminformatics ADMET tool |
-| Kinome-wide selectivity profile | off-target / polypharmacology analysis |
-| Patents / freedom-to-operate | a competitive-landscape data source |
-| Retrosynthesis / synthesizability | a synthesis-planning method |
+| | Deterministic (tools) | Tools-off (prior-only) |
+|---|---:|---:|
+| Rebuilt dataset (18 items) | 18/18 | ~3/18 |
+| *Previous dataset (for contrast)* | *27/27* | *25/27* |
 
-That table is the evidence behind the next roadmap decision — small-molecule depth leads.
+The previous suite was ~93% answerable with the tools unplugged — it graded facts a strong
+model already knows (`P04626`, `PTGS2`) or matched tool-format headers, so its high pass rate
+measured **training data, not the server**. The rebuilt suite inverts that: pull the tools and
+the score collapses to ~17%, so a pass now largely reflects the tool *adding* something.
+Authoring items to hit this bar — no-tool baseline, discriminating graders, drift-stable
+answers — follows the `mcp-eval-authoring` methodology.
+
+The residual ~3/18 is **stochastic** (which items leak varies run to run): against a saturated
+model a few answers are still estimable within tolerance (a clean molecule's QED to ±0.03) or
+mentionable (a related accession). Closing that last gap needs replicated baselines and
+structured-answer graders (precision/recall on a returned set, an exact typed field) rather
+than the current substring/numeric graders — the natural next increment to the harness.
+
+Two deliberate **capability probes** remain unmet — patents/FTO and retrosynthesis — the same
+gaps the roadmap tracks as v0.8.0 M3/M4.
 
 For the corpus-specific eval set, see [corpus-eval.md](corpus-eval.md).
