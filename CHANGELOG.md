@@ -11,6 +11,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **`mcp-eval-authoring` skill** (`.claude/skills/`) — the authoring standard for eval items:
+  measure *uplift* (tools-on − tools-off) not accuracy; five gates (memorization, shortcut/leakage,
+  grader discrimination, stability/drift, failure attribution); grader-by-answer-shape guidance; and
+  a "current-harness reality" preamble mapping the skill to what this repo supports today.
+- **`EvalItem` authoring metadata** — optional, default-empty fields backing that skill:
+  `notes`, `source_version`, `volatile`, `baseline_expectation`, `canary`, `replicates`,
+  `failure_modes`, `failure_mode_taxonomy_version`. Existing items validate unchanged; `extra="forbid"`
+  still rejects typos.
+
 - **`assess_selectivity`** (v0.8.0 M2) — a compound's off-target / kinome selectivity profile, in two
   honestly-separated layers. **Measured** (keyless): resolve a SMILES to a ChEMBL molecule and aggregate
   every human target it has pChEMBL activity against, with a qualitative Selective / Moderately selective /
