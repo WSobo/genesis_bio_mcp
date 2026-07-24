@@ -120,12 +120,12 @@
     "grader": {"type": "numeric", "near": "CADD", "value": 25.9, "tolerance": 3.0}
   },
   {
-    "id": "braf-reactome-top-pathway",
-    "question": "Using Reactome pathway enrichment for BRAF, give the R-HSA stable identifier of the single top-ranked (most significant) pathway.",
+    "id": "braf-reactome-pathways",
+    "question": "Using Reactome, which pathways is BRAF annotated to? Give their R-HSA stable identifiers.",
     "category": "pathways",
     "tool_calls": [{"name": "get_pathway_context", "args": {"gene_symbol": "BRAF"}}],
     "expected_tools": ["get_pathway_context"],
-    "grader": {"type": "contains", "value": "R-HSA-187706"}
+    "grader": {"type": "set", "canonical": ["R-HSA-187706", "R-HSA-5674499", "R-HSA-9726840", "R-HSA-9660537", "R-HSA-9726842", "R-HSA-170984", "R-HSA-170968", "R-HSA-1295596", "R-HSA-169893"], "recall_at_k": 0.6}
   },
   {
     "id": "obscuremol1-qed",

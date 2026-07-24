@@ -74,9 +74,11 @@ grader (see [`evals/graders.py`](../src/genesis_bio_mcp/evals/graders.py)):
 ```
 
 Grader types: `contains`, `all_of`, `regex`, `numeric` (`value`+`tolerance`, or `min`/`max`,
-optionally `near` a label). A `"probe": true` item has no `tool_calls` — a deterministic
-failure on it is a capability gap, not a regression. Add `"requires": ["corpus"]` to gate
-an item on a built corpus.
+optionally `near` a label), and `set` — recall over a `canonical` list that must meet
+`recall_at_k` (default 1.0), the right grader for list answers (off-target kinases, pathway/ID
+sets) and a soft generalization of `all_of`. A `"probe": true` item has no `tool_calls` — a
+deterministic failure on it is a capability gap, not a regression. Add `"requires": ["corpus"]`
+to gate an item on a built corpus.
 
 The harness machinery (graders, dataset validity, report rendering, agent-trace capture)
 is unit-tested in [`tests/test_evals.py`](../tests/test_evals.py) — keyless and CI-safe.

@@ -9,6 +9,11 @@ fully unit-testable and run in CI. A grader spec is a small dict with a ``type``
 - ``numeric``   — a number near a label satisfies a bound:
                   ``{"type": "numeric", "near": "pChEMBL", "min": 9.0}`` or
                   ``{"type": "numeric", "value": 180.16, "tolerance": 1.0}``
+- ``set``       — recall over a canonical set: the fraction of ``canonical`` items present in
+                  the output must meet ``recall_at_k`` (default 1.0). The right grader for list
+                  answers (off-target kinases, similar compounds, pathway/ID sets) — generalizes
+                  ``all_of`` (which is ``recall_at_k`` = 1.0) and is far stronger than ``contains``:
+                  ``{"type": "set", "canonical": ["ABL1", "LYN", "FYN"], "recall_at_k": 0.66}``
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ def grade(output: str | None, spec: dict) -> GradeResult:
         "all_of": _all_of,
         "regex": _regex,
         "numeric": _numeric,
+        "set": _set,
     }
     fn = dispatch.get(gtype)
     if fn is None:
@@ -57,6 +63,29 @@ def _all_of(text: str, spec: dict) -> GradeResult:
     low = text.lower()
     missing = [n for n in needles if n.lower() not in low]
     return GradeResult(not missing, "all present" if not missing else f"missing {missing}")
+
+
+def _set(text: str, spec: dict) -> GradeResult:
+    """Recall over a canonical set: the fraction of ``canonical`` items present in the output
+    must meet ``recall_at_k`` (default 1.0). Case-insensitive substring membership — matching
+    latch-eval-tools' ``marker_gene_precision_recall`` recall@K semantics.
+
+    Recall-only by design: precision needs the *predicted* set, which can't be delimited in free
+    tool markdown. An item where over-listing could game recall should grade a structured answer
+    field instead (see the mcp-eval-authoring skill).
+    """
+    canonical = [str(v) for v in spec["canonical"]]
+    if not canonical:
+        return GradeResult(False, "empty canonical set")
+    low = text.lower()
+    present = [c for c in canonical if c.lower() in low]
+    recall = len(present) / len(canonical)
+    threshold = float(spec.get("recall_at_k", 1.0))
+    missing = [c for c in canonical if c not in present]
+    detail = f"recall {len(present)}/{len(canonical)} = {recall:.2f} (need ≥ {threshold})"
+    if missing:
+        detail += f"; missing {missing[:8]}"
+    return GradeResult(recall >= threshold, detail)
 
 
 def _regex(text: str, spec: dict) -> GradeResult:

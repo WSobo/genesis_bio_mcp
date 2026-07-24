@@ -24,6 +24,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **`set` eval grader** — recall over a `canonical` list that must meet `recall_at_k` (default
+  1.0), matching `latch-eval-tools`' `marker_gene_precision_recall` recall@K semantics
+  (reimplemented as a pure function — no new dependency). The right grader for list answers
+  (off-target kinases, pathway/ID sets) where `all_of` is too brittle and `contains` too weak; it
+  generalizes `all_of` (= `recall_at_k` 1.0). The `braf-reactome-pathways` eval item now grades
+  recall over BRAF's Reactome R-HSA identifiers instead of a single drift-prone top pathway.
 - **`assess_selectivity`** (v0.8.0 M2) — a compound's off-target / kinome selectivity profile, in two
   honestly-separated layers. **Measured** (keyless): resolve a SMILES to a ChEMBL molecule and aggregate
   every human target it has pChEMBL activity against, with a qualitative Selective / Moderately selective /
