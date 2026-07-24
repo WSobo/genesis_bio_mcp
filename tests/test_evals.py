@@ -362,3 +362,70 @@ def test_report_results_table_columns_align():
         table = md.split("## Results")[1].strip().splitlines()
         header, _sep, body = table[0], table[1], table[2]
         assert body.count("|") == header.count("|") == _sep.count("|")
+
+
+# ---------------------------------------------------------------------------
+# Replicates + confidence intervals
+# ---------------------------------------------------------------------------
+
+
+def test_mean_ci_math():
+    from genesis_bio_mcp.evals.report import _mean_ci
+
+    # all equal → zero-width CI at the value
+    assert _mean_ci([1.0, 1.0, 1.0]) == (1.0, 1.0, 1.0)
+    # n < 2 → mean only, no interval
+    m, lo, hi = _mean_ci([0.5])
+    assert m == 0.5 and lo is None and hi is None
+    # spread → mean correct, CI brackets it, clamped to [0, 1] for a rate
+    m, lo, hi = _mean_ci([0.0, 0.5, 1.0])
+    assert abs(m - 0.5) < 1e-9 and 0.0 <= lo < m < hi <= 1.0
+    # signed quantity (uplift) clamped to its natural range [-1, 1]
+    m, lo, hi = _mean_ci([-1.0, 0.0, 1.0], bounds=(-1.0, 1.0))
+    assert abs(m) < 1e-9 and -1.0 <= lo < 0 < hi <= 1.0
+    # unbounded when bounds=None
+    _, lo2, hi2 = _mean_ci([-1.0, 0.0, 1.0], bounds=None)
+    assert lo2 < -1.0 and hi2 > 1.0
+
+
+def _rep_item(id_: str, ag: int, base: int, k: int = 3) -> ItemResult:
+    return ItemResult(
+        id=id_,
+        category="c",
+        probe=False,
+        question="q",
+        det_passed=True,
+        agentic_ran=True,
+        agentic_passed=ag > 0,
+        tool_selection_ok=True,
+        baseline_ran=True,
+        baseline_passed=base > 0,
+        replicates=k,
+        agentic_pass_count=ag,
+        baseline_pass_count=base,
+        tool_selection_pass_count=ag,
+    )
+
+
+def test_report_replicates_ci_surfaces_intervals():
+    results = [_rep_item("a", 3, 0), _rep_item("b", 3, 1), _rep_item("c", 2, 3)]
+    rep = EvalReport(generated_at="t", results=results, agentic=True, baseline=True, replicates=3)
+    s = rep.to_json_dict()["summary"]
+    assert s["replicates"] == 3
+    # agentic rate = mean(1.0, 1.0, 0.667) ≈ 0.889, with a real interval (n=3)
+    assert abs(s["agentic_rate_ci"]["mean"] - 0.889) < 0.01
+    assert s["agentic_rate_ci"]["lo"] is not None
+    # uplift = mean(1.0, 0.667, -0.333) ≈ 0.444
+    assert abs(s["uplift_ci"]["mean"] - 0.444) < 0.01
+
+    md = rep.to_markdown()
+    assert "K=3" in md
+    assert "Agentic answer rate" in md and "Uplift (Δ pass-rate)" in md
+
+
+def test_report_replicates_1_leaves_output_unchanged():
+    r = _rep_item("a", 1, 0, k=1)
+    rep = EvalReport(generated_at="t", results=[r], agentic=True, baseline=True)
+    md = rep.to_markdown()
+    assert "Replicates:" not in md  # no CI block at K=1
+    assert "replicates" not in rep.to_json_dict()["summary"]

@@ -7,8 +7,67 @@ non-probe failures to investigate — i.e. the evidence for what to build next.
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from dataclasses import dataclass, field
+
+# Two-sided 95% Student-t critical values by degrees of freedom (n-1). Hardcoded so the
+# harness needs no scipy; df > 30 falls back to the normal approximation (1.96).
+_T95 = {
+    1: 12.706,
+    2: 4.303,
+    3: 3.182,
+    4: 2.776,
+    5: 2.571,
+    6: 2.447,
+    7: 2.365,
+    8: 2.306,
+    9: 2.262,
+    10: 2.228,
+    11: 2.201,
+    12: 2.179,
+    13: 2.160,
+    14: 2.145,
+    15: 2.131,
+    16: 2.120,
+    17: 2.110,
+    18: 2.101,
+    19: 2.093,
+    20: 2.086,
+    21: 2.080,
+    22: 2.074,
+    23: 2.069,
+    24: 2.064,
+    25: 2.060,
+    26: 2.056,
+    27: 2.052,
+    28: 2.048,
+    29: 2.045,
+    30: 2.042,
+}
+
+
+def _mean_ci(
+    values: list[float], *, bounds: tuple[float, float] | None = (0.0, 1.0)
+) -> tuple[float, float | None, float | None]:
+    """Mean and a t-based 95% CI over per-item values (the item is the sampling unit).
+
+    Returns ``(mean, lo, hi)``; ``lo``/``hi`` are ``None`` when n < 2 (no spread to estimate).
+    ``bounds`` clamps the interval to the quantity's natural range — ``(0, 1)`` for a rate,
+    ``(-1, 1)`` for an uplift (difference of rates); pass ``None`` to leave it unclamped.
+    """
+    n = len(values)
+    if n == 0:
+        return 0.0, None, None
+    mean = sum(values) / n
+    if n < 2:
+        return mean, None, None
+    var = sum((v - mean) ** 2 for v in values) / (n - 1)
+    half = _T95.get(n - 1, 1.96) * math.sqrt(var / n)
+    lo, hi = mean - half, mean + half
+    if bounds is not None:
+        lo, hi = max(bounds[0], lo), min(bounds[1], hi)
+    return mean, lo, hi
 
 
 @dataclass
@@ -41,6 +100,13 @@ class ItemResult:
     baseline_passed: bool = False
     baseline_detail: str = ""
 
+    # Replicates (K): how many times the LLM layers ran, and how many of those passed. The
+    # per-item rate is pass_count / replicates; the report aggregates rates across items.
+    replicates: int = 1
+    agentic_pass_count: int = 0
+    baseline_pass_count: int = 0
+    tool_selection_pass_count: int = 0
+
 
 @dataclass
 class EvalReport:
@@ -48,6 +114,7 @@ class EvalReport:
     results: list[ItemResult]
     agentic: bool
     baseline: bool = False
+    replicates: int = 1
 
     # -- derived views -------------------------------------------------------
     @property
@@ -91,6 +158,7 @@ class EvalReport:
         return {
             "generated_at": self.generated_at,
             "agentic": self.agentic,
+            "replicates": self.replicates,
             "summary": self._summary(),
             "results": [
                 {
@@ -109,6 +177,10 @@ class EvalReport:
                     "called_tools": r.called_tools,
                     "baseline_ran": r.baseline_ran,
                     "baseline_passed": r.baseline_passed,
+                    "replicates": r.replicates,
+                    "agentic_pass_count": r.agentic_pass_count,
+                    "baseline_pass_count": r.baseline_pass_count,
+                    "tool_selection_pass_count": r.tool_selection_pass_count,
                 }
                 for r in self.results
             ],
@@ -140,6 +212,29 @@ class EvalReport:
             s["uplift_net"] = s["tools_on_passed"] - s["tools_off_passed"]
             s["tool_dependent"] = len(self.tool_dependent)
             s["shortcuts"] = len(self.shortcuts)
+        # Replicate-aware confidence intervals over per-item rates (item = sampling unit).
+        if self.replicates > 1 and self.agentic:
+
+            def _ci(vals: list[float], bounds: tuple[float, float] = (0.0, 1.0)) -> dict:
+                m, lo, hi = _mean_ci(vals, bounds=bounds)
+                r3 = lambda x: None if x is None else round(x, 3)  # noqa: E731
+                return {"mean": round(m, 3), "lo": r3(lo), "hi": r3(hi)}
+
+            ag = [r for r in real if r.agentic_ran]
+            s["replicates"] = self.replicates
+            s["agentic_rate_ci"] = _ci([r.agentic_pass_count / r.replicates for r in ag])
+            sel = [r for r in ag if r.tool_selection_ok is not None]
+            if sel:
+                s["tool_selection_rate_ci"] = _ci(
+                    [r.tool_selection_pass_count / r.replicates for r in sel]
+                )
+            if self.baseline:
+                both = [r for r in ag if r.baseline_ran]
+                s["baseline_rate_ci"] = _ci([r.baseline_pass_count / r.replicates for r in both])
+                s["uplift_ci"] = _ci(
+                    [(r.agentic_pass_count - r.baseline_pass_count) / r.replicates for r in both],
+                    bounds=(-1.0, 1.0),
+                )
         return s
 
     # -- markdown ------------------------------------------------------------
@@ -177,6 +272,30 @@ class EvalReport:
                 f"vs tools-off {s['tools_off_passed']}/{s['uplift_total']} → **net {s['uplift_net']:+d}** "
                 f"— {s['tool_dependent']} only answerable with tools, {s['shortcuts']} shortcuts pass without them"
             )
+        if self.replicates > 1 and self.agentic:
+
+            def _fmt(c: dict, pct: bool = True) -> str:
+                if pct:
+                    base = f"{100 * c['mean']:.0f}%"
+                    return (
+                        base
+                        if c["lo"] is None
+                        else f"{base} [{100 * c['lo']:.0f}, {100 * c['hi']:.0f}]"
+                    )
+                base = f"{c['mean']:+.2f}"
+                return base if c["lo"] is None else f"{base} [{c['lo']:+.2f}, {c['hi']:+.2f}]"
+
+            lines.append(
+                f"- **Replicates:** K={self.replicates}/item; 95% CI is t-based across items "
+                "(the item is the sampling unit — one run is an anecdote)"
+            )
+            lines.append(f"  - Agentic answer rate: {_fmt(s['agentic_rate_ci'])}")
+            if "tool_selection_rate_ci" in s:
+                lines.append(f"  - Tool-selection rate: {_fmt(s['tool_selection_rate_ci'])}")
+            if "baseline_rate_ci" in s:
+                lines.append(f"  - Tools-off baseline rate: {_fmt(s['baseline_rate_ci'])}")
+            if "uplift_ci" in s:
+                lines.append(f"  - Uplift (Δ pass-rate): {_fmt(s['uplift_ci'], pct=False)}")
 
         # Coverage by category (real items only)
         by_cat: dict[str, list[ItemResult]] = defaultdict(list)

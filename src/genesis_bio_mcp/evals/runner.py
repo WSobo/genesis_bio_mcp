@@ -56,6 +56,7 @@ async def run_eval(
     *,
     agentic: bool = False,
     baseline: bool = False,
+    replicates: int = 1,
     max_iterations: int = 8,
     timestamp: str,
 ) -> EvalReport:
@@ -66,7 +67,13 @@ async def run_eval(
     knowledge. Grading both runs with the same grader yields the headline **uplift**
     (tools-on minus tools-off): items the tools actually make answerable, vs. items the
     model already knew (shortcuts) or that a lenient grader lets slip through regardless.
+
+    ``replicates`` (K) re-runs the LLM layers (agentic + baseline) K times per item — the
+    deterministic layer is deterministic and always runs once. Pass counts accumulate into a
+    per-item rate, which the report aggregates across items into a t-based 95% confidence
+    interval (the *item* is the sampling unit). One run is an anecdote; K=3 gives error bars.
     """
+    replicates = max(1, replicates)
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     run_baseline = baseline and agentic and has_key
     results: list[ItemResult] = []
@@ -99,30 +106,41 @@ async def run_eval(
             r.det_passed = g.passed
             r.det_detail = err or g.detail
 
-            # Layer 2 — agentic (optional)
+            # Layer 2 — agentic (optional). With replicates=K, the LLM layers run K times and
+            # pass counts accumulate; scalar fields hold the last run (for the per-item table).
             if agentic and has_key:
-                run = await run_agent_loop_traced(
-                    item.question, registry, max_iterations=max_iterations
-                )
-                r.agentic_ran = True
-                r.called_tools = run.tool_calls
-                ag = grade(run.final_text, item.grader)
-                r.agentic_passed = ag.passed
-                r.agentic_detail = ag.detail
-                if item.expected_tools:
-                    r.tool_selection_ok = all(t in run.tool_calls for t in item.expected_tools)
+                r.replicates = replicates
+                for _ in range(replicates):
+                    run = await run_agent_loop_traced(
+                        item.question, registry, max_iterations=max_iterations
+                    )
+                    r.agentic_ran = True
+                    r.called_tools = run.tool_calls
+                    ag = grade(run.final_text, item.grader)
+                    r.agentic_passed = ag.passed
+                    r.agentic_detail = ag.detail
+                    r.agentic_pass_count += int(ag.passed)
+                    if item.expected_tools:
+                        sel_ok = all(t in run.tool_calls for t in item.expected_tools)
+                        r.tool_selection_ok = sel_ok
+                        r.tool_selection_pass_count += int(sel_ok)
 
-                # Prior-only baseline: same agent, EMPTY registry (no tools). One turn is
-                # enough since the model cannot call anything — it answers from memory.
-                if run_baseline:
-                    base = await run_agent_loop_traced(item.question, {}, max_iterations=1)
-                    r.baseline_ran = True
-                    bg = grade(base.final_text, item.grader)
-                    r.baseline_passed = bg.passed
-                    r.baseline_detail = bg.detail
+                    # Prior-only baseline: same agent, EMPTY registry (no tools). One turn is
+                    # enough since the model cannot call anything — it answers from memory.
+                    if run_baseline:
+                        base = await run_agent_loop_traced(item.question, {}, max_iterations=1)
+                        r.baseline_ran = True
+                        bg = grade(base.final_text, item.grader)
+                        r.baseline_passed = bg.passed
+                        r.baseline_detail = bg.detail
+                        r.baseline_pass_count += int(bg.passed)
 
             results.append(r)
 
     return EvalReport(
-        generated_at=timestamp, results=results, agentic=agentic, baseline=run_baseline
+        generated_at=timestamp,
+        results=results,
+        agentic=agentic,
+        baseline=run_baseline,
+        replicates=replicates,
     )
