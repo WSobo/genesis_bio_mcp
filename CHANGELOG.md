@@ -41,6 +41,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   `notes`, `source_version`, `volatile`, `baseline_expectation`, `canary`, `replicates`,
   `failure_modes`, `failure_mode_taxonomy_version`. Existing items validate unchanged; `extra="forbid"`
   still rejects typos.
+- **Eval replicates + confidence intervals** (`--replicates K`). The agentic and tools-off
+  baseline layers can be re-run K times per item (the deterministic layer stays single-run); each
+  item's pass **rate** is aggregated across items into a **t-based 95% CI** (the item is the
+  sampling unit), so the report shows `agentic rate`, `tool-selection`, `tools-off baseline`, and
+  `uplift (Δ)` as `mean [lo, hi]`. Makes the uplift number defensible rather than anecdotal — the
+  tools-off residual is genuinely stochastic run to run. No scipy dependency (hardcoded t-table).
+  K=1 (default) output is unchanged. New `ItemResult` pass-count fields + `EvalReport.replicates`.
 - **`set` eval grader** — recall over a `canonical` list that must meet `recall_at_k` (default
   1.0), matching `latch-eval-tools`' `marker_gene_precision_recall` recall@K semantics
   (reimplemented as a pure function — no new dependency). The right grader for list answers

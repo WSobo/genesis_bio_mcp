@@ -54,9 +54,20 @@ uv run python -m genesis_bio_mcp.evals --agentic --out eval_report.md
 # Add the tools-off uplift baseline — the headline "do the tools help?" number (implies --agentic)
 uv run python -m genesis_bio_mcp.evals --baseline --out eval_report.md
 
+# Replicate the LLM layers K times for confidence intervals (one run is an anecdote)
+uv run python -m genesis_bio_mcp.evals --baseline --replicates 3 --out eval_report.md
+
 # Run a single category
 uv run python -m genesis_bio_mcp.evals --filter druggability
 ```
+
+`--replicates K` re-runs the **agentic and baseline layers K times** per item (the deterministic
+layer is deterministic, so it runs once). Each item's pass **rate** (`passes/K`) is aggregated
+across items into a **t-based 95% CI** — the *item* is the sampling unit, so the interval reflects
+both LLM sampling variance and item-to-item spread. The report then shows `agentic rate`,
+`tool-selection`, `tools-off baseline`, and `uplift (Δ)` as `mean [lo, hi]` instead of a single
+point estimate. This is what makes an uplift number defensible rather than anecdotal — the
+tools-off residual is genuinely stochastic run to run, so a single pass is noise.
 
 ## Reading the report
 
