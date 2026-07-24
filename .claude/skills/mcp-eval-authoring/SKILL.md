@@ -11,10 +11,14 @@ description: Write, review, and harden evaluation items for an MCP server's eval
 > roadmap for the harness.
 >
 > - **Grader types available now** (`evals/graders.py`): `contains`, `all_of`, `regex`,
->   `numeric` (`value`±`tolerance`, or `min`/`max`, optional `near` label). The set-based /
->   structured graders this skill recommends — `marker_gene_precision_recall` (P@K),
->   `label_set_jaccard`, `distribution_comparison`, `multiple_choice`, composite — do **not**
->   exist yet. Adopt their *semantics* (borrow from `latch-eval-tools`) when you add them.
+>   `numeric` (`value`±`tolerance`, or `min`/`max`, optional `near` label), and `set` — recall
+>   over a `canonical` list (`recall_at_k`), now with **precision** when you add an `extractor`
+>   regex that delimits the predicted set (`precision_at_k`) plus a `forbidden` distractor guard.
+>   `set` + `extractor` realises this skill's `marker_gene_precision_recall` (P@K/R@K) semantics
+>   for fixed-shape token answers (accessions, `R-HSA`/`IPR`/`CHEMBL` ids). The remaining
+>   structured graders it recommends — `label_set_jaccard`, `distribution_comparison`,
+>   `multiple_choice`, composite, and the `<EVAL_ANSWER>` answer-field extraction for lists that
+>   aren't a fixed token shape — do **not** exist yet. Adopt their *semantics* when you add them.
 > - **Item fields available now** (`evals/dataset.py`, `EvalItem`): `id`, `question`,
 >   `category`, `tool_calls`, `expected_tools`, `grader`, `requires`, `probe`, plus the
 >   optional authoring-metadata fields `notes`, `source_version`, `volatile`,
@@ -117,9 +121,9 @@ agent echoing the prompt. Prefer a structured answer field with a typed grader.
 
 | Answer shape | Grader | Note |
 |---|---|---|
-| A count, score, threshold | `numeric_tolerance` | Tolerance must be justified in notes — wide enough for legitimate method variation, narrow enough to reject the naive path |
-| A ranked list (genes, compounds, off-targets) | `marker_gene_precision_recall` (P@K / R@K) | Right choice for `assess_selectivity`, similarity search, any top-N output |
-| An unordered set (labels, pathway members) | `label_set_jaccard` | Set a threshold, don't demand exact equality |
+| A count, score, threshold | `numeric` (this repo) / `numeric_tolerance` | Tolerance must be justified in notes — wide enough for legitimate method variation, narrow enough to reject the naive path |
+| An **ID-shaped** list (accessions, `R-HSA`/`IPR`/`CHEMBL` ids, top-N) | `set` + `extractor` (this repo) — R@K + P@K | Shipped today: the `extractor` regex delimits the predicted set so `precision_at_k` is checkable; realises `marker_gene_precision_recall` semantics. For lists of prose words (bare gene symbols) that no regex delimits, an `<EVAL_ANSWER>` answer-field grader is still needed (not yet built). |
+| An unordered set (labels, pathway members) | `set` (recall only) / `label_set_jaccard` | Set a threshold, don't demand exact equality |
 | A proportion breakdown | `distribution_comparison` | |
 | A discrete interpretation call | `multiple_choice` | Include a distractor that the naive path produces |
 | Several fields that must all hold | `all_of` / composite | Pass = AND; this is how you grade a *decision* rather than a lookup |
@@ -226,6 +230,15 @@ ones below. Adapt names to the existing dataset rather than renaming everything.
   "failure_mode_taxonomy_version": "v1"
 }
 ```
+
+> **What validates in this repo today.** The `marker_gene_precision_recall` grader above is the
+> aspirational form — it also presumes an `<EVAL_ANSWER>` answer field the deterministic layer
+> can't parse. For an **ID-shaped** list (accessions, `R-HSA`/`IPR`/`CHEMBL` ids) the shipped
+> equivalent grades R@K + P@K directly over the tool's free markdown:
+> `{"type": "set", "canonical": ["IPR000719", ...], "extractor": "IPR\\d+", "recall_at_k": 0.6,
+> "precision_at_k": 0.5}` (see `braf-interpro-domains` / `braf-reactome-pathways` in
+> `dataset.json`). `set` without an `extractor` is recall-only. A list of prose words (bare gene
+> symbols) that no regex can delimit still awaits the answer-field grader.
 
 Keep the existing `probe: true` convention for deliberate capability gaps — questions no
 current tool can answer. A probe failing is the roadmap working, not a regression. But a

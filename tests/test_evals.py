@@ -79,6 +79,99 @@ def test_grader_set_recall_at_k():
     assert "1/3" in r.detail and "LYN" in r.detail
 
 
+def test_grader_set_precision_via_extractor():
+    canon = ["R-HSA-187706", "R-HSA-170968", "R-HSA-169893"]
+    spec = {
+        "type": "set",
+        "canonical": canon,
+        "extractor": r"R-HSA-\d+",
+        "recall_at_k": 0.66,
+        "precision_at_k": 0.5,
+    }
+    # exact predicted set → recall 1.0, precision 1.0 (case-insensitive)
+    r = grade("Pathways: r-hsa-187706, R-HSA-170968, R-HSA-169893.", spec)
+    assert r.passed
+    assert "recall" in r.detail and "precision" in r.detail
+    # over-listing: 2/3 canonical present (recall 0.66 ok) but 2/8 predicted → precision 0.25 < 0.5
+    flood = "R-HSA-187706 R-HSA-170968 R-HSA-1 R-HSA-2 R-HSA-3 R-HSA-4 R-HSA-5 R-HSA-6"
+    assert not grade(flood, spec).passed
+    # …and the SAME flood passes recall-only — proving precision is what bites the gaming
+    assert grade(
+        flood, {"type": "set", "canonical": canon, "extractor": r"R-HSA-\d+", "recall_at_k": 0.66}
+    ).passed
+    # extractor that matches nothing → recall 0, precision 0 → fail
+    assert not grade("no ids here", spec).passed
+
+
+def test_grader_set_extractor_ignores_capture_groups():
+    # A capturing group in the extractor must not corrupt the predicted set: the WHOLE match is the
+    # token (finditer + group(0)). Under a naive re.findall this returns group tuples and fails.
+    canon = ["IPR000719", "IPR011009"]
+    spec = {
+        "type": "set",
+        "canonical": canon,
+        "extractor": r"(IPR)(\d+)",
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.9,
+    }
+    assert grade("domains IPR000719 and IPR011009", spec).passed
+
+
+def test_grader_set_recall_denominator_dedups_canonical():
+    # A duplicate canonical entry must not make recall 1.0 unreachable on the extractor path.
+    spec = {
+        "type": "set",
+        "canonical": ["IPR000719", "IPR000719", "IPR011009"],
+        "extractor": r"IPR\d+",
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.5,
+    }
+    assert grade("IPR000719 IPR011009", spec).passed
+
+
+def test_grader_set_precision_requires_extractor():
+    r = grade("A B", {"type": "set", "canonical": ["A", "B"], "precision_at_k": 0.5})
+    assert not r.passed and "extractor" in r.detail
+
+
+def test_grader_set_forbidden_distractor():
+    canon = ["IPR000719"]
+    # a listed distractor present → immediate fail regardless of recall (substring path)
+    r = grade(
+        "domain IPR000719 and the decoy IPR999999",
+        {"type": "set", "canonical": canon, "forbidden": ["IPR999999"]},
+    )
+    assert not r.passed and "forbidden" in r.detail
+    # forbidden also short-circuits the extractor path
+    r2 = grade(
+        "IPR000719 IPR999999",
+        {
+            "type": "set",
+            "canonical": canon,
+            "extractor": r"IPR\d+",
+            "forbidden": ["IPR999999"],
+            "recall_at_k": 0.5,
+            "precision_at_k": 0.1,
+        },
+    )
+    assert not r2.passed and "forbidden" in r2.detail
+
+
+def test_grader_set_recall_only_is_backward_compatible():
+    # no extractor + no precision_at_k → the historical substring-recall behavior, no precision term
+    r = grade("ABL1 LYN FYN", {"type": "set", "canonical": ["ABL1", "LYN", "FYN"]})
+    assert r.passed and "precision" not in r.detail
+
+
+def test_shipped_precision_items_pass_on_exact_output():
+    """The two shipped precision items must accept a run that emits exactly the canonical set."""
+    items = {i.id: i for i in load_dataset()}
+    for iid in ("braf-reactome-pathways", "braf-interpro-domains"):
+        g = items[iid].grader
+        assert g["type"] == "set" and "extractor" in g and "precision_at_k" in g
+        assert grade(" ".join(g["canonical"]), g).passed
+
+
 def test_grader_unknown_type_and_none_output():
     assert not grade("x", {"type": "bogus"}).passed
     assert not grade(None, {"type": "contains", "value": "x"}).passed

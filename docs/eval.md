@@ -91,10 +91,13 @@ grader (see [`evals/graders.py`](../src/genesis_bio_mcp/evals/graders.py)):
 
 Grader types: `contains`, `all_of`, `regex`, `numeric` (`value`+`tolerance`, or `min`/`max`,
 optionally `near` a label), and `set` — recall over a `canonical` list that must meet
-`recall_at_k` (default 1.0), the right grader for list answers (off-target kinases, pathway/ID
-sets) and a soft generalization of `all_of`. A `"probe": true` item has no `tool_calls` — a
-deterministic failure on it is a capability gap, not a regression. Add `"requires": ["corpus"]`
-to gate an item on a built corpus.
+`recall_at_k` (default 1.0), the right grader for list answers (pathway/ID sets, off-target
+kinases) and a soft generalization of `all_of`. When the answer is a fixed-shape token (an
+accession, an `R-HSA`/`IPR`/`CHEMBL` id) add an `extractor` regex: its matches become the
+*predicted* set, which makes **precision** checkable (`precision_at_k`) so a run can no longer
+game recall by listing every candidate — plus an optional `forbidden` list that fails outright on
+a named distractor. A `"probe": true` item has no `tool_calls` — a deterministic failure on it is
+a capability gap, not a regression. Add `"requires": ["corpus"]` to gate an item on a built corpus.
 
 The harness machinery (graders, dataset validity, report rendering, agent-trace capture)
 is unit-tested in [`tests/test_evals.py`](../tests/test_evals.py) — keyless and CI-safe.
@@ -107,21 +110,23 @@ the design note above). We don't just assert this; we measure it with the tools-
 
 | | Deterministic (tools) | Tools-off (prior-only) |
 |---|---:|---:|
-| Rebuilt dataset (18 items) | 18/18 | ~3/18 |
+| Rebuilt dataset (19 items) | 19/19 | ~3/19 |
 | *Previous dataset (for contrast)* | *27/27* | *25/27* |
 
 The previous suite was ~93% answerable with the tools unplugged — it graded facts a strong
 model already knows (`P04626`, `PTGS2`) or matched tool-format headers, so its high pass rate
 measured **training data, not the server**. The rebuilt suite inverts that: pull the tools and
-the score collapses to ~17%, so a pass now largely reflects the tool *adding* something.
+the score collapses to ~16%, so a pass now largely reflects the tool *adding* something.
 Authoring items to hit this bar — no-tool baseline, discriminating graders, drift-stable
 answers — follows the `mcp-eval-authoring` methodology.
 
-The residual ~3/18 is **stochastic** (which items leak varies run to run): against a saturated
+The residual ~3/19 is **stochastic** (which items leak varies run to run): against a saturated
 model a few answers are still estimable within tolerance (a clean molecule's QED to ±0.03) or
-mentionable (a related accession). Closing that last gap needs replicated baselines and
-structured-answer graders (precision/recall on a returned set, an exact typed field) rather
-than the current substring/numeric graders — the natural next increment to the harness.
+mentionable (a related accession). The `set` grader now closes the *mention / over-listing* half
+of that gap for ID-shaped answers — an `extractor` + `precision_at_k` grades precision as well as
+recall, so padding an answer with plausible accessions fails (see `braf-reactome-pathways`,
+`braf-interpro-domains`). What remains is replicated baselines (to put a confidence interval on
+the residual) and a structured answer-field for lists that aren't a fixed token shape.
 
 Two deliberate **capability probes** remain unmet — patents/FTO and retrosynthesis — the same
 gaps the roadmap tracks as v0.8.0 M3/M4.

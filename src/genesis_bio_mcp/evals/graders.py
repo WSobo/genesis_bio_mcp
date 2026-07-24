@@ -9,11 +9,22 @@ fully unit-testable and run in CI. A grader spec is a small dict with a ``type``
 - ``numeric``   — a number near a label satisfies a bound:
                   ``{"type": "numeric", "near": "pChEMBL", "min": 9.0}`` or
                   ``{"type": "numeric", "value": 180.16, "tolerance": 1.0}``
-- ``set``       — recall over a canonical set: the fraction of ``canonical`` items present in
-                  the output must meet ``recall_at_k`` (default 1.0). The right grader for list
-                  answers (off-target kinases, similar compounds, pathway/ID sets) — generalizes
-                  ``all_of`` (which is ``recall_at_k`` = 1.0) and is far stronger than ``contains``:
-                  ``{"type": "set", "canonical": ["ABL1", "LYN", "FYN"], "recall_at_k": 0.66}``
+- ``set``       — recall (and optionally precision) over a canonical set. The right grader for
+                  list answers (off-target kinases, similar compounds, pathway/ID sets) —
+                  generalizes ``all_of`` (which is ``recall_at_k`` = 1.0) and is far stronger than
+                  ``contains``. Three layers, weakest to strongest:
+                    * recall-only (substring):
+                      ``{"type": "set", "canonical": ["ABL1", "LYN", "FYN"], "recall_at_k": 0.66}``
+                    * recall + **precision** — add an ``extractor`` regex whose whole matches (capturing
+                      groups are ignored) delimit the *predicted* set from the free markdown — the answer
+                      the run committed to — so over-listing every candidate can no longer game recall:
+                      ``{"type": "set", "canonical": ["R-HSA-187706", ...], "extractor": "R-HSA-\\d+",
+                         "recall_at_k": 0.6, "precision_at_k": 0.5}``
+                    * ``forbidden`` — any listed distractor present (substring) fails the item outright;
+                      combine with the above to punish the specific wrong answer a naive path emits.
+                  This realises the mcp-eval-authoring skill's ``marker_gene_precision_recall`` P@K/R@K
+                  semantics under the existing ``set`` type. ``precision_at_k`` REQUIRES an ``extractor``
+                  (precision is undefined without a delimited predicted set).
 """
 
 from __future__ import annotations
@@ -66,26 +77,69 @@ def _all_of(text: str, spec: dict) -> GradeResult:
 
 
 def _set(text: str, spec: dict) -> GradeResult:
-    """Recall over a canonical set: the fraction of ``canonical`` items present in the output
-    must meet ``recall_at_k`` (default 1.0). Case-insensitive substring membership — matching
-    latch-eval-tools' ``marker_gene_precision_recall`` recall@K semantics.
+    """Recall — and optionally precision — over a canonical set (see module docstring).
 
-    Recall-only by design: precision needs the *predicted* set, which can't be delimited in free
-    tool markdown. An item where over-listing could game recall should grade a structured answer
-    field instead (see the mcp-eval-authoring skill).
+    Without an ``extractor`` this is recall-only, case-insensitive **substring** membership: the
+    fraction of ``canonical`` present in the output must meet ``recall_at_k`` (default 1.0). This
+    is the historical behaviour and is preserved byte-for-byte.
+
+    With an ``extractor`` regex, its matches form the *predicted* set (the answer the run actually
+    committed to), membership becomes exact case-insensitive token equality, and ``precision_at_k``
+    becomes checkable — recall alone can always be gamed by listing every candidate, precision
+    cannot. ``forbidden`` fails outright on any listed distractor, with or without an extractor.
     """
     canonical = [str(v) for v in spec["canonical"]]
     if not canonical:
         return GradeResult(False, "empty canonical set")
     low = text.lower()
-    present = [c for c in canonical if c.lower() in low]
-    recall = len(present) / len(canonical)
-    threshold = float(spec.get("recall_at_k", 1.0))
-    missing = [c for c in canonical if c not in present]
-    detail = f"recall {len(present)}/{len(canonical)} = {recall:.2f} (need ≥ {threshold})"
+
+    forbidden = [str(v) for v in spec.get("forbidden", [])]
+    recall_k = float(spec.get("recall_at_k", 1.0))
+    precision_k = spec.get("precision_at_k")
+    extractor = spec.get("extractor")
+
+    if extractor is None:
+        if precision_k is not None:
+            return GradeResult(
+                False, "precision_at_k requires an 'extractor' regex to delimit the predicted set"
+            )
+        # No predicted set to check against, so 'forbidden' is a coarse whole-text substring guard.
+        hit_forbidden = [f for f in forbidden if f.lower() in low]
+        if hit_forbidden:
+            return GradeResult(False, f"forbidden token(s) present: {hit_forbidden[:8]}")
+        present = [c for c in canonical if c.lower() in low]
+        recall = len(present) / len(canonical)
+        missing = [c for c in canonical if c not in present]
+        detail = f"recall {len(present)}/{len(canonical)} = {recall:.2f} (need ≥ {recall_k})"
+        if missing:
+            detail += f"; missing {missing[:8]}"
+        return GradeResult(recall >= recall_k, detail)
+
+    # Extractor path: the regex matches ARE the predicted set, so precision is well-defined.
+    # ``group(0)`` (via finditer) so a capturing group in the pattern can't corrupt the token set;
+    # both sides of recall are set-based, so a duplicate ``canonical`` entry can't skew the ratio.
+    pred_lower = {m.group(0).lower() for m in re.finditer(str(extractor), text, re.IGNORECASE)}
+    canon_lower = {c.lower() for c in canonical}
+    # Here 'forbidden' is checked against the committed answer tokens (exact), matching precision.
+    hit_forbidden = [f for f in forbidden if f.lower() in pred_lower]
+    if hit_forbidden:
+        return GradeResult(False, f"forbidden token(s) present: {hit_forbidden[:8]}")
+    hits = canon_lower & pred_lower
+    recall = len(hits) / len(canon_lower)
+    precision = len(hits) / len(pred_lower) if pred_lower else 0.0
+
+    ok = recall >= recall_k
+    detail = f"recall {len(hits)}/{len(canon_lower)} = {recall:.2f} (≥ {recall_k})"
+    if precision_k is not None:
+        precision_k = float(precision_k)
+        ok = ok and precision >= precision_k
+        detail += f", precision {len(hits)}/{len(pred_lower)} = {precision:.2f} (≥ {precision_k})"
+    else:
+        detail += f", precision {precision:.2f} ({len(pred_lower)} predicted)"
+    missing = [c for c in canonical if c.lower() not in pred_lower]
     if missing:
         detail += f"; missing {missing[:8]}"
-    return GradeResult(recall >= threshold, detail)
+    return GradeResult(ok, detail)
 
 
 def _regex(text: str, spec: dict) -> GradeResult:

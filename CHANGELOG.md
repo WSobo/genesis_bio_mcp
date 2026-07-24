@@ -41,12 +41,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   `notes`, `source_version`, `volatile`, `baseline_expectation`, `canary`, `replicates`,
   `failure_modes`, `failure_mode_taxonomy_version`. Existing items validate unchanged; `extra="forbid"`
   still rejects typos.
-- **`set` eval grader** — recall over a `canonical` list that must meet `recall_at_k` (default
-  1.0), matching `latch-eval-tools`' `marker_gene_precision_recall` recall@K semantics
-  (reimplemented as a pure function — no new dependency). The right grader for list answers
-  (off-target kinases, pathway/ID sets) where `all_of` is too brittle and `contains` too weak; it
-  generalizes `all_of` (= `recall_at_k` 1.0). The `braf-reactome-pathways` eval item now grades
-  recall over BRAF's Reactome R-HSA identifiers instead of a single drift-prone top pathway.
+- **`set` eval grader (recall + precision)** — recall over a `canonical` list that must meet
+  `recall_at_k` (default 1.0), matching `latch-eval-tools`' `marker_gene_precision_recall` R@K
+  semantics (reimplemented as a pure function — no new dependency); it generalizes `all_of`
+  (= `recall_at_k` 1.0) and is far stronger than `contains` for list answers (pathway/ID sets,
+  off-target kinases). For fixed-shape token answers, an optional **`extractor`** regex delimits
+  the *predicted* set from the free markdown, making **precision** checkable (`precision_at_k`) —
+  so a run can no longer game recall by listing every candidate — with an optional `forbidden`
+  list that fails outright on a named distractor. `braf-reactome-pathways` now grades
+  recall+precision over BRAF's 9 Reactome `R-HSA` ids (verified live at recall 1.0 / precision
+  1.0), and a new `braf-interpro-domains` item grades its 11 InterPro accessions the same way.
 - **`assess_selectivity`** (v0.8.0 M2) — a compound's off-target / kinome selectivity profile, in two
   honestly-separated layers. **Measured** (keyless): resolve a SMILES to a ChEMBL molecule and aggregate
   every human target it has pChEMBL activity against, with a qualitative Selective / Moderately selective /

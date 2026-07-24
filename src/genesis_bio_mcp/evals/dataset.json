@@ -125,7 +125,21 @@
     "category": "pathways",
     "tool_calls": [{"name": "get_pathway_context", "args": {"gene_symbol": "BRAF"}}],
     "expected_tools": ["get_pathway_context"],
-    "grader": {"type": "set", "canonical": ["R-HSA-187706", "R-HSA-5674499", "R-HSA-9726840", "R-HSA-9660537", "R-HSA-9726842", "R-HSA-170984", "R-HSA-170968", "R-HSA-1295596", "R-HSA-169893"], "recall_at_k": 0.6}
+    "grader": {"type": "set", "canonical": ["R-HSA-187706", "R-HSA-5674499", "R-HSA-9726840", "R-HSA-9660537", "R-HSA-9726842", "R-HSA-170984", "R-HSA-170968", "R-HSA-1295596", "R-HSA-169893"], "extractor": "R-HSA-\\d+", "recall_at_k": 0.6, "precision_at_k": 0.5},
+    "baseline_expectation": "fail",
+    "notes": "Correct path: get_pathway_context(BRAF) returns exactly these 9 Reactome R-HSA IDs (page-1 top-10 by entities p-value). Naive path: a cold model lists many plausible R-HSA IDs hoping to hit a few — recall might scrape 0.6 but precision collapses. The extractor delimits the committed answer so precision_at_k 0.5 rejects that; the tool's own output scores recall 1.0 / precision 1.0."
+  },
+  {
+    "id": "braf-interpro-domains",
+    "question": "List every InterPro domain accession annotated to BRAF, according to the domain-annotation tool.",
+    "category": "protein_engineering",
+    "tool_calls": [{"name": "get_domain_annotation", "args": {"gene_symbol": "BRAF"}}],
+    "expected_tools": ["get_domain_annotation"],
+    "grader": {"type": "set", "canonical": ["IPR003116", "IPR029071", "IPR046349", "IPR020454", "IPR002219", "IPR051681", "IPR011009", "IPR000719", "IPR001245", "IPR017441", "IPR008271"], "extractor": "IPR\\d+", "recall_at_k": 0.6, "precision_at_k": 0.5},
+    "baseline_expectation": "fail",
+    "volatile": true,
+    "source_version": {"interpro_via": "EBI InterPro API", "observed_at": "2026-07-24"},
+    "notes": "Correct path: get_domain_annotation(BRAF) returns exactly these 11 InterPro accessions (verified stable over 3 live runs, 2026-07-24). A strong model can recall a couple generic ones (IPR000719 protein-kinase domain, IPR011009 kinase-like superfamily) but not 7/11 exact accessions, and padding the list with plausible IPR IDs fails precision_at_k 0.5. recall_at_k is 0.6 (not the tool's 1.0) so an InterPro re-release can drop/rename up to 4 of the 11 before this goes red — volatile:true flags it for re-baselining on such releases. Tool output currently scores recall 1.0 / precision 1.0."
   },
   {
     "id": "obscuremol1-qed",
