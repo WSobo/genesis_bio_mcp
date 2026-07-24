@@ -47,6 +47,41 @@ class EvalItem(BaseModel):
         description="True = no current tool can answer this; a deterministic fail is a CAPABILITY GAP, not a regression",
     )
 
+    # --- Optional authoring metadata (see the mcp-eval-authoring skill) ------------------------
+    # All default-empty, so existing items validate unchanged. None of these affect scoring; they
+    # record how an item was authored/checked and make the suite legible to reviewers and to
+    # future re-baselining. `EvalItem` is extra="forbid", so these must be declared to be usable.
+    notes: str = Field(
+        default="",
+        description="Author notes: the correct path, the naive path a hurried agent would take, and the tolerance rationale",
+    )
+    source_version: dict = Field(
+        default_factory=dict,
+        description="Upstream versions observed at authoring, e.g. {'chembl': '35', 'observed_at': '2026-07-01'} — lets a later failure be diagnosed as drift vs regression",
+    )
+    volatile: bool = Field(
+        default=False,
+        description="True if the grader targets a volatile upstream scalar; expect to re-baseline on upstream releases",
+    )
+    baseline_expectation: str | None = Field(
+        default=None,
+        description="Expected tools-off outcome ('pass' | 'fail' | 'fail (stochastic)'); a 'pass' flags a shortcut to rewrite (measured via `--baseline`)",
+    )
+    canary: str = Field(
+        default="",
+        description="Canary string so the item is detectable if it leaks into a future training corpus",
+    )
+    replicates: int = Field(
+        default=1, ge=1, description="K — recommended replicate count for this item (Gate 4)"
+    )
+    failure_modes: list[str] = Field(
+        default_factory=list,
+        description="Observed failure-mode tags, e.g. 'tool_not_found', 'output_misread' (Gate 5)",
+    )
+    failure_mode_taxonomy_version: str = Field(
+        default="", description="Version of the failure-mode vocabulary these tags use"
+    )
+
 
 def load_dataset(path: Path | None = None) -> list[EvalItem]:
     """Load + validate the dataset, enforcing unique ids."""
