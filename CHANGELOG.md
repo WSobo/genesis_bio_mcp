@@ -9,6 +9,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Eval dataset rebuilt for tool-necessity.** Every non-probe item is now authored so its
+  answer is a precise value or identifier the tool returns and a strong model cannot recall
+  unaided (an InChIKey, an InterPro/MONDO/Reactome accession, a gnomAD/AlphaFold/GTEx value, a
+  computed QED/SAscore), with the target value never present in the question. Verified against
+  live tool output (18/18 deterministic) and a tools-off Opus baseline: the previous suite was
+  ~93% answerable (25/27) with the tools unplugged — it graded facts a strong model already
+  knows or matched tool-format headers — whereas the rebuilt suite drops to ~3/18 (~17%), so a
+  pass now largely demonstrates the tool *added* something. Also drops the flaky GWAS top-SNP
+  item (GWAS Catalog ordering is non-deterministic) for drift-stable sources, and documents the
+  design bar in `docs/eval.md`. The two capability probes (patents/FTO, retrosynthesis) remain.
+
 ### Added
 
 - **`assess_selectivity`** (v0.8.0 M2) — a compound's off-target / kinome selectivity profile, in two
