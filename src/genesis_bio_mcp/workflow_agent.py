@@ -1850,18 +1850,22 @@ async def run_agent_loop_traced(
         }
         for spec in registry.values()
     ]
+    # An empty registry is the eval harness's "prior-only" (tools-off) baseline: send NO
+    # `tools` param at all (the API rejects `tools=[]`), so the model must answer from its
+    # own knowledge in one turn.
+    create_kwargs: dict[str, Any] = {
+        "model": _MODEL,
+        "max_tokens": _MAX_TOKENS,
+        "system": _SYSTEM_PREAMBLE,
+    }
+    if tools_for_claude:
+        create_kwargs["tools"] = tools_for_claude
 
     messages: list[dict] = [{"role": "user", "content": question}]
 
     for iteration in range(max_iterations):
         try:
-            response = await client.messages.create(
-                model=_MODEL,
-                max_tokens=_MAX_TOKENS,
-                system=_SYSTEM_PREAMBLE,
-                tools=tools_for_claude,
-                messages=messages,
-            )
+            response = await client.messages.create(messages=messages, **create_kwargs)
         except anthropic.AuthenticationError:
             return AgentRun(
                 final_text=_NO_KEY_MESSAGE,

@@ -11,6 +11,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Eval uplift baseline** (`--baseline`). The agentic eval layer now optionally runs each item a
+  *second* time through the same agent with an **empty tool registry** — a prior-only run that answers
+  from the model's own knowledge. Grading both with the same grader yields the headline **uplift**
+  (tools-on minus tools-off): the report's new *Tool-value analysis* section splits items into "only
+  answerable with tools" vs. "shortcuts" (pass without them → rewrite or cut). This answers the
+  question a `27/27` deterministic score cannot: *do the tools actually add anything, or does the model
+  already know the answer?* Run: `uv run python -m genesis_bio_mcp.evals --baseline --out report.md`
+  (implies `--agentic`, needs `ANTHROPIC_API_KEY`). New `ItemResult.baseline_*` fields, `EvalReport.baseline`,
+  and `EvalReport.shortcuts` / `.tool_dependent` views.
 - **`assess_selectivity`** (v0.8.0 M2) — a compound's off-target / kinome selectivity profile, in two
   honestly-separated layers. **Measured** (keyless): resolve a SMILES to a ChEMBL molecule and aggregate
   every human target it has pChEMBL activity against, with a qualitative Selective / Moderately selective /
@@ -49,6 +58,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - Orphaned `evaluation.xml` (its runner `scripts/evaluation.py` was never built) — its questions are
   superseded by `evals/dataset.json`.
+
+### Fixed
+
+- Eval report **Results** table rendered one column short — a `row[:-1]` slice dropped a cell
+  separator, merging the Latency and Agentic columns. Rows now align with the header (guarded by a test).
 
 ## [0.7.0] - 2026-05-30
 

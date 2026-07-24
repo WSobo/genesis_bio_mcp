@@ -55,11 +55,20 @@ async def run_eval(
     items: list[EvalItem],
     *,
     agentic: bool = False,
+    baseline: bool = False,
     max_iterations: int = 8,
     timestamp: str,
 ) -> EvalReport:
-    """Run the eval over ``items`` and return an :class:`EvalReport`."""
+    """Run the eval over ``items`` and return an :class:`EvalReport`.
+
+    ``baseline`` (implies ``agentic``) additionally runs each item through the agent
+    with an EMPTY tool registry — a *prior-only* run that answers from the model's own
+    knowledge. Grading both runs with the same grader yields the headline **uplift**
+    (tools-on minus tools-off): items the tools actually make answerable, vs. items the
+    model already knew (shortcuts) or that a lenient grader lets slip through regardless.
+    """
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    run_baseline = baseline and agentic and has_key
     results: list[ItemResult] = []
 
     async with httpx.AsyncClient(
@@ -103,6 +112,17 @@ async def run_eval(
                 if item.expected_tools:
                     r.tool_selection_ok = all(t in run.tool_calls for t in item.expected_tools)
 
+                # Prior-only baseline: same agent, EMPTY registry (no tools). One turn is
+                # enough since the model cannot call anything — it answers from memory.
+                if run_baseline:
+                    base = await run_agent_loop_traced(item.question, {}, max_iterations=1)
+                    r.baseline_ran = True
+                    bg = grade(base.final_text, item.grader)
+                    r.baseline_passed = bg.passed
+                    r.baseline_detail = bg.detail
+
             results.append(r)
 
-    return EvalReport(generated_at=timestamp, results=results, agentic=agentic)
+    return EvalReport(
+        generated_at=timestamp, results=results, agentic=agentic, baseline=run_baseline
+    )
